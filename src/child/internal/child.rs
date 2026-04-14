@@ -1346,7 +1346,7 @@ fn lookup_typed_component_func(
                 continue;
             };
 
-            if let Some(func) = component_instance.get_func(store.as_context_mut(), &function_idx) {
+            if let Some(func) = component_instance.get_func(store.as_context_mut(), function_idx) {
                 return Ok(func);
             }
         }

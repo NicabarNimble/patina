@@ -65,6 +65,17 @@ pub struct ServerState {
     readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
 }
 
+struct ServerStateInit {
+    token: String,
+    startup_profile: DaemonStartupProfile,
+    rivet_integration: RivetIntegrationProfile,
+    registry: ChildRegistry,
+    runtime_store: patina::mother::MotherRuntimeStore,
+    startup_store: patina::mother::MotherRuntimeStore,
+    federation_runtime: FederationRuntime,
+    readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
+}
+
 enum LoadedComponent {
     HandleBased,
     Composed,
@@ -220,16 +231,17 @@ mod composed_bindings {
 }
 
 impl ServerState {
-    fn new(
-        token: String,
-        startup_profile: DaemonStartupProfile,
-        rivet_integration: RivetIntegrationProfile,
-        registry: ChildRegistry,
-        runtime_store: patina::mother::MotherRuntimeStore,
-        startup_store: patina::mother::MotherRuntimeStore,
-        federation_runtime: FederationRuntime,
-        readiness: Arc<RwLock<mother_crate::runtime::ReadinessState>>,
-    ) -> Self {
+    fn new(init: ServerStateInit) -> Self {
+        let ServerStateInit {
+            token,
+            startup_profile,
+            rivet_integration,
+            registry,
+            runtime_store,
+            startup_store,
+            federation_runtime,
+            readiness,
+        } = init;
         let services_store = runtime_store.clone();
         let child_warmup_mode = if startup_profile.auto_warmup() {
             "auto"
@@ -2167,16 +2179,16 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     if let Some(ref host) = options.host {
         let (state, router) = run_startup_stage("router_build", &startup_store, || {
             let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
-            let state = Arc::new(ServerState::new(
+            let state = Arc::new(ServerState::new(ServerStateInit {
                 token,
-                profile,
-                rivet,
+                startup_profile: profile,
+                rivet_integration: rivet,
                 registry,
-                runtime.clone(),
-                startup_store.clone(),
+                runtime_store: runtime.clone(),
+                startup_store: startup_store.clone(),
                 federation_runtime,
-                Arc::clone(&readiness),
-            ));
+                readiness: Arc::clone(&readiness),
+            }));
             let router = Arc::new(build_router(Arc::clone(&state), true));
             Ok((state, router))
         })?;
@@ -2215,16 +2227,16 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
     let (state, router) = run_startup_stage("router_build", &startup_store, || {
-        let state = Arc::new(ServerState::new(
-            String::new(),
-            profile,
-            rivet,
+        let state = Arc::new(ServerState::new(ServerStateInit {
+            token: String::new(),
+            startup_profile: profile,
+            rivet_integration: rivet,
             registry,
-            runtime.clone(),
-            startup_store.clone(),
+            runtime_store: runtime.clone(),
+            startup_store: startup_store.clone(),
             federation_runtime,
-            Arc::clone(&readiness),
-        ));
+            readiness: Arc::clone(&readiness),
+        }));
         let router = Arc::new(build_router(Arc::clone(&state), false));
         Ok((state, router))
     })?;
@@ -2424,16 +2436,16 @@ mod tests {
             let runtime_store = patina::mother::MotherRuntimeStore::new(
                 project_root.join(".patina/local/data/mother-state.db"),
             );
-            let state = ServerState::new(
-                "test-token".to_string(),
-                DaemonStartupProfile::Core,
-                RivetIntegrationProfile::Disabled,
-                ChildRegistry::new(),
-                runtime_store.clone(),
-                runtime_store.clone(),
-                federation::startup(&runtime_store),
-                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
-            );
+            let state = ServerState::new(ServerStateInit {
+                token: "test-token".to_string(),
+                startup_profile: DaemonStartupProfile::Core,
+                rivet_integration: RivetIntegrationProfile::Disabled,
+                registry: ChildRegistry::new(),
+                runtime_store: runtime_store.clone(),
+                startup_store: runtime_store.clone(),
+                federation_runtime: federation::startup(&runtime_store),
+                readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            });
 
             let err = state
                 .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
@@ -2486,16 +2498,16 @@ allow = ["patina:watch/control.status"]
                 )
                 .expect("register typed dispatch child");
 
-            let state = ServerState::new(
-                "test-token".to_string(),
-                DaemonStartupProfile::Core,
-                RivetIntegrationProfile::Enabled,
+            let state = ServerState::new(ServerStateInit {
+                token: "test-token".to_string(),
+                startup_profile: DaemonStartupProfile::Core,
+                rivet_integration: RivetIntegrationProfile::Enabled,
                 registry,
-                runtime_store.clone(),
-                runtime_store.clone(),
-                federation::startup(&runtime_store),
-                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
-            );
+                runtime_store: runtime_store.clone(),
+                startup_store: runtime_store.clone(),
+                federation_runtime: federation::startup(&runtime_store),
+                readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            });
 
             let response = state
                 .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
@@ -2545,16 +2557,16 @@ allow = ["patina:watch/control.status"]
             let runtime_store = patina::mother::MotherRuntimeStore::new(
                 project_root.join(".patina/local/data/mother-state.db"),
             );
-            let state = ServerState::new(
-                "test-token".to_string(),
-                DaemonStartupProfile::Core,
-                RivetIntegrationProfile::Enabled,
-                ChildRegistry::new(),
-                runtime_store.clone(),
-                runtime_store.clone(),
-                federation::startup(&runtime_store),
-                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
-            );
+            let state = ServerState::new(ServerStateInit {
+                token: "test-token".to_string(),
+                startup_profile: DaemonStartupProfile::Core,
+                rivet_integration: RivetIntegrationProfile::Enabled,
+                registry: ChildRegistry::new(),
+                runtime_store: runtime_store.clone(),
+                startup_store: runtime_store.clone(),
+                federation_runtime: federation::startup(&runtime_store),
+                readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            });
 
             let err = state
                 .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
@@ -2576,16 +2588,16 @@ allow = ["patina:watch/control.status"]
             let runtime_store = patina::mother::MotherRuntimeStore::new(
                 project_root.join(".patina/local/data/mother-state.db"),
             );
-            let state = ServerState::new(
-                "test-token".to_string(),
-                DaemonStartupProfile::Core,
-                RivetIntegrationProfile::Enabled,
-                ChildRegistry::new(),
-                runtime_store.clone(),
-                runtime_store.clone(),
-                federation::startup(&runtime_store),
-                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
-            );
+            let state = ServerState::new(ServerStateInit {
+                token: "test-token".to_string(),
+                startup_profile: DaemonStartupProfile::Core,
+                rivet_integration: RivetIntegrationProfile::Enabled,
+                registry: ChildRegistry::new(),
+                runtime_store: runtime_store.clone(),
+                startup_store: runtime_store.clone(),
+                federation_runtime: federation::startup(&runtime_store),
+                readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            });
 
             let response = state
                 .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
@@ -2642,16 +2654,16 @@ allow = ["patina:watch/control.status"]
                 )
                 .expect("register typed dispatch child");
 
-            let state = ServerState::new(
-                "test-token".to_string(),
-                DaemonStartupProfile::Core,
-                RivetIntegrationProfile::Enabled,
+            let state = ServerState::new(ServerStateInit {
+                token: "test-token".to_string(),
+                startup_profile: DaemonStartupProfile::Core,
+                rivet_integration: RivetIntegrationProfile::Enabled,
                 registry,
-                runtime_store.clone(),
-                runtime_store.clone(),
-                federation::startup(&runtime_store),
-                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
-            );
+                runtime_store: runtime_store.clone(),
+                startup_store: runtime_store.clone(),
+                federation_runtime: federation::startup(&runtime_store),
+                readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            });
 
             let response = state
                 .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
@@ -2699,7 +2711,7 @@ allow = ["patina:watch/control.status"]
 
     #[test]
     fn register_loaded_child_loads_knowledge_by_default() {
-        let mut registry = ChildRegistry::new();
+        let registry = ChildRegistry::new();
         let runtime_root = tempfile::tempdir().unwrap();
         let runtime = patina::mother::MotherRuntimeStore::new_with_project(
             runtime_root.path().join("mother/state.db"),
@@ -2707,7 +2719,7 @@ allow = ["patina:watch/control.status"]
         );
 
         mother_crate::daemon_bootstrap::register_loaded_child(
-            &mut registry,
+            &registry,
             &runtime,
             mother_crate::daemon_bootstrap::LoadedChild::Knowledge {
                 child: Box::new(StubKnowledge),
@@ -2815,16 +2827,16 @@ kind = "child"
             let runtime_store = patina::mother::MotherRuntimeStore::new(
                 project_root.join(".patina/local/data/mother-state.db"),
             );
-            let state = ServerState::new(
-                "test-token".to_string(),
-                DaemonStartupProfile::Full,
-                RivetIntegrationProfile::Disabled,
-                ChildRegistry::new(),
-                runtime_store.clone(),
-                runtime_store.clone(),
-                federation::startup(&runtime_store),
-                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
-            );
+            let state = ServerState::new(ServerStateInit {
+                token: "test-token".to_string(),
+                startup_profile: DaemonStartupProfile::Full,
+                rivet_integration: RivetIntegrationProfile::Disabled,
+                registry: ChildRegistry::new(),
+                runtime_store: runtime_store.clone(),
+                startup_store: runtime_store.clone(),
+                federation_runtime: federation::startup(&runtime_store),
+                readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            });
 
             let manifest = mother_crate::pando::PandoManifest {
                 pando: mother_crate::pando::PandoSection {
@@ -2913,16 +2925,16 @@ kind = "child"
                 )
                 .unwrap();
 
-            let state = ServerState::new(
-                "test-token".to_string(),
-                DaemonStartupProfile::Full,
-                RivetIntegrationProfile::Disabled,
+            let state = ServerState::new(ServerStateInit {
+                token: "test-token".to_string(),
+                startup_profile: DaemonStartupProfile::Full,
+                rivet_integration: RivetIntegrationProfile::Disabled,
                 registry,
-                runtime_store.clone(),
-                runtime_store.clone(),
-                federation::startup(&runtime_store),
-                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
-            );
+                runtime_store: runtime_store.clone(),
+                startup_store: runtime_store.clone(),
+                federation_runtime: federation::startup(&runtime_store),
+                readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            });
 
             let manifest = mother_crate::pando::PandoManifest {
                 pando: mother_crate::pando::PandoSection {
@@ -3015,16 +3027,16 @@ kind = "child"
                 )
                 .unwrap();
 
-            let state = ServerState::new(
-                "test-token".to_string(),
-                DaemonStartupProfile::Full,
-                RivetIntegrationProfile::Disabled,
+            let state = ServerState::new(ServerStateInit {
+                token: "test-token".to_string(),
+                startup_profile: DaemonStartupProfile::Full,
+                rivet_integration: RivetIntegrationProfile::Disabled,
                 registry,
-                runtime_store.clone(),
-                runtime_store.clone(),
-                federation::startup(&runtime_store),
-                Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
-            );
+                runtime_store: runtime_store.clone(),
+                startup_store: runtime_store.clone(),
+                federation_runtime: federation::startup(&runtime_store),
+                readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+            });
 
             let manifest = mother_crate::pando::PandoManifest {
                 pando: mother_crate::pando::PandoSection {

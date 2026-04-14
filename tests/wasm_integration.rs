@@ -255,10 +255,7 @@ fn load_repos_child() -> Option<Box<dyn Child>> {
         contract_allow_operations: vec![],
     };
 
-    match engine.instantiate_child(&component, &manifest, None) {
-        Ok(child) => Some(child),
-        Err(_) => None,
-    }
+    engine.instantiate_child(&component, &manifest, None).ok()
 }
 
 fn load_echo_pipeline_component() -> Option<(PipelineEngine, wasmtime::component::Component)> {

@@ -435,22 +435,25 @@ pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
             let mut created = internal::create_spec_value_for_project(
                 &target_root,
                 Some(&target_uid),
-                &r#type,
-                &id,
-                title.as_deref(),
-                description.as_deref(),
-                blocked_by,
-                related,
+                internal::CreateSpecRequest {
+                    type_str: r#type,
+                    id,
+                    title,
+                    description,
+                    blocked_by,
+                    related,
+                },
             )?;
             created.cross_project = cross_project;
             if cross_project {
                 created.origin_project_uid = Some(origin_uid);
             }
 
+            let created_id = created.spec_id.clone();
             (
                 Some(format!(
                     "Created spec '{}'{}",
-                    id,
+                    created_id,
                     if cross_project {
                         " (cross-project)"
                     } else {

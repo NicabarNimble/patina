@@ -26,6 +26,16 @@ pub struct CreateResult {
     pub origin_project_uid: Option<String>,
 }
 
+#[derive(Debug)]
+pub struct CreateSpecRequest {
+    pub type_str: String,
+    pub id: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub blocked_by: Vec<String>,
+    pub related: Vec<String>,
+}
+
 /// Body template for each spec type.
 fn body_template(spec_type: SpecType) -> &'static str {
     match spec_type {
@@ -77,20 +87,24 @@ fn is_valid_id(id: &str) -> bool {
 pub fn create_spec_value_for_project(
     project_root: &Path,
     project_uid: Option<&str>,
-    type_str: &str,
-    id: &str,
-    title: Option<&str>,
-    description: Option<&str>,
-    blocked_by: Vec<String>,
-    related: Vec<String>,
+    request: CreateSpecRequest,
 ) -> Result<CreateResult> {
+    let CreateSpecRequest {
+        type_str,
+        id,
+        title,
+        description,
+        blocked_by,
+        related,
+    } = request;
+
     // 1. Parse and validate type
     let spec_type: SpecType = type_str
         .parse()
         .map_err(|e: patina::spec::SpecTypeError| anyhow::anyhow!("{}", e))?;
 
     // 2. Validate id is kebab-case
-    if !is_valid_id(id) {
+    if !is_valid_id(&id) {
         anyhow::bail!(
             "Invalid spec id \"{}\". Must be kebab-case: starts with lowercase letter, \
              contains only lowercase letters, digits, and hyphens.",
@@ -153,9 +167,9 @@ pub fn create_spec_value_for_project(
     };
 
     // 8. Build body
-    let display_title = title.unwrap_or(id);
+    let display_title = title.as_deref().unwrap_or(&id).to_string();
     let heading = format!("# {}: {}\n", type_str, display_title);
-    let blockquote = if let Some(desc) = description {
+    let blockquote = if let Some(desc) = description.as_deref() {
         format!("\n> {}\n", desc)
     } else {
         String::new()
@@ -171,7 +185,7 @@ pub fn create_spec_value_for_project(
     // 9b. Write DESIGN.md for feat and refactor types
     if needs_design_doc(spec_type) {
         let design_path_abs = directory_abs.join("DESIGN.md");
-        let design_content = design_template(display_title);
+        let design_content = design_template(&display_title);
         std::fs::write(&design_path_abs, &design_content)
             .with_context(|| format!("Failed to write {}", design_path_abs.display()))?;
     }
@@ -186,13 +200,13 @@ pub fn create_spec_value_for_project(
         let conn = Connection::open(&target_db_path).context("Failed to open database")?;
         conn.execute(
             "INSERT OR REPLACE INTO patterns (id, title, layer, status, file_path) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![id, display_title, "surface", SpecStatus::Draft.as_str(), spec_path],
+            rusqlite::params![&id, &display_title, "surface", SpecStatus::Draft.as_str(), &spec_path],
         )?;
     }
 
     Ok(CreateResult {
         command: "create",
-        spec_id: id.to_string(),
+        spec_id: id,
         spec_type: type_str.to_string(),
         status: "draft",
         path: spec_path,
@@ -218,12 +232,14 @@ pub fn create_spec_value(
     create_spec_value_for_project(
         &project_root,
         None,
-        type_str,
-        id,
-        title,
-        description,
-        blocked_by,
-        related,
+        CreateSpecRequest {
+            type_str: type_str.to_string(),
+            id: id.to_string(),
+            title: title.map(ToString::to_string),
+            description: description.map(ToString::to_string),
+            blocked_by,
+            related,
+        },
     )
 }
 
