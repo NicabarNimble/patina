@@ -555,7 +555,7 @@ pub fn handle_inspector_typed_calls(
         }
     };
 
-    let limit = body.limit.min(MAX_LIMIT).max(1);
+    let limit = body.limit.clamp(1, MAX_LIMIT);
     match runtime.typed_call_history(limit) {
         Ok(payload) => HttpResponse::json(200, &payload),
         Err(error) => json_error(500, &format!("typed call history failed: {}", error)),

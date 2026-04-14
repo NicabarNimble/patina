@@ -369,7 +369,7 @@ impl ChildRegistry {
     }
 
     pub fn typed_call_history(&self, limit: usize) -> Vec<TypedCallObservation> {
-        let safe_limit = limit.min(TYPED_CALL_HISTORY_LIMIT).max(1);
+        let safe_limit = limit.clamp(1, TYPED_CALL_HISTORY_LIMIT);
         self.typed_call_history
             .read()
             .unwrap_or_else(|e| e.into_inner())
