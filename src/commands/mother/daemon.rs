@@ -1185,8 +1185,13 @@ impl ApiRuntime for ServerState {
         child_name: &str,
         operation_id: String,
         args: serde_json::Value,
+        correlation: Option<patina::mother::CallCorrelation>,
     ) -> anyhow::Result<serde_json::Value> {
-        let request = patina::mother::ChildCallRequest { operation_id, args };
+        let request = patina::mother::ChildCallRequest {
+            operation_id,
+            args,
+            correlation,
+        };
         Ok(self.registry.call(child_name, &request)?.payload)
     }
 

@@ -377,6 +377,7 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
             .call(&ChildCallRequest {
                 operation_id: "patina:watch/control.status".to_string(),
                 args: serde_json::json!([]),
+                correlation: None,
             })
             .expect("typed status call should succeed");
         assert!(
@@ -399,6 +400,7 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
                     },
                     true
                 ]),
+                correlation: None,
             })
             .expect("typed configure call should succeed");
         assert_eq!(
@@ -414,6 +416,7 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
             .call(&ChildCallRequest {
                 operation_id: "patina:watch/control.scan-now".to_string(),
                 args: serde_json::json!([]),
+                correlation: None,
             })
             .expect("typed scan-now call should succeed");
         assert!(
@@ -430,6 +433,7 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
             .call(&ChildCallRequest {
                 operation_id: "patina:watch/control.reset".to_string(),
                 args: serde_json::json!([]),
+                correlation: None,
             })
             .expect("typed reset call should succeed");
         assert_eq!(

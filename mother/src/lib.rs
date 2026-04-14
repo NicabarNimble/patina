@@ -28,8 +28,8 @@ pub mod tasks;
 pub mod toys;
 
 pub use runtime::{
-    Child, ChildCallRequest, ChildHealth, ChildReloadResult, ChildRequest, ChildResponse,
-    ChildWarmupResult, DegradedChild, MotherHost, MotherRuntime, PandoLoadResult,
+    CallCorrelation, Child, ChildCallRequest, ChildHealth, ChildReloadResult, ChildRequest,
+    ChildResponse, ChildWarmupResult, DegradedChild, MotherHost, MotherRuntime, PandoLoadResult,
     PandoRefreshResult, PendingEvent, ReadinessState, TaskIntent, TaskIntentKind, Toy,
 };
 pub use state::{

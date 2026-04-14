@@ -61,10 +61,23 @@ pub struct ChildResponse {
     pub payload: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct CallCorrelation {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rivet_run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rivet_actor_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rivet_workflow_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rivet_job_id: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ChildCallRequest {
     pub operation_id: String,
     pub args: serde_json::Value,
+    pub correlation: Option<CallCorrelation>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -255,6 +268,7 @@ mod tests {
             .call(&ChildCallRequest {
                 operation_id: "patina:watch/control.status".to_string(),
                 args: serde_json::json!([]),
+                correlation: None,
             })
             .unwrap_err();
 

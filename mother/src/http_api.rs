@@ -34,6 +34,7 @@ pub trait ApiRuntime {
         child_name: &str,
         operation_id: String,
         args: serde_json::Value,
+        correlation: Option<crate::CallCorrelation>,
     ) -> Result<serde_json::Value>;
     fn atlas_dashboard_html(&self) -> Result<String>;
     fn atlas_snapshot(&self) -> Result<serde_json::Value>;
@@ -244,6 +245,23 @@ struct LifecycleWarmupRequest {}
 struct TypedCallHistoryRequest {
     #[serde(default = "default_typed_history_limit")]
     limit: usize,
+    #[serde(default)]
+    rivet_run_id: Option<String>,
+    #[serde(default)]
+    rivet_actor_id: Option<String>,
+    #[serde(default)]
+    rivet_workflow_id: Option<String>,
+    #[serde(default)]
+    rivet_job_id: Option<String>,
+}
+
+impl TypedCallHistoryRequest {
+    fn has_correlation_filter(&self) -> bool {
+        self.rivet_run_id.is_some()
+            || self.rivet_actor_id.is_some()
+            || self.rivet_workflow_id.is_some()
+            || self.rivet_job_id.is_some()
+    }
 }
 
 fn default_typed_history_limit() -> usize {
@@ -645,10 +663,58 @@ pub fn handle_inspector_typed_calls(
     };
 
     let limit = body.limit.clamp(1, MAX_LIMIT);
-    match runtime.typed_call_history(limit) {
-        Ok(payload) => HttpResponse::json(200, &payload),
+    let query_limit = if body.has_correlation_filter() {
+        MAX_LIMIT
+    } else {
+        limit
+    };
+
+    match runtime.typed_call_history(query_limit) {
+        Ok(mut payload) => {
+            if body.has_correlation_filter() {
+                if let Some(object) = payload.as_object_mut() {
+                    let mut filtered_count: Option<usize> = None;
+                    if let Some(calls) = object.get_mut("calls").and_then(|v| v.as_array_mut()) {
+                        calls.retain(|call| call_matches_correlation_filter(call, &body));
+                        if calls.len() > limit {
+                            calls.truncate(limit);
+                        }
+                        filtered_count = Some(calls.len());
+                    }
+                    if let Some(count) = filtered_count {
+                        object.insert("count".to_string(), serde_json::json!(count));
+                    }
+                }
+            }
+            HttpResponse::json(200, &payload)
+        }
         Err(error) => json_error(500, &format!("typed call history failed: {}", error)),
     }
+}
+
+fn call_matches_correlation_filter(
+    call: &serde_json::Value,
+    filter: &TypedCallHistoryRequest,
+) -> bool {
+    let correlation = call.get("correlation");
+
+    let matches_string = |expected: &Option<String>, field: &str| {
+        expected
+            .as_ref()
+            .map(|value| {
+                correlation
+                    .and_then(|c| c.get(field))
+                    .and_then(|v| v.as_str())
+                    .map(|actual| actual == value)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(true)
+    };
+
+    matches_string(&filter.rivet_run_id, "rivet_run_id")
+        && matches_string(&filter.rivet_actor_id, "rivet_actor_id")
+        && matches_string(&filter.rivet_workflow_id, "rivet_workflow_id")
+        && matches_string(&filter.rivet_job_id, "rivet_job_id")
 }
 
 pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
@@ -736,7 +802,16 @@ pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> 
             .get("args")
             .cloned()
             .unwrap_or(serde_json::json!([]));
-        return match runtime.child_call(child_name, operation_id, args) {
+        let correlation = match payload.get("correlation") {
+            Some(value) => match serde_json::from_value::<crate::CallCorrelation>(value.clone()) {
+                Ok(parsed) => Some(parsed),
+                Err(error) => {
+                    return json_error(400, &format!("Invalid correlation payload: {}", error));
+                }
+            },
+            None => None,
+        };
+        return match runtime.child_call(child_name, operation_id, args, correlation) {
             Ok(payload) => HttpResponse::json(200, &payload),
             Err(e) => json_error(404, &e.to_string()),
         };
@@ -893,10 +968,12 @@ mod tests {
             _child_name: &str,
             operation_id: String,
             args: serde_json::Value,
+            correlation: Option<crate::CallCorrelation>,
         ) -> Result<serde_json::Value> {
             Ok(serde_json::json!({
                 "operation_id": operation_id,
                 "args": args,
+                "correlation": correlation,
                 "typed": true,
             }))
         }
@@ -1015,7 +1092,13 @@ mod tests {
                 "calls": [{
                     "child": "folder-watch-actor",
                     "operation_id": "patina:watch/control.status",
-                    "outcome": "success"
+                    "outcome": "success",
+                    "correlation": {
+                        "rivet_run_id": "run-123",
+                        "rivet_actor_id": "actor-a",
+                        "rivet_workflow_id": "workflow-z",
+                        "rivet_job_id": "job-9"
+                    }
                 }]
             }))
         }
@@ -1149,6 +1232,10 @@ mod tests {
             body: serde_json::to_vec(&serde_json::json!({
                 "operation_id": "patina:watch/control.status",
                 "args": [],
+                "correlation": {
+                    "rivet_run_id": "run-123",
+                    "rivet_actor_id": "actor-a"
+                }
             }))
             .unwrap(),
         };
@@ -1159,6 +1246,13 @@ mod tests {
         assert_eq!(
             payload.get("operation_id").and_then(|v| v.as_str()),
             Some("patina:watch/control.status")
+        );
+        assert_eq!(
+            payload
+                .get("correlation")
+                .and_then(|v| v.get("rivet_run_id"))
+                .and_then(|v| v.as_str()),
+            Some("run-123")
         );
         assert_eq!(payload.get("typed"), Some(&serde_json::json!(true)));
     }
@@ -1197,6 +1291,48 @@ mod tests {
                 .and_then(|v| v.get("operation_id"))
                 .and_then(|v| v.as_str()),
             Some("patina:watch/control.status")
+        );
+    }
+
+    #[test]
+    fn inspector_typed_calls_filters_by_rivet_run_id() {
+        let request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/inspector/typed-calls".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({
+                "limit": 10,
+                "rivet_run_id": "run-123"
+            }))
+            .unwrap(),
+        };
+
+        let response = handle_inspector_typed_calls(&request, &StubRuntime);
+        assert_eq!(response.status, 200);
+        let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(payload.get("count").and_then(|v| v.as_u64()), Some(1));
+
+        let miss_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/inspector/typed-calls".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({
+                "limit": 10,
+                "rivet_run_id": "run-not-found"
+            }))
+            .unwrap(),
+        };
+
+        let miss_response = handle_inspector_typed_calls(&miss_request, &StubRuntime);
+        assert_eq!(miss_response.status, 200);
+        let miss_payload: serde_json::Value = serde_json::from_slice(&miss_response.body).unwrap();
+        assert_eq!(miss_payload.get("count").and_then(|v| v.as_u64()), Some(0));
+        assert_eq!(
+            miss_payload
+                .get("calls")
+                .and_then(|v| v.as_array())
+                .map(|items| items.len()),
+            Some(0)
         );
     }
 
@@ -1342,10 +1478,12 @@ mod tests {
                 _child_name: &str,
                 operation_id: String,
                 args: serde_json::Value,
+                correlation: Option<crate::CallCorrelation>,
             ) -> Result<serde_json::Value> {
                 Ok(serde_json::json!({
                     "operation_id": operation_id,
                     "args": args,
+                    "correlation": correlation,
                 }))
             }
             fn atlas_dashboard_html(&self) -> Result<String> {

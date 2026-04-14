@@ -42,6 +42,8 @@ pub struct TypedCallObservation {
     pub latency_ms: Option<f64>,
     pub deny_reason: Option<String>,
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation: Option<crate::CallCorrelation>,
 }
 
 const TYPED_CALL_HISTORY_LIMIT: usize = 512;
@@ -803,6 +805,7 @@ impl ChildRegistry {
                     latency_ms: None,
                     deny_reason: Some(deny_reason),
                     error: Some(error.to_string()),
+                    correlation: request.correlation.clone(),
                 });
                 return Err(error);
             }
@@ -860,6 +863,7 @@ impl ChildRegistry {
                 latency_ms: Some(invoke_ms),
                 deny_reason: None,
                 error: response.as_ref().err().map(|e| e.to_string()),
+                correlation: request.correlation.clone(),
             });
 
             return response;
@@ -1211,6 +1215,7 @@ mod tests {
                 &ChildCallRequest {
                     operation_id: "patina:watch/control.status".to_string(),
                     args: serde_json::json!([]),
+                    correlation: None,
                 },
             )
             .expect("typed call should succeed");
@@ -1237,6 +1242,46 @@ mod tests {
     }
 
     #[test]
+    fn observed_typed_call_records_correlation_metadata() {
+        let registry = ChildRegistry::new();
+        let manifest = write_manifest("hybrid", &["patina:watch/control.status"]);
+        registry
+            .register_knowledge_with_paths(
+                TypedStubChild::boxed("typed-correlation"),
+                PathBuf::new(),
+                manifest.path().to_path_buf(),
+            )
+            .unwrap();
+
+        registry
+            .call(
+                "typed-correlation",
+                &ChildCallRequest {
+                    operation_id: "patina:watch/control.status".to_string(),
+                    args: serde_json::json!([]),
+                    correlation: Some(crate::CallCorrelation {
+                        rivet_run_id: Some("run-123".to_string()),
+                        rivet_actor_id: Some("actor-9".to_string()),
+                        rivet_workflow_id: Some("wf-7".to_string()),
+                        rivet_job_id: Some("job-5".to_string()),
+                    }),
+                },
+            )
+            .expect("typed call should succeed");
+
+        let history = registry.typed_call_history(10);
+        let latest = history.first().expect("expected typed call history entry");
+        let correlation = latest
+            .correlation
+            .as_ref()
+            .expect("correlation metadata should be captured");
+        assert_eq!(correlation.rivet_run_id.as_deref(), Some("run-123"));
+        assert_eq!(correlation.rivet_actor_id.as_deref(), Some("actor-9"));
+        assert_eq!(correlation.rivet_workflow_id.as_deref(), Some("wf-7"));
+        assert_eq!(correlation.rivet_job_id.as_deref(), Some("job-5"));
+    }
+
+    #[test]
     fn observed_typed_call_emits_error_metrics() {
         let registry = ChildRegistry::new();
         let manifest = write_manifest("hybrid", &["patina:watch/control.status"]);
@@ -1253,6 +1298,7 @@ mod tests {
             &ChildCallRequest {
                 operation_id: "patina:watch/control.status".to_string(),
                 args: serde_json::json!([]),
+                correlation: None,
             },
         );
         assert!(result.is_err());
@@ -1306,6 +1352,7 @@ mod tests {
                 &ChildCallRequest {
                     operation_id: "patina:watch/control.status".to_string(),
                     args: serde_json::json!([]),
+                    correlation: None,
                 },
             )
             .unwrap_err();

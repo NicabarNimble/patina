@@ -1655,7 +1655,11 @@ fn main() -> Result<()> {
                 }
                 child.on_load(&CliHost)?;
 
-                let request = patina::mother::ChildCallRequest { operation_id, args };
+                let request = patina::mother::ChildCallRequest {
+                    operation_id,
+                    args,
+                    correlation: None,
+                };
                 match child.call(&request) {
                     Ok(response) => {
                         println!("{}", serde_json::to_string_pretty(&response.payload)?)
