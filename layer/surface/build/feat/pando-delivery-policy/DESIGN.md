@@ -28,6 +28,8 @@ For each typed rule:
 
 Dead-letter reroute writes explicit GRANT/DENY audit events with reason text indicating fallback outcome.
 
+Typed composition is now the primary composed execution path in both load and refresh flows (legacy handle lane remains explicit for non-typed manifests).
+
 ## Why this aligns with end-state direction
 
 - Policy stays orchestration-level (Mother), domain behavior stays child-owned.

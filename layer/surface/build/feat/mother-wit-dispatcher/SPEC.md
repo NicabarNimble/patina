@@ -130,9 +130,10 @@ All implementation slices must preserve compatibility with this baseline unless 
 
 ## Runtime Update (2026-04-13, late)
 
-- Added a generic `InvocationDriver` seam in WASM child runtime with two implementations:
+- Added a generic `InvocationDriver` seam in WASM child runtime with multiple implementations:
   - `FailClosedInvocationDriver`
-  - `HandleBridgeInvocationDriver`
+  - `TypedComponentInvocationDriver` (default)
+  - `HandleBridgeInvocationDriver` (compatibility toggle)
 - Operation ids are now resolved and validated generically (`<package>:<interface>.<function>`), with strict error taxonomy.
 - Mother now records typed call outcomes (`success/error/denied`), deny reasons, and policy/invoke timing metrics.
 - Added inspector route `POST /api/inspector/typed-calls` for recent typed-call visibility.

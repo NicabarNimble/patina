@@ -27,7 +27,7 @@ related:
   - children/folder-watch-actor/src/lib.rs
 exit_criteria:
   - id: mtid1-driver-seam
-    text: "Typed invocation in WASM child runtime routes through an explicit InvocationDriver seam with at least two implementations (fail-closed + bridge)."
+    text: "Typed invocation in WASM child runtime routes through an explicit InvocationDriver seam with at least two real implementations (fail-closed + typed-component, with handle-bridge compatibility lane)."
     checked: true
   - id: mtid2-generic-op-resolution
     text: "Operation ids are resolved generically (`<package>:<interface>.<function>`), with strict validation and typed error taxonomy."
@@ -68,4 +68,7 @@ cargo test -p mother observed_typed_call_emits_success_metrics -- --nocapture
 cargo test -p mother handle_mode_denies_typed_call -- --nocapture
 cargo test -p mother inspector_typed_calls_route_returns_history -- --nocapture
 cargo test -p patina-ai folder_watch_actor_typed_call_contracts_end_to_end -- --nocapture
+
+# optional compatibility lane toggle
+PATINA_TYPED_CALL_DRIVER=handle-bridge cargo test -p patina-ai folder_watch_actor_typed_call_contracts_end_to_end -- --nocapture
 ```

@@ -14,22 +14,26 @@ In `src/child/internal/child.rs`:
 
 - `InvocationDriver` trait
 - `FailClosedInvocationDriver`
-- `HandleBridgeInvocationDriver`
+- `TypedComponentInvocationDriver` (default)
+- `HandleBridgeInvocationDriver` (compat lane)
 
-`WasmChild::call` now delegates to the driver.
+`WasmChild::call` delegates to the driver.
 
 ## Generic resolution + codec
 
 - Resolve operation id via `<package>:<interface>.<function>` parser.
 - Validate function token characters.
-- Derive legacy action name from function (`_` -> `-`).
-- Encode args with strict shape rules:
-  - must be JSON array
-  - 0 args => `{}` payload
-  - 1 arg => payload is first value
-  - N>1 => payload is full args array
+- Resolve exported interface/function candidates generically (version + separator tolerance).
+- Lower JSON args to canonical component values using reflected parameter types.
+- Lift canonical component results back to JSON.
 
-This supports migration while keeping operation addressing contract-agnostic.
+Compatibility lane (`handle-bridge`) keeps legacy payload rules:
+- args must be JSON array
+- 0 args => `{}` payload
+- 1 arg => payload is first value
+- N>1 => payload is full args array
+
+This keeps operation addressing contract-agnostic while moving default invocation onto component ABI.
 
 ## Observability model (Rivet-inspired)
 
@@ -48,13 +52,14 @@ In `mother/src/http_api.rs` + `mother/src/http_routes.rs`:
 
 ## mwd5 compatibility detail
 
-`children/folder-watch-actor/src/lib.rs` configure handle path now accepts either:
+`children/folder-watch-actor/src/lib.rs` configure handle path accepts both:
 - object patch payload (existing)
 - typed args array payload `[config, reset_snapshot?]`
 
-This keeps Mother generic and places domain-specific argument interpretation in the child.
+This preserves compatibility when explicitly forcing the handle-bridge driver lane.
+Default typed-component invocation uses canonical ABI and does not require handle payload bridging.
 
 ## Non-goals in this slice
 
-- Full dynamic canonical ABI invocation of arbitrary WIT signatures from host-side reflection.
 - whamm integration (kept exploratory).
+- full support for resource/future/stream/error-context value lowering/lifting in JSON bridge.
