@@ -23,28 +23,28 @@ related:
 exit_criteria:
   - id: mom1-request-correlation
     text: "Every Mother HTTP response includes `X-Request-Id`; incoming `X-Request-Id` is propagated unchanged, otherwise Mother generates one."
-    checked: false
+    checked: true
     verify: "cargo test -p mother http_daemon::tests::request_id_header_is_propagated -- --nocapture"
   - id: mom2-request-logging
     text: "Mother emits structured per-request logs with request id, method, path, status, and latency."
-    checked: false
-    verify: "start mother and inspect mother.jsonl for http_request entries"
+    checked: true
+    verify: "rg -n 'http_request' ~/.patina/mother/logs/mother.jsonl | tail"
   - id: mom3-health-memory-signal
     text: "`/health` and `patina mother status` expose memory telemetry (`rss`, `max_rss`, optional soft limit, pressure classification)."
-    checked: false
-    verify: "patina mother status"
+    checked: true
+    verify: "PATINA_MOTHER_MEMORY_SOFT_LIMIT_MB=1 ./target/debug/patina mother start --host 127.0.0.1 --port 50124 --profile core"
   - id: mom4-soft-limit-policy
     text: "Optional memory soft limit (`PATINA_MOTHER_MEMORY_SOFT_LIMIT_MB` or `_BYTES`) classifies pressure and prevents child warmup when pressure is high."
-    checked: false
-    verify: "PATINA_MOTHER_MEMORY_SOFT_LIMIT_MB=1 patina mother lifecycle warmup-children"
+    checked: true
+    verify: "curl -sS -i -H \"Authorization: Bearer $TOKEN\" -H \"Content-Type: application/json\" -d '{}' http://127.0.0.1:50124/api/lifecycle/warmup-children"
   - id: mom5-fail-closed-envelope
     text: "Memory-pressure warmup denial is fail-closed and returns lifecycle error envelope with explicit `resource_exhausted` code."
-    checked: false
+    checked: true
     verify: "cargo test -p mother http_api::tests::lifecycle_warmup_maps_resource_exhausted_to_429_envelope -- --nocapture"
   - id: mom6-deterministic-tests
     text: "Deterministic tests cover request-id propagation and memory-pressure warmup denial behavior."
-    checked: false
-    verify: "cargo test -p mother http_daemon::tests::request_id_header_is_propagated http_api::tests::lifecycle_warmup_maps_resource_exhausted_to_429_envelope -- --nocapture"
+    checked: true
+    verify: "cargo test -p mother http_daemon::tests::request_id_header_is_propagated -- --nocapture && cargo test -p mother http_api::tests::lifecycle_warmup_maps_resource_exhausted_to_429_envelope -- --nocapture"
 ---
 # feat: Mother observability + memory baseline
 
