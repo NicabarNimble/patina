@@ -28,28 +28,28 @@ related:
 exit_criteria:
   - id: mrc1-child-call-correlation-input
     text: "Mother typed call HTTP payload accepts optional `correlation` object carrying Rivet identifiers without breaking existing payload shape."
-    checked: false
+    checked: true
     verify: "cargo test -p mother http_api::tests::child_call_route_dispatches_typed_operation -- --nocapture"
   - id: mrc2-observation-persists-correlation
     text: "Typed call observations persist optional correlation data (`rivet_run_id`, `rivet_actor_id`, `rivet_workflow_id`, `rivet_job_id`)."
-    checked: false
+    checked: true
     verify: "cargo test -p mother registry::tests::observed_typed_call_records_correlation_metadata -- --nocapture"
   - id: mrc3-inspector-correlation-filter
     text: "Inspector typed-call endpoint supports correlation filters and returns only matching calls with accurate count."
-    checked: false
+    checked: true
     verify: "cargo test -p mother http_api::tests::inspector_typed_calls_filters_by_rivet_run_id -- --nocapture"
   - id: mrc4-fail-open-backcompat
     text: "Calls without correlation metadata still execute and appear in inspector exactly as before (additive-only behavior)."
-    checked: false
+    checked: true
     verify: "cargo test -p mother http_api::tests::inspector_typed_calls_route_returns_history -- --nocapture"
   - id: mrc5-rivet-bridge-pass-through
     text: "Rivet lab bridge sends correlation metadata in typed call request payload so Mother can join Rivet execution IDs to typed observations."
-    checked: false
+    checked: true
     verify: "cd /Users/nicabar/Projects/Patina/rivet-deno-lab && deno task smoke"
   - id: mrc6-slice-tests
     text: "Deterministic tests cover success path and filtered inspector path for correlation join behavior."
-    checked: false
-    verify: "cargo test -p mother http_api::tests::inspector_typed_calls_filters_by_rivet_run_id registry::tests::observed_typed_call_records_correlation_metadata -- --nocapture"
+    checked: true
+    verify: "cargo test -p mother http_api::tests::inspector_typed_calls_filters_by_rivet_run_id -- --nocapture && cargo test -p mother registry::tests::observed_typed_call_records_correlation_metadata -- --nocapture"
 ---
 # feat: Mother ↔ Rivet typed-call correlation join
 
