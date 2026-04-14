@@ -4,8 +4,9 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use anyhow::Result;
+use wasmtime::component::types::ComponentFunc;
 use wasmtime::component::{Component, Linker};
-use wasmtime::Store;
+use wasmtime::{AsContext, AsContextMut, Store};
 
 use super::{wasm_engine, ChildKind, ChildManifest, GrantedCapabilities, QueryDispatchFn};
 use crate::mother::{
@@ -1065,7 +1066,9 @@ impl ChildEngine {
             active_bindings: std::collections::HashMap::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
-        let instance = bindings::Child::instantiate(&mut store, component, &linker)?;
+        let instance_pre = linker.instantiate_pre(component)?;
+        let component_instance = instance_pre.instantiate(&mut store)?;
+        let instance = bindings::Child::new(&mut store, &component_instance)?;
         instance.call_init(&mut store)?;
         let name = instance.call_name(&mut store)?;
         let invocation_driver: Box<dyn InvocationDriver + Send + Sync> =
@@ -1075,13 +1078,33 @@ impl ChildEngine {
                 == Some("1")
             {
                 Box::new(FailClosedInvocationDriver)
-            } else {
+            } else if std::env::var("PATINA_TYPED_CALL_DRIVER").ok().as_deref()
+                == Some("handle-bridge")
+            {
                 Box::new(HandleBridgeInvocationDriver)
+            } else {
+                Box::new(TypedComponentInvocationDriver)
             };
+
+        tracing::info!(
+            child = %name,
+            driver = if std::env::var("PATINA_TYPED_CALL_FAIL_CLOSED").ok().as_deref() == Some("1") {
+                "fail-closed"
+            } else if std::env::var("PATINA_TYPED_CALL_DRIVER").ok().as_deref() == Some("handle-bridge") {
+                "handle-bridge"
+            } else {
+                "typed-component"
+            },
+            "typed invocation driver selected"
+        );
 
         Ok(Box::new(WasmChild {
             name,
-            inner: Mutex::new(WasmChildInner { store, instance }),
+            inner: Mutex::new(WasmChildInner {
+                store,
+                instance,
+                component_instance,
+            }),
             invocation_driver,
         }))
     }
@@ -1096,12 +1119,14 @@ struct WasmChild {
 struct WasmChildInner {
     store: Store<HostState>,
     instance: bindings::Child,
+    component_instance: wasmtime::component::Instance,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum TypedInvocationErrorCode {
     InvalidOperationId,
     InvalidArgsShape,
+    UnsupportedType,
     ChildReturnedError,
     ChildTrap,
     InvalidChildJson,
@@ -1113,6 +1138,7 @@ impl TypedInvocationErrorCode {
         match self {
             Self::InvalidOperationId => "invalid-operation-id",
             Self::InvalidArgsShape => "invalid-args-shape",
+            Self::UnsupportedType => "unsupported-type",
             Self::ChildReturnedError => "child-returned-error",
             Self::ChildTrap => "child-trap",
             Self::InvalidChildJson => "invalid-child-json",
@@ -1262,6 +1288,604 @@ impl InvocationDriver for HandleBridgeInvocationDriver {
                 ),
             )),
         }
+    }
+}
+
+struct TypedComponentInvocationDriver;
+
+fn typed_interface_candidates(interface_name: &str) -> Vec<String> {
+    if interface_name.contains('@') {
+        vec![interface_name.to_string()]
+    } else {
+        vec![
+            interface_name.to_string(),
+            format!("{}@0.1.0", interface_name),
+        ]
+    }
+}
+
+fn typed_function_candidates(function_name: &str) -> Vec<String> {
+    let mut out = vec![function_name.to_string()];
+    let swapped_hyphen = function_name.replace('_', "-");
+    if !out.iter().any(|candidate| candidate == &swapped_hyphen) {
+        out.push(swapped_hyphen);
+    }
+    let swapped_underscore = function_name.replace('-', "_");
+    if !out.iter().any(|candidate| candidate == &swapped_underscore) {
+        out.push(swapped_underscore);
+    }
+    out
+}
+
+fn lookup_typed_component_func(
+    inner: &mut WasmChildInner,
+    op: &ResolvedTypedOperation,
+) -> Result<wasmtime::component::Func> {
+    let WasmChildInner {
+        store,
+        component_instance,
+        ..
+    } = inner;
+
+    let mut attempted = Vec::new();
+    for interface in typed_interface_candidates(&op.interface) {
+        let Some(interface_idx) =
+            component_instance.get_export_index(store.as_context_mut(), None, &interface)
+        else {
+            attempted.push(format!("{}.*", interface));
+            continue;
+        };
+
+        for function in typed_function_candidates(&op.function) {
+            attempted.push(format!("{}.{}", interface, function));
+            let Some(function_idx) = component_instance.get_export_index(
+                store.as_context_mut(),
+                Some(&interface_idx),
+                &function,
+            ) else {
+                continue;
+            };
+
+            if let Some(func) = component_instance.get_func(store.as_context_mut(), &function_idx) {
+                return Ok(func);
+            }
+        }
+    }
+
+    Err(typed_invocation_error(
+        TypedInvocationErrorCode::InvalidOperationId,
+        format!(
+            "operation '{}.{}' not found in component exports; attempted [{}]",
+            op.interface,
+            op.function,
+            attempted.join(", ")
+        ),
+    ))
+}
+
+fn json_to_component_val(
+    value: &serde_json::Value,
+    ty: &wasmtime::component::Type,
+) -> Result<wasmtime::component::Val> {
+    use wasmtime::component::Type;
+    use wasmtime::component::Val;
+
+    Ok(match ty {
+        Type::Bool => Val::Bool(value.as_bool().ok_or_else(|| {
+            typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, "expected bool")
+        })?),
+        Type::S8 => Val::S8(
+            i8::try_from(value.as_i64().ok_or_else(|| {
+                typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, "expected s8")
+            })?)
+            .map_err(|_| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "s8 out of range",
+                )
+            })?,
+        ),
+        Type::U8 => Val::U8(
+            u8::try_from(value.as_u64().ok_or_else(|| {
+                typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, "expected u8")
+            })?)
+            .map_err(|_| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "u8 out of range",
+                )
+            })?,
+        ),
+        Type::S16 => Val::S16(
+            i16::try_from(value.as_i64().ok_or_else(|| {
+                typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, "expected s16")
+            })?)
+            .map_err(|_| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "s16 out of range",
+                )
+            })?,
+        ),
+        Type::U16 => Val::U16(
+            u16::try_from(value.as_u64().ok_or_else(|| {
+                typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, "expected u16")
+            })?)
+            .map_err(|_| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "u16 out of range",
+                )
+            })?,
+        ),
+        Type::S32 => Val::S32(
+            i32::try_from(value.as_i64().ok_or_else(|| {
+                typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, "expected s32")
+            })?)
+            .map_err(|_| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "s32 out of range",
+                )
+            })?,
+        ),
+        Type::U32 => Val::U32(
+            u32::try_from(value.as_u64().ok_or_else(|| {
+                typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, "expected u32")
+            })?)
+            .map_err(|_| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "u32 out of range",
+                )
+            })?,
+        ),
+        Type::S64 => Val::S64(value.as_i64().ok_or_else(|| {
+            typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, "expected s64")
+        })?),
+        Type::U64 => Val::U64(value.as_u64().ok_or_else(|| {
+            typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, "expected u64")
+        })?),
+        Type::Float32 => Val::Float32(value.as_f64().ok_or_else(|| {
+            typed_invocation_error(
+                TypedInvocationErrorCode::InvalidArgsShape,
+                "expected float32",
+            )
+        })? as f32),
+        Type::Float64 => Val::Float64(value.as_f64().ok_or_else(|| {
+            typed_invocation_error(
+                TypedInvocationErrorCode::InvalidArgsShape,
+                "expected float64",
+            )
+        })?),
+        Type::Char => {
+            let as_str = value.as_str().ok_or_else(|| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "expected char string",
+                )
+            })?;
+            let mut chars = as_str.chars();
+            let ch = chars.next().ok_or_else(|| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "expected non-empty char string",
+                )
+            })?;
+            if chars.next().is_some() {
+                return Err(typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "char string must contain exactly one scalar",
+                ));
+            }
+            Val::Char(ch)
+        }
+        Type::String => Val::String(
+            value
+                .as_str()
+                .ok_or_else(|| {
+                    typed_invocation_error(
+                        TypedInvocationErrorCode::InvalidArgsShape,
+                        "expected string",
+                    )
+                })?
+                .to_string(),
+        ),
+        Type::List(list_ty) => {
+            let values = value.as_array().ok_or_else(|| {
+                typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, "expected list")
+            })?;
+            let element_ty = list_ty.ty();
+            let mut lowered = Vec::with_capacity(values.len());
+            for item in values {
+                lowered.push(json_to_component_val(item, &element_ty)?);
+            }
+            Val::List(lowered)
+        }
+        Type::Record(record_ty) => {
+            let object = value.as_object().ok_or_else(|| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "expected record object",
+                )
+            })?;
+            let mut lowered = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for field in record_ty.fields() {
+                seen.insert(field.name.to_string());
+                let field_value = object.get(field.name).ok_or_else(|| {
+                    typed_invocation_error(
+                        TypedInvocationErrorCode::InvalidArgsShape,
+                        format!("missing record field '{}'", field.name),
+                    )
+                })?;
+                lowered.push((
+                    field.name.to_string(),
+                    json_to_component_val(field_value, &field.ty)?,
+                ));
+            }
+            for key in object.keys() {
+                if !seen.contains(key) {
+                    return Err(typed_invocation_error(
+                        TypedInvocationErrorCode::InvalidArgsShape,
+                        format!("unknown record field '{}'", key),
+                    ));
+                }
+            }
+            Val::Record(lowered)
+        }
+        Type::Tuple(tuple_ty) => {
+            let values = value.as_array().ok_or_else(|| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "expected tuple array",
+                )
+            })?;
+            let tuple_types = tuple_ty.types().collect::<Vec<_>>();
+            if values.len() != tuple_types.len() {
+                return Err(typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    format!(
+                        "tuple arity mismatch: expected {}, got {}",
+                        tuple_types.len(),
+                        values.len()
+                    ),
+                ));
+            }
+            let mut lowered = Vec::with_capacity(values.len());
+            for (item, ty) in values.iter().zip(tuple_types.iter()) {
+                lowered.push(json_to_component_val(item, ty)?);
+            }
+            Val::Tuple(lowered)
+        }
+        Type::Variant(variant_ty) => {
+            let object = value.as_object().ok_or_else(|| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "expected variant object",
+                )
+            })?;
+            let case = object.get("case").and_then(|v| v.as_str()).ok_or_else(|| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "variant requires string field 'case'",
+                )
+            })?;
+            let case_meta = variant_ty
+                .cases()
+                .find(|item| item.name == case)
+                .ok_or_else(|| {
+                    typed_invocation_error(
+                        TypedInvocationErrorCode::InvalidArgsShape,
+                        format!("unknown variant case '{}'", case),
+                    )
+                })?;
+            let payload = match case_meta.ty {
+                Some(case_ty) => {
+                    let raw_payload = object.get("value").ok_or_else(|| {
+                        typed_invocation_error(
+                            TypedInvocationErrorCode::InvalidArgsShape,
+                            format!("variant case '{}' requires 'value'", case),
+                        )
+                    })?;
+                    Some(Box::new(json_to_component_val(raw_payload, &case_ty)?))
+                }
+                None => None,
+            };
+            Val::Variant(case.to_string(), payload)
+        }
+        Type::Enum(enum_ty) => {
+            let case = value.as_str().ok_or_else(|| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "expected enum string",
+                )
+            })?;
+            if !enum_ty.names().any(|name| name == case) {
+                return Err(typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    format!("unknown enum case '{}'", case),
+                ));
+            }
+            Val::Enum(case.to_string())
+        }
+        Type::Option(option_ty) => {
+            if value.is_null() {
+                Val::Option(None)
+            } else {
+                Val::Option(Some(Box::new(json_to_component_val(
+                    value,
+                    &option_ty.ty(),
+                )?)))
+            }
+        }
+        Type::Result(result_ty) => {
+            let object = value.as_object().ok_or_else(|| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "expected result object",
+                )
+            })?;
+            if let Some(ok_value) = object.get("ok") {
+                let lowered = match result_ty.ok() {
+                    Some(ok_ty) => {
+                        if ok_value.is_null() {
+                            None
+                        } else {
+                            Some(Box::new(json_to_component_val(ok_value, &ok_ty)?))
+                        }
+                    }
+                    None => None,
+                };
+                Val::Result(Ok(lowered))
+            } else if let Some(err_value) = object.get("err") {
+                let lowered = match result_ty.err() {
+                    Some(err_ty) => {
+                        if err_value.is_null() {
+                            None
+                        } else {
+                            Some(Box::new(json_to_component_val(err_value, &err_ty)?))
+                        }
+                    }
+                    None => None,
+                };
+                Val::Result(Err(lowered))
+            } else {
+                return Err(typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "result object must contain either 'ok' or 'err'",
+                ));
+            }
+        }
+        Type::Flags(flags_ty) => {
+            let values = value.as_array().ok_or_else(|| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::InvalidArgsShape,
+                    "expected flags string array",
+                )
+            })?;
+            let mut names = Vec::new();
+            for item in values {
+                let name = item.as_str().ok_or_else(|| {
+                    typed_invocation_error(
+                        TypedInvocationErrorCode::InvalidArgsShape,
+                        "flags values must be strings",
+                    )
+                })?;
+                if !flags_ty.names().any(|allowed| allowed == name) {
+                    return Err(typed_invocation_error(
+                        TypedInvocationErrorCode::InvalidArgsShape,
+                        format!("unknown flag '{}'", name),
+                    ));
+                }
+                names.push(name.to_string());
+            }
+            Val::Flags(names)
+        }
+        Type::Own(_) | Type::Borrow(_) | Type::Future(_) | Type::Stream(_) | Type::ErrorContext => {
+            return Err(typed_invocation_error(
+                TypedInvocationErrorCode::UnsupportedType,
+                format!("unsupported component type for JSON lowering: {:?}", ty),
+            ));
+        }
+    })
+}
+
+fn component_val_to_json(value: &wasmtime::component::Val) -> Result<serde_json::Value> {
+    use wasmtime::component::Val;
+
+    Ok(match value {
+        Val::Bool(v) => serde_json::json!(v),
+        Val::S8(v) => serde_json::json!(v),
+        Val::U8(v) => serde_json::json!(v),
+        Val::S16(v) => serde_json::json!(v),
+        Val::U16(v) => serde_json::json!(v),
+        Val::S32(v) => serde_json::json!(v),
+        Val::U32(v) => serde_json::json!(v),
+        Val::S64(v) => serde_json::json!(v),
+        Val::U64(v) => serde_json::json!(v),
+        Val::Float32(v) => serde_json::json!(v),
+        Val::Float64(v) => serde_json::json!(v),
+        Val::Char(v) => serde_json::json!(v.to_string()),
+        Val::String(v) => serde_json::json!(v),
+        Val::List(values) => serde_json::Value::Array(
+            values
+                .iter()
+                .map(component_val_to_json)
+                .collect::<Result<Vec<_>>>()?,
+        ),
+        Val::Record(fields) => {
+            let mut object = serde_json::Map::new();
+            for (name, value) in fields {
+                object.insert(name.clone(), component_val_to_json(value)?);
+            }
+            serde_json::Value::Object(object)
+        }
+        Val::Tuple(values) => serde_json::Value::Array(
+            values
+                .iter()
+                .map(component_val_to_json)
+                .collect::<Result<Vec<_>>>()?,
+        ),
+        Val::Variant(case, payload) => {
+            let mut object = serde_json::Map::new();
+            object.insert("case".to_string(), serde_json::json!(case));
+            object.insert(
+                "value".to_string(),
+                match payload {
+                    Some(value) => component_val_to_json(value)?,
+                    None => serde_json::Value::Null,
+                },
+            );
+            serde_json::Value::Object(object)
+        }
+        Val::Enum(case) => serde_json::json!(case),
+        Val::Option(payload) => match payload {
+            Some(value) => component_val_to_json(value)?,
+            None => serde_json::Value::Null,
+        },
+        Val::Result(result) => {
+            let mut object = serde_json::Map::new();
+            match result {
+                Ok(value) => {
+                    object.insert(
+                        "ok".to_string(),
+                        value
+                            .as_ref()
+                            .map(|v| component_val_to_json(v))
+                            .transpose()?
+                            .unwrap_or(serde_json::Value::Null),
+                    );
+                }
+                Err(value) => {
+                    object.insert(
+                        "err".to_string(),
+                        value
+                            .as_ref()
+                            .map(|v| component_val_to_json(v))
+                            .transpose()?
+                            .unwrap_or(serde_json::Value::Null),
+                    );
+                }
+            }
+            serde_json::Value::Object(object)
+        }
+        Val::Flags(flags) => serde_json::Value::Array(
+            flags
+                .iter()
+                .cloned()
+                .map(serde_json::Value::String)
+                .collect(),
+        ),
+        Val::Resource(_) | Val::Future(_) | Val::Stream(_) | Val::ErrorContext(_) => {
+            return Err(typed_invocation_error(
+                TypedInvocationErrorCode::UnsupportedType,
+                "unsupported component result type for JSON lift",
+            ));
+        }
+    })
+}
+
+fn lower_typed_args_for_component(
+    args: &serde_json::Value,
+    ty: &ComponentFunc,
+) -> Result<Vec<wasmtime::component::Val>> {
+    let arg_values = args.as_array().ok_or_else(|| {
+        typed_invocation_error(
+            TypedInvocationErrorCode::InvalidArgsShape,
+            "typed call args must be a JSON array",
+        )
+    })?;
+
+    let params = ty.params().collect::<Vec<_>>();
+    if arg_values.len() != params.len() {
+        return Err(typed_invocation_error(
+            TypedInvocationErrorCode::InvalidArgsShape,
+            format!(
+                "operation expects {} args, got {}",
+                params.len(),
+                arg_values.len()
+            ),
+        ));
+    }
+
+    let mut lowered = Vec::with_capacity(params.len());
+    for ((param_name, param_ty), arg) in params.iter().zip(arg_values.iter()) {
+        lowered.push(json_to_component_val(arg, param_ty).map_err(|error| {
+            typed_invocation_error(
+                TypedInvocationErrorCode::InvalidArgsShape,
+                format!("arg '{}' failed to lower: {}", param_name, error),
+            )
+        })?);
+    }
+    Ok(lowered)
+}
+
+fn lift_component_results_to_json(
+    values: &[wasmtime::component::Val],
+    ty: &ComponentFunc,
+) -> Result<serde_json::Value> {
+    let result_types = ty.results().collect::<Vec<_>>();
+    if values.len() != result_types.len() {
+        return Err(typed_invocation_error(
+            TypedInvocationErrorCode::InvalidChildJson,
+            format!(
+                "result arity mismatch: expected {}, got {}",
+                result_types.len(),
+                values.len()
+            ),
+        ));
+    }
+
+    let mut lifted = Vec::with_capacity(values.len());
+    for value in values {
+        lifted.push(component_val_to_json(value)?);
+    }
+
+    Ok(match lifted.len() {
+        0 => serde_json::Value::Null,
+        1 => lifted.into_iter().next().unwrap_or(serde_json::Value::Null),
+        _ => serde_json::Value::Array(lifted),
+    })
+}
+
+impl InvocationDriver for TypedComponentInvocationDriver {
+    fn call(
+        &self,
+        child_name: &str,
+        inner: &mut WasmChildInner,
+        request: &ChildCallRequest,
+    ) -> Result<ChildResponse> {
+        let op = resolve_typed_operation(&request.operation_id)?;
+        let func = lookup_typed_component_func(inner, &op)?;
+
+        let WasmChildInner { store, .. } = inner;
+        let func_ty = func.ty(store.as_context());
+        let lowered_args = lower_typed_args_for_component(&request.args, &func_ty)?;
+
+        let mut results = vec![wasmtime::component::Val::Bool(false); func_ty.results().len()];
+        func.call(store.as_context_mut(), &lowered_args, &mut results)
+            .map_err(|error| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::ChildTrap,
+                    format!(
+                        "child '{}' operation '{}' trapped: {}",
+                        child_name, request.operation_id, error
+                    ),
+                )
+            })?;
+        func.post_return(store.as_context_mut()).map_err(|error| {
+            typed_invocation_error(
+                TypedInvocationErrorCode::ChildTrap,
+                format!(
+                    "child '{}' operation '{}' post-return failed: {}",
+                    child_name, request.operation_id, error
+                ),
+            )
+        })?;
+
+        let payload = lift_component_results_to_json(&results, &func_ty)?;
+        Ok(ChildResponse { payload })
     }
 }
 

@@ -356,12 +356,10 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
                 args: serde_json::json!([]),
             })
             .expect("typed status call should succeed");
-        assert_eq!(
-            status_response
-                .payload
-                .get("status_contract")
-                .and_then(|v| v.as_str()),
-            Some("patina:watch/control.status")
+        assert!(
+            status_response.payload.get("ticks").is_some(),
+            "status payload should expose watcher-stats fields: {}",
+            status_response.payload
         );
 
         let configure_response = child
@@ -369,11 +367,11 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
                 operation_id: "patina:watch/control.configure".to_string(),
                 args: serde_json::json!([
                     {
-                        "watch_path": "/tmp",
-                        "stream_name": "watch.folder",
+                        "watch-path": "/tmp",
+                        "stream-name": "watch.folder",
                         "recursive": true,
-                        "include_hidden": false,
-                        "emit_existing_on_start": false,
+                        "include-hidden": false,
+                        "emit-existing-on-start": false,
                         "extensions": ["txt"]
                     },
                     true
@@ -383,9 +381,10 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
         assert_eq!(
             configure_response
                 .payload
-                .get("configure_contract")
+                .get("ok")
+                .and_then(|v| v.get("watch-path"))
                 .and_then(|v| v.as_str()),
-            Some("patina:watch/control.configure")
+            Some("/tmp")
         );
 
         let scan_response = child
@@ -394,12 +393,14 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
                 args: serde_json::json!([]),
             })
             .expect("typed scan-now call should succeed");
-        assert_eq!(
+        assert!(
             scan_response
                 .payload
-                .get("scan_contract")
-                .and_then(|v| v.as_str()),
-            Some("patina:watch/control.scan-now")
+                .get("ok")
+                .and_then(|v| v.get("files-seen"))
+                .is_some(),
+            "scan-now payload should expose scan-outcome result: {}",
+            scan_response.payload
         );
 
         let reset_response = child
@@ -409,11 +410,8 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
             })
             .expect("typed reset call should succeed");
         assert_eq!(
-            reset_response
-                .payload
-                .get("reset_contract")
-                .and_then(|v| v.as_str()),
-            Some("patina:watch/control.reset")
+            reset_response.payload.get("ok"),
+            Some(&serde_json::Value::Null)
         );
     });
 }
