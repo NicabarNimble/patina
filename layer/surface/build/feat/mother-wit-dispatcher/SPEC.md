@@ -358,11 +358,12 @@ cargo run -q -- child list
 # Typed call succeeds through operation-id invocation driver lane
 cargo run -q -- child call folder-watch-actor patina:watch/control.status '[]'
 
-# configure via typed args array
-cargo run -q -- child call folder-watch-actor patina:watch/control.configure '[{"watch_path":"/tmp","stream_name":"watch.folder","recursive":true,"include_hidden":false,"emit_existing_on_start":false,"extensions":["txt"]},true]'
+# configure via typed args array (WIT field names)
+cargo run -q -- child call folder-watch-actor patina:watch/control.configure '[{"watch-path":"/tmp","stream-name":"watch.folder","recursive":true,"include-hidden":false,"emit-existing-on-start":false,"extensions":["txt"]},true]'
 
-# Compatibility lane still works where allowed (hybrid)
+# wit-only lane rejects business handle ingress
 cargo run -q -- child run folder-watch-actor -- status
+# expect: explicit deny/remediation to use `patina child call ...`
 
 # Spec gate
 patina spec check mother-wit-dispatcher --json

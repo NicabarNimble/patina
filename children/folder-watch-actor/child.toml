@@ -4,7 +4,7 @@ kind = "child"
 role = "app"
 
 [child.ingress]
-mode = "hybrid"
+mode = "wit-only"
 
 [child.contract]
 default = "patina:watch/control.status"

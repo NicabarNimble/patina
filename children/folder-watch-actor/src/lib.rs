@@ -69,17 +69,6 @@ struct ObservedFile {
     fingerprint: StoredFingerprint,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct ConfigurePatch {
-    watch_path: Option<String>,
-    stream_name: Option<String>,
-    recursive: Option<bool>,
-    include_hidden: Option<bool>,
-    emit_existing_on_start: Option<bool>,
-    extensions: Option<Vec<String>>,
-    reset_snapshot: Option<bool>,
-}
-
 fn state_bucket() -> Result<toys::keyvalue::Bucket, String> {
     toys::keyvalue::open("default")
 }
@@ -95,17 +84,6 @@ fn state_set_json<T: Serialize>(key: &str, value: &T) -> Result<(), String> {
     let raw = serde_json::to_vec(value).map_err(|e| e.to_string())?;
     let bucket = state_bucket()?;
     bucket.set(key, &raw)
-}
-
-fn stored_to_contract_config(stored: &StoredConfig) -> watch_types::WatcherConfig {
-    watch_types::WatcherConfig {
-        watch_path: stored.watch_path.clone(),
-        stream_name: stored.stream_name.clone(),
-        recursive: stored.recursive,
-        include_hidden: stored.include_hidden,
-        emit_existing_on_start: stored.emit_existing_on_start,
-        extensions: stored.extensions.clone(),
-    }
 }
 
 fn contract_to_stored_config(config: &watch_types::WatcherConfig) -> StoredConfig {
@@ -130,41 +108,6 @@ fn stored_to_contract_stats(stored: &StoredStats) -> watch_types::WatcherStats {
         last_error: stored.last_error.clone(),
         last_scan_duration_ms: stored.last_scan_duration_ms,
     }
-}
-
-fn contract_to_json_config(config: &watch_types::WatcherConfig) -> serde_json::Value {
-    serde_json::json!({
-        "watch_path": config.watch_path,
-        "stream_name": config.stream_name,
-        "recursive": config.recursive,
-        "include_hidden": config.include_hidden,
-        "emit_existing_on_start": config.emit_existing_on_start,
-        "extensions": config.extensions,
-    })
-}
-
-fn contract_to_json_stats(stats: &watch_types::WatcherStats) -> serde_json::Value {
-    serde_json::json!({
-        "ticks": stats.ticks,
-        "scans": stats.scans,
-        "files_seen_total": stats.files_seen_total,
-        "changes_detected_total": stats.changes_detected_total,
-        "events_emitted_total": stats.events_emitted_total,
-        "last_scan_at": stats.last_scan_at,
-        "last_error": stats.last_error,
-        "last_scan_duration_ms": stats.last_scan_duration_ms,
-    })
-}
-
-fn contract_to_json_scan(outcome: &watch_types::ScanOutcome) -> serde_json::Value {
-    serde_json::json!({
-        "files_seen": outcome.files_seen,
-        "created": outcome.created,
-        "modified": outcome.modified,
-        "deleted": outcome.deleted,
-        "emitted": outcome.emitted,
-        "duration_ms": outcome.duration_ms,
-    })
 }
 
 fn contract_to_json_change(change: &watch_types::FileChange) -> serde_json::Value {
@@ -602,116 +545,18 @@ impl exports::patina::watch::control::Guest for FolderWatchActor {
     }
 }
 
-fn handle_configure(payload: &str) -> Result<String, String> {
-    let parsed: serde_json::Value = if payload.trim().is_empty() {
-        serde_json::json!({})
-    } else {
-        serde_json::from_str(payload)
-            .map_err(|e| format!("folder-watch-actor configure payload invalid: {}", e))?
+fn handle_business_ingress_disabled(action: &str) -> Result<String, String> {
+    let op_hint = match action {
+        "configure" => "patina:watch/control.configure",
+        "status" => "patina:watch/control.status",
+        "scan-now" => "patina:watch/control.scan-now",
+        "reset" => "patina:watch/control.reset",
+        _ => "patina:watch/control.status",
     };
-
-    let patch: ConfigurePatch = match parsed {
-        serde_json::Value::Object(_) => serde_json::from_value(parsed)
-            .map_err(|e| format!("folder-watch-actor configure payload invalid: {}", e))?,
-        serde_json::Value::Array(values) => {
-            if values.is_empty() || values.len() > 2 {
-                return Err(
-                    "folder-watch-actor configure typed args must be [config] or [config, reset-snapshot]"
-                        .to_string(),
-                );
-            }
-
-            let config_value = values
-                .first()
-                .cloned()
-                .ok_or_else(|| "folder-watch-actor configure missing config argument".to_string())?;
-            let config: watch_types::WatcherConfig = serde_json::from_value(config_value)
-                .map_err(|e| format!("folder-watch-actor configure config arg invalid: {}", e))?;
-            let reset_snapshot = values
-                .get(1)
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-
-            ConfigurePatch {
-                watch_path: Some(config.watch_path),
-                stream_name: Some(config.stream_name),
-                recursive: Some(config.recursive),
-                include_hidden: Some(config.include_hidden),
-                emit_existing_on_start: Some(config.emit_existing_on_start),
-                extensions: Some(config.extensions),
-                reset_snapshot: Some(reset_snapshot),
-            }
-        }
-        _ => {
-            return Err(
-                "folder-watch-actor configure payload must be an object patch or typed args array"
-                    .to_string(),
-            );
-        }
-    };
-
-    let mut stored = load_config();
-    if let Some(value) = patch.watch_path {
-        stored.watch_path = value;
-    }
-    if let Some(value) = patch.stream_name {
-        stored.stream_name = value;
-    }
-    if let Some(value) = patch.recursive {
-        stored.recursive = value;
-    }
-    if let Some(value) = patch.include_hidden {
-        stored.include_hidden = value;
-    }
-    if let Some(value) = patch.emit_existing_on_start {
-        stored.emit_existing_on_start = value;
-    }
-    if let Some(value) = patch.extensions {
-        stored.extensions = value;
-    }
-
-    let contract = stored_to_contract_config(&stored);
-    let applied = control_configure(contract, patch.reset_snapshot.unwrap_or(false))?;
-
-    Ok(serde_json::json!({
-        "status": "ok",
-        "configure_contract": "patina:watch/control.configure",
-        "config": contract_to_json_config(&applied),
-    })
-    .to_string())
-}
-
-fn handle_status() -> Result<String, String> {
-    let status = control_status();
-    let config = stored_to_contract_config(&load_config());
-
-    Ok(serde_json::json!({
-        "name": "folder-watch-actor",
-        "status_contract": "patina:watch/control.status",
-        "config": contract_to_json_config(&config),
-        "stats": contract_to_json_stats(&status),
-        "snapshot_entries": load_snapshot().len(),
-    })
-    .to_string())
-}
-
-fn handle_scan_now() -> Result<String, String> {
-    let outcome = control_scan_now()?;
-    Ok(serde_json::json!({
-        "status": "ok",
-        "scan_contract": "patina:watch/control.scan-now",
-        "outcome": contract_to_json_scan(&outcome),
-    })
-    .to_string())
-}
-
-fn handle_reset() -> Result<String, String> {
-    control_reset()?;
-    Ok(serde_json::json!({
-        "status": "ok",
-        "reset_contract": "patina:watch/control.reset",
-    })
-    .to_string())
+    Err(format!(
+        "folder-watch-actor: handle business ingress is disabled; call '{}' via typed ingress (e.g. `patina child call folder-watch-actor {} '[]'`)",
+        action, op_hint
+    ))
 }
 
 struct FolderWatchActor;
@@ -761,14 +606,8 @@ impl Guest for FolderWatchActor {
         }
     }
 
-    fn handle(action: String, payload: String) -> Result<String, String> {
-        match action.as_str() {
-            "configure" => handle_configure(&payload),
-            "status" => handle_status(),
-            "scan-now" => handle_scan_now(),
-            "reset" => handle_reset(),
-            other => Err(format!("folder-watch-actor: unknown action '{}'", other)),
-        }
+    fn handle(action: String, _payload: String) -> Result<String, String> {
+        handle_business_ingress_disabled(&action)
     }
 
     fn drain(_limit: u32) -> Result<Vec<patina::child::runtime_types::PendingEvent>, String> {

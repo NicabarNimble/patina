@@ -413,6 +413,15 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
             reset_response.payload.get("ok"),
             Some(&serde_json::Value::Null)
         );
+
+        let handle_response = child.handle(&ChildRequest {
+            action: "status".to_string(),
+            payload: serde_json::json!({}),
+        });
+        assert!(
+            handle_response.is_err(),
+            "handle business ingress should be denied"
+        );
     });
 }
 

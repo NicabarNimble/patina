@@ -50,14 +50,10 @@ In `mother/src/http_api.rs` + `mother/src/http_routes.rs`:
 
 - New endpoint: `POST /api/inspector/typed-calls` (with optional `{limit}`)
 
-## mwd5 compatibility detail
+## mwd5 contract detail
 
-`children/folder-watch-actor/src/lib.rs` configure handle path accepts both:
-- object patch payload (existing)
-- typed args array payload `[config, reset_snapshot?]`
-
-This preserves compatibility when explicitly forcing the handle-bridge driver lane.
-Default typed-component invocation uses canonical ABI and does not require handle payload bridging.
+`folder-watch-actor` business operations are invoked through typed `patina:watch/control` exports.
+The child runs in `wit-only` ingress mode for business calls; Mother remains contract-agnostic and watcher-specific handle bridging is not required.
 
 ## Non-goals in this slice
 

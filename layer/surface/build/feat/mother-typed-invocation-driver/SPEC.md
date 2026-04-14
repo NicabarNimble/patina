@@ -68,7 +68,4 @@ cargo test -p mother observed_typed_call_emits_success_metrics -- --nocapture
 cargo test -p mother handle_mode_denies_typed_call -- --nocapture
 cargo test -p mother inspector_typed_calls_route_returns_history -- --nocapture
 cargo test -p patina-ai folder_watch_actor_typed_call_contracts_end_to_end -- --nocapture
-
-# optional compatibility lane toggle
-PATINA_TYPED_CALL_DRIVER=handle-bridge cargo test -p patina-ai folder_watch_actor_typed_call_contracts_end_to_end -- --nocapture
 ```
