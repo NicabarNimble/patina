@@ -1068,9 +1068,21 @@ impl ChildEngine {
         let instance = bindings::Child::instantiate(&mut store, component, &linker)?;
         instance.call_init(&mut store)?;
         let name = instance.call_name(&mut store)?;
+        let invocation_driver: Box<dyn InvocationDriver + Send + Sync> =
+            if std::env::var("PATINA_TYPED_CALL_FAIL_CLOSED")
+                .ok()
+                .as_deref()
+                == Some("1")
+            {
+                Box::new(FailClosedInvocationDriver)
+            } else {
+                Box::new(HandleBridgeInvocationDriver)
+            };
+
         Ok(Box::new(WasmChild {
             name,
             inner: Mutex::new(WasmChildInner { store, instance }),
+            invocation_driver,
         }))
     }
 }
@@ -1078,11 +1090,179 @@ impl ChildEngine {
 struct WasmChild {
     name: String,
     inner: Mutex<WasmChildInner>,
+    invocation_driver: Box<dyn InvocationDriver + Send + Sync>,
 }
 
 struct WasmChildInner {
     store: Store<HostState>,
     instance: bindings::Child,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TypedInvocationErrorCode {
+    InvalidOperationId,
+    InvalidArgsShape,
+    ChildReturnedError,
+    ChildTrap,
+    InvalidChildJson,
+    NotImplemented,
+}
+
+impl TypedInvocationErrorCode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidOperationId => "invalid-operation-id",
+            Self::InvalidArgsShape => "invalid-args-shape",
+            Self::ChildReturnedError => "child-returned-error",
+            Self::ChildTrap => "child-trap",
+            Self::InvalidChildJson => "invalid-child-json",
+            Self::NotImplemented => "not-implemented",
+        }
+    }
+}
+
+fn typed_invocation_error(
+    code: TypedInvocationErrorCode,
+    message: impl std::fmt::Display,
+) -> anyhow::Error {
+    anyhow::anyhow!("typed invocation {}: {}", code.as_str(), message)
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedTypedOperation {
+    interface: String,
+    function: String,
+    action: String,
+}
+
+fn resolve_typed_operation(operation_id: &str) -> Result<ResolvedTypedOperation> {
+    let operation_id = operation_id.trim();
+    let Some((interface, function)) = operation_id.rsplit_once('.') else {
+        return Err(typed_invocation_error(
+            TypedInvocationErrorCode::InvalidOperationId,
+            format!(
+                "expected '<package>:<interface>.<function>' operation id, got '{}'",
+                operation_id
+            ),
+        ));
+    };
+    if interface.trim().is_empty() || function.trim().is_empty() {
+        return Err(typed_invocation_error(
+            TypedInvocationErrorCode::InvalidOperationId,
+            format!(
+                "operation id '{}' has empty interface/function",
+                operation_id
+            ),
+        ));
+    }
+    if !function
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(typed_invocation_error(
+            TypedInvocationErrorCode::InvalidOperationId,
+            format!(
+                "operation '{}' has unsupported function token '{}': only [A-Za-z0-9_-] allowed",
+                operation_id, function
+            ),
+        ));
+    }
+
+    Ok(ResolvedTypedOperation {
+        interface: interface.to_string(),
+        function: function.to_string(),
+        action: function.replace('_', "-"),
+    })
+}
+
+fn encode_typed_args_for_handle(args: &serde_json::Value) -> Result<String> {
+    let Some(list) = args.as_array() else {
+        return Err(typed_invocation_error(
+            TypedInvocationErrorCode::InvalidArgsShape,
+            "typed call args must be a JSON array",
+        ));
+    };
+
+    match list.len() {
+        0 => Ok("{}".to_string()),
+        1 => serde_json::to_string(&list[0])
+            .map_err(|e| typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, e)),
+        _ => serde_json::to_string(args)
+            .map_err(|e| typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, e)),
+    }
+}
+
+trait InvocationDriver {
+    fn call(
+        &self,
+        child_name: &str,
+        inner: &mut WasmChildInner,
+        request: &ChildCallRequest,
+    ) -> Result<ChildResponse>;
+}
+
+struct FailClosedInvocationDriver;
+
+impl InvocationDriver for FailClosedInvocationDriver {
+    fn call(
+        &self,
+        child_name: &str,
+        _inner: &mut WasmChildInner,
+        request: &ChildCallRequest,
+    ) -> Result<ChildResponse> {
+        Err(typed_invocation_error(
+            TypedInvocationErrorCode::NotImplemented,
+            format!(
+                "typed call not implemented for child '{}' operation '{}'",
+                child_name, request.operation_id
+            ),
+        ))
+    }
+}
+
+struct HandleBridgeInvocationDriver;
+
+impl InvocationDriver for HandleBridgeInvocationDriver {
+    fn call(
+        &self,
+        child_name: &str,
+        inner: &mut WasmChildInner,
+        request: &ChildCallRequest,
+    ) -> Result<ChildResponse> {
+        let op = resolve_typed_operation(&request.operation_id)?;
+        let payload_json = encode_typed_args_for_handle(&request.args)?;
+        let WasmChildInner {
+            store, instance, ..
+        } = inner;
+
+        match instance.call_handle(store, &op.action, &payload_json) {
+            Ok(Ok(json)) => serde_json::from_str(&json)
+                .map(|payload| ChildResponse { payload })
+                .map_err(|error| {
+                    typed_invocation_error(
+                        TypedInvocationErrorCode::InvalidChildJson,
+                        format!(
+                            "child '{}' operation '{}' returned invalid JSON: {}",
+                            child_name, request.operation_id, error
+                        ),
+                    )
+                }),
+            Ok(Err(error)) => Err(typed_invocation_error(
+                TypedInvocationErrorCode::ChildReturnedError,
+                format!(
+                    "child '{}' operation '{}' ({}/{}) failed: {}",
+                    child_name, request.operation_id, op.interface, op.function, error
+                ),
+            )),
+            Err(error) => Err(typed_invocation_error(
+                TypedInvocationErrorCode::ChildTrap,
+                format!(
+                    "child '{}' operation '{}' trapped: {}",
+                    child_name, request.operation_id, error
+                ),
+            )),
+        }
+    }
 }
 
 impl Child for WasmChild {
@@ -1156,11 +1336,8 @@ impl Child for WasmChild {
     }
 
     fn call(&self, request: &ChildCallRequest) -> Result<ChildResponse> {
-        anyhow::bail!(
-            "typed call not implemented for child '{}' operation '{}'",
-            self.name,
-            request.operation_id
-        )
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        self.invocation_driver.call(&self.name, &mut inner, request)
     }
 
     fn drain(&mut self, limit: u32) -> Result<Vec<PendingEvent>> {
@@ -1236,7 +1413,10 @@ impl Child for WasmChild {
 #[cfg(test)]
 mod tests {
     use super::bindings::HostState;
-    use super::GrantedCapabilities;
+    use super::{
+        encode_typed_args_for_handle, resolve_typed_operation, GrantedCapabilities,
+        TypedInvocationErrorCode,
+    };
 
     fn host_state_with_grants(grants: GrantedCapabilities) -> HostState {
         HostState {
@@ -1284,5 +1464,53 @@ mod tests {
         let err = <HostState as super::bindings::patina::git::git::Host>::diff_stat(&mut state)
             .unwrap_err();
         assert!(err.contains("git toy not granted"), "got: {}", err);
+    }
+
+    #[test]
+    fn resolve_typed_operation_converts_function_name_to_action() {
+        let resolved = resolve_typed_operation("patina:watch/control.scan_now")
+            .expect("operation id should resolve");
+        assert_eq!(resolved.interface, "patina:watch/control");
+        assert_eq!(resolved.function, "scan_now");
+        assert_eq!(resolved.action, "scan-now");
+    }
+
+    #[test]
+    fn resolve_typed_operation_rejects_invalid_id_shape() {
+        let err = resolve_typed_operation("patina:watch/control")
+            .expect_err("missing function should fail closed");
+        let message = err.to_string();
+        assert!(
+            message.contains(TypedInvocationErrorCode::InvalidOperationId.as_str()),
+            "got: {}",
+            message
+        );
+    }
+
+    #[test]
+    fn encode_typed_args_for_handle_requires_array() {
+        let err = encode_typed_args_for_handle(&serde_json::json!({"foo": "bar"}))
+            .expect_err("object args should be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains(TypedInvocationErrorCode::InvalidArgsShape.as_str()),
+            "got: {}",
+            message
+        );
+    }
+
+    #[test]
+    fn encode_typed_args_for_handle_supports_zero_one_many_arity() {
+        let zero = encode_typed_args_for_handle(&serde_json::json!([])).expect("zero-arity");
+        assert_eq!(zero, "{}");
+
+        let one = encode_typed_args_for_handle(&serde_json::json!([{"watch_path": "/input"}]))
+            .expect("one-arity");
+        assert_eq!(one, "{\"watch_path\":\"/input\"}");
+
+        let many =
+            encode_typed_args_for_handle(&serde_json::json!([{"watch_path": "/input"}, true]))
+                .expect("many-arity");
+        assert_eq!(many, "[{\"watch_path\":\"/input\"},true]");
     }
 }
