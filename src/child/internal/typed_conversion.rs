@@ -658,6 +658,10 @@ fn lower_json_with_shape(value: &Value, shape: &ConversionShape, path: &str) -> 
     })
 }
 
+/// Lift a component value into JSON transport shape.
+///
+/// For variants without payload, the JSON form is normalized to
+/// `{"case": "<name>", "value": null}`.
 fn lift_component_val_to_json(value: &Val) -> ConvResult<Value> {
     Ok(match value {
         Val::Bool(v) => serde_json::json!(v),
@@ -952,6 +956,16 @@ mod tests {
         assert_eq!(err.code(), ConversionErrorCode::InvalidArgsShape);
         assert_eq!(err.path(), "$");
 
+        let err = lower_json_with_shape(&serde_json::json!(""), &ConversionShape::Char, "$")
+            .expect_err("empty char string must fail");
+        assert_eq!(err.code(), ConversionErrorCode::InvalidArgsShape);
+        assert_eq!(err.path(), "$");
+
+        let err = lower_json_with_shape(&serde_json::json!("xx"), &ConversionShape::Char, "$")
+            .expect_err("multi-char string must fail");
+        assert_eq!(err.code(), ConversionErrorCode::InvalidArgsShape);
+        assert_eq!(err.path(), "$");
+
         let record_shape = ConversionShape::Record(vec![RecordFieldShape {
             name: "count".to_string(),
             ty: ConversionShape::U32,
@@ -964,6 +978,42 @@ mod tests {
         .expect_err("unknown record field must fail");
         assert_eq!(err.code(), ConversionErrorCode::InvalidArgsShape);
         assert_eq!(err.path(), "$.extra");
+
+        let err = lower_json_with_shape(
+            &serde_json::json!("c"),
+            &ConversionShape::Enum(vec!["a".to_string(), "b".to_string()]),
+            "$",
+        )
+        .expect_err("unknown enum variant must fail");
+        assert_eq!(err.code(), ConversionErrorCode::InvalidArgsShape);
+        assert_eq!(err.path(), "$");
+
+        let err = lower_json_with_shape(
+            &serde_json::json!(["x"]),
+            &ConversionShape::Tuple(vec![ConversionShape::String, ConversionShape::Bool]),
+            "$",
+        )
+        .expect_err("tuple wrong arity must fail");
+        assert_eq!(err.code(), ConversionErrorCode::InvalidArgsShape);
+        assert_eq!(err.path(), "$");
+
+        let err = lower_json_with_shape(
+            &serde_json::json!(["x"]),
+            &ConversionShape::List(Box::new(ConversionShape::U8)),
+            "$",
+        )
+        .expect_err("list element type mismatch must fail");
+        assert_eq!(err.code(), ConversionErrorCode::InvalidArgsShape);
+        assert_eq!(err.path(), "$[0]");
+
+        let err = lower_json_with_shape(
+            &serde_json::json!("x"),
+            &ConversionShape::Option(Box::new(ConversionShape::U32)),
+            "$",
+        )
+        .expect_err("option inner type mismatch must fail");
+        assert_eq!(err.code(), ConversionErrorCode::InvalidArgsShape);
+        assert_eq!(err.path(), "$");
 
         let result_shape = ConversionShape::Result {
             ok: Some(Box::new(ConversionShape::U32)),
