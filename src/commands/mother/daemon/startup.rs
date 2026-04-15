@@ -88,10 +88,16 @@ impl ServerState {
         let _guard = match self.child_warmup_lock.try_lock() {
             Ok(guard) => guard,
             Err(TryLockError::WouldBlock) => {
-                anyhow::bail!("operation_in_progress: warmup already running")
+                return Err(anyhow::Error::new(
+                    mother_crate::http_api::LifecycleError::operation_in_progress(
+                        "warmup already running",
+                    ),
+                ));
             }
             Err(TryLockError::Poisoned(_)) => {
-                anyhow::bail!("internal_error: warmup lock poisoned")
+                return Err(anyhow::Error::new(
+                    mother_crate::http_api::LifecycleError::internal_error("warmup lock poisoned"),
+                ));
             }
         };
 

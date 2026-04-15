@@ -120,11 +120,12 @@ pub(super) fn ensure_memory_status_allows_warmup(
     if memory.pressure == "high" {
         let used = memory.max_rss_bytes.or(memory.rss_bytes).unwrap_or(0);
         let limit = memory.soft_limit_bytes.unwrap_or(0);
-        anyhow::bail!(
-            "resource_exhausted: memory pressure high (usage={} limit={}); warmup denied",
-            used,
-            limit
-        );
+        return Err(anyhow::Error::new(
+            mother_crate::http_api::LifecycleError::resource_exhausted(format!(
+                "memory pressure high (usage={} limit={}); warmup denied",
+                used, limit
+            )),
+        ));
     }
     Ok(())
 }

@@ -216,7 +216,11 @@ impl ApiRuntime for ServerState {
         request: mother_crate::http_api::RivetDispatchRequest,
     ) -> anyhow::Result<serde_json::Value> {
         if self.rivet_integration != RivetIntegrationProfile::Enabled {
-            anyhow::bail!("invalid_request: rivet integration is disabled")
+            return Err(anyhow::Error::new(
+                mother_crate::http_api::LifecycleError::invalid_request(
+                    "rivet integration is disabled",
+                ),
+            ));
         }
 
         let delivery = request.delivery_policy();
@@ -232,9 +236,11 @@ impl ApiRuntime for ServerState {
         let map_primary_error = |error: anyhow::Error| {
             let detail = error.to_string();
             if let Some(child) = detail.strip_prefix("unknown child: ") {
-                anyhow::anyhow!("child_not_found: {}", child)
+                anyhow::Error::new(mother_crate::http_api::LifecycleError::child_not_found(
+                    child.to_string(),
+                ))
             } else {
-                anyhow::anyhow!(detail)
+                error
             }
         };
 
@@ -261,9 +267,9 @@ impl ApiRuntime for ServerState {
                 })),
                 mother_crate::pando::PandoDeliveryPolicy::DeadLetter => {
                     let dead_letter = request.dead_letter.ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "invalid_request: dead-letter policy requires dead-letter target"
-                        )
+                        anyhow::Error::new(mother_crate::http_api::LifecycleError::invalid_request(
+                            "dead-letter policy requires dead-letter target",
+                        ))
                     })?;
                     let dead_letter_operation = dead_letter
                         .operation_id
@@ -407,11 +413,20 @@ impl MotherRuntime for ServerState {
         let result = (|| {
             let manifest_path = self.pandos_root.join(name).join("pando.toml");
             if !manifest_path.exists() {
-                anyhow::bail!("pando_not_found: no pando named '{}'", name);
+                return Err(anyhow::Error::new(
+                    mother_crate::http_api::LifecycleError::pando_not_found(format!(
+                        "no pando named '{}'",
+                        name
+                    )),
+                ));
             }
             integrity::verify_pando_integrity(&self.pandos_root.join(name))?;
-            let manifest = mother_crate::pando::parse_manifest_path(&manifest_path)
-                .map_err(|e| anyhow::anyhow!("invalid_request: {}", e))?;
+            let manifest =
+                mother_crate::pando::parse_manifest_path(&manifest_path).map_err(|e| {
+                    anyhow::Error::new(mother_crate::http_api::LifecycleError::invalid_request(
+                        e.to_string(),
+                    ))
+                })?;
             self.validate_typed_composition(&manifest)?;
             let has_typed_wiring = manifest
                 .composition
@@ -474,10 +489,18 @@ impl MotherRuntime for ServerState {
             let _refresh_guard = match self.refresh_lock.try_lock() {
                 Ok(guard) => guard,
                 Err(TryLockError::WouldBlock) => {
-                    anyhow::bail!("operation_in_progress: refresh already running")
+                    return Err(anyhow::Error::new(
+                        mother_crate::http_api::LifecycleError::operation_in_progress(
+                            "refresh already running",
+                        ),
+                    ));
                 }
                 Err(TryLockError::Poisoned(_)) => {
-                    anyhow::bail!("internal_error: refresh lock poisoned")
+                    return Err(anyhow::Error::new(
+                        mother_crate::http_api::LifecycleError::internal_error(
+                            "refresh lock poisoned",
+                        ),
+                    ));
                 }
             };
 
@@ -591,27 +614,36 @@ impl MotherRuntime for ServerState {
     fn reload_child(&self, name: &str) -> Result<mother_crate::runtime::ChildReloadResult> {
         let started = Instant::now();
         let result = (|| {
-            let reload_lock = self
-                .registry
-                .child_reload_lock(name)
-                .ok_or_else(|| anyhow::anyhow!("child_not_found: no child named '{}'", name))?;
+            let reload_lock = self.registry.child_reload_lock(name).ok_or_else(|| {
+                anyhow::Error::new(mother_crate::http_api::LifecycleError::child_not_found(
+                    format!("no child named '{}'", name),
+                ))
+            })?;
             let _guard = match reload_lock.try_lock() {
                 Ok(guard) => guard,
                 Err(TryLockError::WouldBlock) => {
-                    anyhow::bail!(
-                        "operation_in_progress: reload already running for '{}'",
-                        name
-                    )
+                    return Err(anyhow::Error::new(
+                        mother_crate::http_api::LifecycleError::operation_in_progress(format!(
+                            "reload already running for '{}'",
+                            name
+                        )),
+                    ));
                 }
                 Err(TryLockError::Poisoned(_)) => {
-                    anyhow::bail!("internal_error: reload lock poisoned for '{}'", name)
+                    return Err(anyhow::Error::new(
+                        mother_crate::http_api::LifecycleError::internal_error(format!(
+                            "reload lock poisoned for '{}'",
+                            name
+                        )),
+                    ));
                 }
             };
 
-            let (wasm_path, manifest_path) = self
-                .registry
-                .child_paths(name)
-                .ok_or_else(|| anyhow::anyhow!("child_not_found: no child named '{}'", name))?;
+            let (wasm_path, manifest_path) = self.registry.child_paths(name).ok_or_else(|| {
+                anyhow::Error::new(mother_crate::http_api::LifecycleError::child_not_found(
+                    format!("no child named '{}'", name),
+                ))
+            })?;
 
             let loaded = loader::load_wasm_child(&wasm_path, &manifest_path)?;
             let mut replacement = match loaded {
@@ -621,11 +653,12 @@ impl MotherRuntime for ServerState {
                     ..
                 } => {
                     if loaded_name != name {
-                        anyhow::bail!(
-                            "internal_error: manifest child '{}' does not match reload target '{}'",
-                            loaded_name,
-                            name
-                        );
+                        return Err(anyhow::Error::new(
+                            mother_crate::http_api::LifecycleError::internal_error(format!(
+                                "manifest child '{}' does not match reload target '{}'",
+                                loaded_name, name
+                            )),
+                        ));
                     }
                     child
                 }
