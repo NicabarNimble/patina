@@ -1,4 +1,126 @@
 use anyhow::Result;
+use serde::Deserialize;
+
+#[derive(Debug, Default, Deserialize)]
+struct ContextQueryParams {
+    topic: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ScryQueryParams {
+    query: Option<String>,
+    limit: Option<usize>,
+    repo: Option<String>,
+    #[serde(default)]
+    all_repos: bool,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct AssayQueryParams {
+    query_type: Option<String>,
+    pattern: Option<String>,
+    limit: Option<usize>,
+    repo: Option<String>,
+    #[serde(default)]
+    all_repos: bool,
+    query: Option<String>,
+}
+
+fn parse_query_params<T: serde::de::DeserializeOwned>(params: &str) -> Result<T, String> {
+    serde_json::from_str(params).map_err(|e| format!("invalid params: {}", e))
+}
+
+fn dispatch_context_query(params: &str) -> Result<String, String> {
+    let args: ContextQueryParams = parse_query_params(params)?;
+    crate::commands::context::get_project_context(args.topic.as_deref())
+        .map_err(|e| format!("context: {}", e))
+}
+
+fn dispatch_scry_query(
+    query_engine: &mut Option<crate::retrieval::QueryEngine>,
+    params: &str,
+) -> Result<String, String> {
+    let args: ScryQueryParams = parse_query_params(params)?;
+    let query_str = args.query.unwrap_or_default();
+    if query_str.trim().is_empty() {
+        return Err("scry requires 'query' parameter".to_string());
+    }
+
+    let limit = args.limit.unwrap_or(10);
+    let engine = query_engine.get_or_insert_with(crate::retrieval::QueryEngine::new);
+    let options = crate::retrieval::QueryOptions {
+        repo: args.repo,
+        all_repos: args.all_repos,
+        ..Default::default()
+    };
+    let results = engine
+        .query_with_options(&query_str, limit, &options)
+        .map_err(|e| format!("scry: {}", e))?;
+
+    // JSON array for structured guest consumption
+    let json_results: Vec<serde_json::Value> = results
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "score": r.fused_score,
+                "doc_id": r.doc_id,
+                "content": r.content,
+            })
+        })
+        .collect();
+    serde_json::to_string(&json_results).map_err(|e| format!("serialize: {}", e))
+}
+
+fn dispatch_assay_query(params: &str) -> Result<String, String> {
+    use crate::commands::assay::{AssayOptions, QueryType};
+
+    let args: AssayQueryParams = parse_query_params(params)?;
+    let query_type = args.query_type.as_deref().unwrap_or("inventory");
+    let pattern = args.pattern;
+    let query = args.query;
+    let qt = match query_type {
+        "imports" => QueryType::Imports,
+        "importers" => QueryType::Importers,
+        "functions" => QueryType::Functions,
+        "callers" => QueryType::Callers,
+        "callees" => QueryType::Callees,
+        "derive" => QueryType::Derive,
+        "search" => {
+            let q = query.or_else(|| pattern.clone()).unwrap_or_default();
+            if q.is_empty() {
+                return Err("assay search requires 'query' or 'pattern'".into());
+            }
+            QueryType::Search { query: q }
+        }
+        "cochange" => {
+            let file = pattern.clone().unwrap_or_default();
+            if file.is_empty() {
+                return Err("assay cochange requires 'pattern'".into());
+            }
+            QueryType::Cochange { file }
+        }
+        "belief" => {
+            let id = pattern.clone().unwrap_or_default();
+            if id.is_empty() {
+                return Err("assay belief requires 'pattern'".into());
+            }
+            QueryType::Belief { id }
+        }
+        _ => QueryType::Inventory,
+    };
+
+    let options = AssayOptions {
+        query_type: qt,
+        pattern,
+        limit: args.limit.unwrap_or(50),
+        json: true,
+        repo: args.repo,
+        all_repos: args.all_repos,
+        ..Default::default()
+    };
+
+    crate::commands::assay::execute_query(&options).map_err(|e| format!("assay: {}", e))
+}
 
 /// Build a query dispatch closure for children with query grants.
 ///
@@ -14,116 +136,59 @@ pub(crate) fn make_query_dispatch(
     // Lazy QueryEngine — created on first scry call
     let mut query_engine: Option<crate::retrieval::QueryEngine> = None;
 
-    Some(Box::new(move |kind: &str, params: &str| {
-        let args: serde_json::Value =
-            serde_json::from_str(params).map_err(|e| format!("invalid params: {}", e))?;
-
-        match kind {
-            "context" => {
-                let topic = args.get("topic").and_then(|v| v.as_str());
-                crate::commands::context::get_project_context(topic)
-                    .map_err(|e| format!("context: {}", e))
-            }
-            "scry" => {
-                let query_str = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                if query_str.is_empty() {
-                    return Err("scry requires 'query' parameter".to_string());
-                }
-                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-                let all_repos = args
-                    .get("all_repos")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
-
-                let engine = query_engine.get_or_insert_with(crate::retrieval::QueryEngine::new);
-                let options = crate::retrieval::QueryOptions {
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                };
-                let results = engine
-                    .query_with_options(query_str, limit, &options)
-                    .map_err(|e| format!("scry: {}", e))?;
-
-                // JSON array for structured guest consumption
-                let json_results: Vec<serde_json::Value> = results
-                    .iter()
-                    .map(|r| {
-                        serde_json::json!({
-                            "score": r.fused_score,
-                            "doc_id": r.doc_id,
-                            "content": r.content,
-                        })
-                    })
-                    .collect();
-                serde_json::to_string(&json_results).map_err(|e| format!("serialize: {}", e))
-            }
-            "assay" => {
-                use crate::commands::assay::{AssayOptions, QueryType};
-
-                let query_type = args
-                    .get("query_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("inventory");
-                let pattern = args
-                    .get("pattern")
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
-                let all_repos = args
-                    .get("all_repos")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
-                let query = args.get("query").and_then(|v| v.as_str()).map(String::from);
-
-                let qt = match query_type {
-                    "imports" => QueryType::Imports,
-                    "importers" => QueryType::Importers,
-                    "functions" => QueryType::Functions,
-                    "callers" => QueryType::Callers,
-                    "callees" => QueryType::Callees,
-                    "derive" => QueryType::Derive,
-                    "search" => {
-                        let q = query.or_else(|| pattern.clone()).unwrap_or_default();
-                        if q.is_empty() {
-                            return Err("assay search requires 'query' or 'pattern'".into());
-                        }
-                        QueryType::Search { query: q }
-                    }
-                    "cochange" => {
-                        let file = pattern.clone().unwrap_or_default();
-                        if file.is_empty() {
-                            return Err("assay cochange requires 'pattern'".into());
-                        }
-                        QueryType::Cochange { file }
-                    }
-                    "belief" => {
-                        let id = pattern.clone().unwrap_or_default();
-                        if id.is_empty() {
-                            return Err("assay belief requires 'pattern'".into());
-                        }
-                        QueryType::Belief { id }
-                    }
-                    _ => QueryType::Inventory,
-                };
-
-                let options = AssayOptions {
-                    query_type: qt,
-                    pattern,
-                    limit,
-                    json: true,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                };
-
-                crate::commands::assay::execute_query(&options).map_err(|e| format!("assay: {}", e))
-            }
-            _ => Err(format!("unknown query kind: {}", kind)),
-        }
+    Some(Box::new(move |kind: &str, params: &str| match kind {
+        "context" => dispatch_context_query(params),
+        "scry" => dispatch_scry_query(&mut query_engine, params),
+        "assay" => dispatch_assay_query(params),
+        _ => Err(format!("unknown query kind: {}", kind)),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scry_query_requires_query_field() {
+        let mut query_engine: Option<crate::retrieval::QueryEngine> = None;
+        let error = dispatch_scry_query(&mut query_engine, "{}")
+            .expect_err("missing query should fail closed");
+        assert!(error.contains("scry requires 'query' parameter"), "{error}");
+    }
+
+    #[test]
+    fn assay_search_requires_query_or_pattern() {
+        let error = dispatch_assay_query(r#"{"query_type":"search"}"#)
+            .expect_err("search without query/pattern should fail closed");
+        assert!(
+            error.contains("assay search requires 'query' or 'pattern'"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn assay_cochange_requires_pattern() {
+        let error = dispatch_assay_query(r#"{"query_type":"cochange"}"#)
+            .expect_err("cochange without pattern should fail closed");
+        assert!(
+            error.contains("assay cochange requires 'pattern'"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn assay_belief_requires_pattern() {
+        let error = dispatch_assay_query(r#"{"query_type":"belief"}"#)
+            .expect_err("belief without pattern should fail closed");
+        assert!(error.contains("assay belief requires 'pattern'"), "{error}");
+    }
+
+    #[test]
+    fn invalid_json_params_fail_closed() {
+        let error =
+            dispatch_context_query("not-json").expect_err("invalid params should fail closed");
+        assert!(error.contains("invalid params:"), "{error}");
+    }
 }
 
 pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
