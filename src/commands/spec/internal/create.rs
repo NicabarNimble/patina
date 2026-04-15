@@ -583,4 +583,52 @@ mod tests {
             subject
         );
     }
+
+    #[test]
+    fn create_happy_path_leaves_fs_git_db_coherent() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        init_git_repo(temp.path());
+
+        let db_path = patina::eventlog::resolve_patina_db_path(temp.path());
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent).expect("create db parent dir");
+        }
+        let conn = Connection::open(&db_path).expect("open test db");
+        conn.execute(
+            "CREATE TABLE patterns (id TEXT PRIMARY KEY, title TEXT, layer TEXT, status TEXT, file_path TEXT)",
+            [],
+        )
+        .expect("create patterns table");
+
+        let id = "tx-happy";
+        let result = create_spec_value_for_project_with_deps(
+            temp.path(),
+            None,
+            request_for(id),
+            CreateDeps::default(),
+        )
+        .expect("create should succeed");
+
+        let spec_path = temp.path().join(&result.path);
+        assert!(spec_path.exists(), "SPEC.md should exist");
+
+        let log = run_git(temp.path(), &["log", "-1", "--pretty=%s"]).expect("git log");
+        let subject = String::from_utf8_lossy(&log.stdout);
+        assert!(
+            subject.contains(&format!("spec: draft {}", id)),
+            "expected create commit subject, got: {}",
+            subject
+        );
+
+        let row: (String, String, String) = conn
+            .query_row(
+                "SELECT id, status, file_path FROM patterns WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .expect("expected patterns row");
+        assert_eq!(row.0, id);
+        assert_eq!(row.1, "draft");
+        assert_eq!(row.2, result.path);
+    }
 }

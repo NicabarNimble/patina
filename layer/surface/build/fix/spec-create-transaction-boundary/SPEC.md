@@ -67,6 +67,9 @@ Spec create writes durable artifacts visible to operators and collaborators (rep
 4. **INV-04 No contract drift at CLI boundary**
    No new flags and no response envelope changes for existing `spec create` callers.
 
+5. **INV-05 Materialization is atomic at file-set level**
+   For spec types that materialize multiple files (`SPEC.md` + optional `DESIGN.md`), create is all-or-none: partial materialization is cleaned up and surfaced as failure.
+
 ## Target implementation shape
 
 - Introduce a small create transaction context inside `create.rs` to track materialized paths and commit outcome.
