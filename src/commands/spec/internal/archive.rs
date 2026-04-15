@@ -557,6 +557,10 @@ mod tests {
     }
 
     fn with_temp_git_repo<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
+        let _guard = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+
         let temp = tempfile::tempdir().expect("tempdir");
         run_git(temp.path(), &["init", "-q"]);
         run_git(
@@ -565,11 +569,22 @@ mod tests {
         );
         run_git(temp.path(), &["config", "user.name", "Spec Test"]);
 
-        let old_cwd = std::env::current_dir().expect("current dir");
+        let old_cwd = std::env::current_dir().ok();
         std::env::set_current_dir(temp.path()).expect("set cwd");
-        let result = f(temp.path());
-        std::env::set_current_dir(old_cwd).expect("restore cwd");
-        result
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(temp.path())));
+
+        // Best-effort restore: old cwd if it still exists, otherwise stable project root.
+        if let Some(path) = old_cwd.as_ref().filter(|path| path.exists()) {
+            let _ = std::env::set_current_dir(path);
+        } else {
+            let _ = std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
+        }
+
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
     }
 
     #[test]
