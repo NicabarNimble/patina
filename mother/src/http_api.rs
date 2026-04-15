@@ -1,10 +1,29 @@
 use anyhow::Result;
-use patina_protocol::{BuiltinChild, BuiltinChildAction, BuiltinChildRequest};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::http_daemon::{json_error, HttpRequest, HttpResponse};
 use crate::http_routes::RouteTable;
+
+#[path = "http_api/child.rs"]
+mod child;
+#[path = "http_api/health.rs"]
+mod health;
+#[path = "http_api/inspector.rs"]
+mod inspector;
+#[path = "http_api/lifecycle.rs"]
+mod lifecycle;
+#[path = "http_api/rivet.rs"]
+mod rivet;
+
+pub use child::handle_child_request;
+pub use health::{handle_health, handle_version};
+pub use inspector::handle_inspector_typed_calls;
+pub use lifecycle::{
+    handle_lifecycle_load_pando, handle_lifecycle_refresh, handle_lifecycle_reload_child,
+    handle_lifecycle_warmup_children,
+};
+pub use rivet::{handle_rivet_dispatch, RivetDispatchDeadLetter, RivetDispatchRequest};
 
 const MAX_LIMIT: usize = 1000;
 
@@ -131,75 +150,6 @@ pub struct ProjectDatabases {
     pub runtime_db_bytes: Option<u64>,
 }
 
-#[derive(Serialize)]
-struct HealthResponse {
-    status: String,
-    version: String,
-    uptime_secs: u64,
-    children: Vec<ChildHealthJson>,
-    child_count: usize,
-    registered_projects: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    active_project_uid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    active_project_databases: Option<ProjectDatabasesJson>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    state_db_bytes: Option<u64>,
-    federation_available: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    federation_reason: Option<String>,
-    federation_ducklake_loaded: bool,
-    federation_projects_attached: usize,
-    federation_projects_failed: usize,
-    federation_projects_stale: usize,
-    startup_profile: String,
-    rivet_integration: String,
-    child_warmup: ChildWarmupStateJson,
-    memory: MemoryStatusJson,
-    control_plane_ready: bool,
-    children_ready_count: usize,
-    children_total: usize,
-    children_degraded: Vec<DegradedChildJson>,
-}
-
-#[derive(Serialize)]
-struct DegradedChildJson {
-    name: String,
-    reason: String,
-}
-
-#[derive(Serialize)]
-struct ProjectDatabasesJson {
-    events_db_bytes: Option<u64>,
-    patina_db_bytes: Option<u64>,
-    runtime_db_bytes: Option<u64>,
-}
-
-#[derive(Serialize)]
-struct ChildWarmupStateJson {
-    mode: String,
-    state: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    last_error: Option<String>,
-}
-
-#[derive(Serialize)]
-struct MemoryStatusJson {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rss_bytes: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_rss_bytes: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    soft_limit_bytes: Option<u64>,
-    pressure: String,
-}
-
-#[derive(Serialize)]
-struct ChildHealthJson {
-    name: String,
-    status: String,
-}
-
 #[derive(Deserialize)]
 struct ScryRequest {
     query: String,
@@ -232,218 +182,6 @@ struct ScryResultJson {
 
 #[derive(Deserialize, Default)]
 struct FederationNoopRequest {}
-
-#[derive(Deserialize)]
-struct LifecycleNameRequest {
-    name: String,
-}
-
-#[derive(Deserialize, Default)]
-struct LifecycleRefreshRequest {}
-
-#[derive(Deserialize, Default)]
-struct LifecycleWarmupRequest {}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct RivetDispatchRequest {
-    pub child: String,
-    pub operation_id: String,
-    #[serde(default = "default_rivet_dispatch_args")]
-    pub args: serde_json::Value,
-    #[serde(default)]
-    pub correlation: Option<crate::CallCorrelation>,
-    #[serde(default)]
-    pub delivery: Option<crate::pando::PandoDeliveryPolicy>,
-    #[serde(default, rename = "dead-letter", alias = "dead_letter")]
-    pub dead_letter: Option<RivetDispatchDeadLetter>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RivetDispatchDeadLetter {
-    pub child: String,
-    #[serde(default)]
-    pub operation_id: Option<String>,
-}
-
-impl RivetDispatchRequest {
-    pub fn delivery_policy(&self) -> crate::pando::PandoDeliveryPolicy {
-        self.delivery
-            .unwrap_or(crate::pando::PandoDeliveryPolicy::Required)
-    }
-}
-
-fn default_rivet_dispatch_args() -> serde_json::Value {
-    serde_json::json!([])
-}
-
-#[derive(Deserialize, Default)]
-struct TypedCallHistoryRequest {
-    #[serde(default = "default_typed_history_limit")]
-    limit: usize,
-    #[serde(default)]
-    rivet_run_id: Option<String>,
-    #[serde(default)]
-    rivet_actor_id: Option<String>,
-    #[serde(default)]
-    rivet_workflow_id: Option<String>,
-    #[serde(default)]
-    rivet_job_id: Option<String>,
-}
-
-impl TypedCallHistoryRequest {
-    fn has_correlation_filter(&self) -> bool {
-        self.rivet_run_id.is_some()
-            || self.rivet_actor_id.is_some()
-            || self.rivet_workflow_id.is_some()
-            || self.rivet_job_id.is_some()
-    }
-}
-
-fn default_typed_history_limit() -> usize {
-    100
-}
-
-fn lifecycle_error(status: u16, code: &str, detail: &str) -> HttpResponse {
-    HttpResponse::json(
-        status,
-        &serde_json::json!({
-            "error": code,
-            "code": status,
-            "detail": detail,
-        }),
-    )
-}
-
-fn lifecycle_error_from_anyhow(error: &anyhow::Error) -> HttpResponse {
-    let detail = error.to_string();
-    if let Some(value) = detail.strip_prefix("invalid_request: ") {
-        return lifecycle_error(400, "invalid_request", value);
-    }
-    if let Some(value) = detail.strip_prefix("child_not_found: ") {
-        return lifecycle_error(404, "child_not_found", value);
-    }
-    if let Some(value) = detail.strip_prefix("pando_not_found: ") {
-        return lifecycle_error(404, "pando_not_found", value);
-    }
-    if let Some(value) = detail.strip_prefix("operation_in_progress: ") {
-        return lifecycle_error(409, "operation_in_progress", value);
-    }
-    if let Some(value) = detail.strip_prefix("resource_exhausted: ") {
-        return lifecycle_error(429, "resource_exhausted", value);
-    }
-    if let Some(value) = detail.strip_prefix("internal_error: ") {
-        return lifecycle_error(500, "internal_error", value);
-    }
-    lifecycle_error(500, "internal_error", &detail)
-}
-
-pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
-    let children: Vec<ChildHealthJson> = runtime
-        .health_all()
-        .into_iter()
-        .map(|(name, health)| ChildHealthJson {
-            name,
-            status: health.to_string(),
-        })
-        .collect();
-
-    let details = runtime.health_details().unwrap_or(HealthDetails {
-        registered_projects: 0,
-        active_project_uid: None,
-        active_project_databases: None,
-        state_db_bytes: None,
-        federation_available: false,
-        federation_reason: Some("federation status unavailable".to_string()),
-        federation_ducklake_loaded: false,
-        federation_projects_attached: 0,
-        federation_projects_failed: 0,
-        federation_projects_stale: 0,
-        startup_profile: "unknown".to_string(),
-        rivet_integration: "disabled".to_string(),
-        child_warmup: ChildWarmupState {
-            mode: "unknown".to_string(),
-            state: "unknown".to_string(),
-            last_error: Some("health details unavailable".to_string()),
-        },
-        memory: MemoryStatus {
-            rss_bytes: None,
-            max_rss_bytes: None,
-            soft_limit_bytes: None,
-            pressure: "unknown".to_string(),
-        },
-        control_plane_ready: false,
-        children_ready_count: 0,
-        children_total: 0,
-        children_degraded: Vec::new(),
-    });
-
-    let active_project_databases =
-        details
-            .active_project_databases
-            .map(|db| ProjectDatabasesJson {
-                events_db_bytes: db.events_db_bytes,
-                patina_db_bytes: db.patina_db_bytes,
-                runtime_db_bytes: db.runtime_db_bytes,
-            });
-    let children_degraded = details
-        .children_degraded
-        .iter()
-        .map(|entry| DegradedChildJson {
-            name: entry.name.clone(),
-            reason: entry.reason.clone(),
-        })
-        .collect();
-    let child_warmup = ChildWarmupStateJson {
-        mode: details.child_warmup.mode.clone(),
-        state: details.child_warmup.state.clone(),
-        last_error: details.child_warmup.last_error.clone(),
-    };
-    let memory = MemoryStatusJson {
-        rss_bytes: details.memory.rss_bytes,
-        max_rss_bytes: details.memory.max_rss_bytes,
-        soft_limit_bytes: details.memory.soft_limit_bytes,
-        pressure: details.memory.pressure.clone(),
-    };
-
-    HttpResponse::json(
-        200,
-        &HealthResponse {
-            status: "ok".to_string(),
-            version: runtime.version(),
-            uptime_secs: runtime.uptime_secs(),
-            child_count: children.len(),
-            children,
-            registered_projects: details.registered_projects,
-            active_project_uid: details.active_project_uid,
-            active_project_databases,
-            state_db_bytes: details.state_db_bytes,
-            federation_available: details.federation_available,
-            federation_reason: details.federation_reason,
-            federation_ducklake_loaded: details.federation_ducklake_loaded,
-            federation_projects_attached: details.federation_projects_attached,
-            federation_projects_failed: details.federation_projects_failed,
-            federation_projects_stale: details.federation_projects_stale,
-            startup_profile: details.startup_profile,
-            rivet_integration: details.rivet_integration,
-            child_warmup,
-            memory,
-            control_plane_ready: details.control_plane_ready,
-            children_ready_count: details.children_ready_count,
-            children_total: details.children_total,
-            children_degraded,
-        },
-    )
-}
-
-pub fn handle_version(runtime: &dyn ApiRuntime) -> HttpResponse {
-    HttpResponse::json(
-        200,
-        &serde_json::json!({
-            "version": runtime.version(),
-            "name": "patina-mother"
-        }),
-    )
-}
 
 pub fn handle_atlas_dashboard(runtime: &dyn ApiRuntime) -> HttpResponse {
     match runtime.atlas_dashboard_html() {
@@ -609,294 +347,6 @@ pub fn handle_pando_list(runtime: &dyn ApiRuntime) -> HttpResponse {
     match runtime.pando_list() {
         Ok(state) => HttpResponse::json(200, &state),
         Err(e) => json_error(500, &e.to_string()),
-    }
-}
-
-pub fn handle_lifecycle_load_pando(
-    request: &HttpRequest,
-    runtime: &dyn ApiRuntime,
-) -> HttpResponse {
-    if request.body.is_empty() {
-        return lifecycle_error(400, "invalid_request", "missing request body");
-    }
-    let payload: LifecycleNameRequest = match serde_json::from_slice(&request.body) {
-        Ok(v) => v,
-        Err(e) => {
-            return lifecycle_error(400, "invalid_request", &format!("invalid JSON: {}", e));
-        }
-    };
-    if payload.name.trim().is_empty() {
-        return lifecycle_error(400, "invalid_request", "name is required");
-    }
-    match runtime.lifecycle_load_pando(&payload.name) {
-        Ok(response) => HttpResponse::json(200, &response),
-        Err(e) => lifecycle_error_from_anyhow(&e),
-    }
-}
-
-pub fn handle_lifecycle_refresh(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
-    if !request.body.is_empty()
-        && serde_json::from_slice::<LifecycleRefreshRequest>(&request.body).is_err()
-    {
-        return lifecycle_error(400, "invalid_request", "invalid JSON");
-    }
-    match runtime.lifecycle_refresh() {
-        Ok(response) => HttpResponse::json(200, &response),
-        Err(e) => lifecycle_error_from_anyhow(&e),
-    }
-}
-
-pub fn handle_lifecycle_reload_child(
-    request: &HttpRequest,
-    runtime: &dyn ApiRuntime,
-) -> HttpResponse {
-    if request.body.is_empty() {
-        return lifecycle_error(400, "invalid_request", "missing request body");
-    }
-    let payload: LifecycleNameRequest = match serde_json::from_slice(&request.body) {
-        Ok(v) => v,
-        Err(e) => {
-            return lifecycle_error(400, "invalid_request", &format!("invalid JSON: {}", e));
-        }
-    };
-    if payload.name.trim().is_empty() {
-        return lifecycle_error(400, "invalid_request", "name is required");
-    }
-    match runtime.lifecycle_reload_child(&payload.name) {
-        Ok(response) => HttpResponse::json(200, &response),
-        Err(e) => lifecycle_error_from_anyhow(&e),
-    }
-}
-
-pub fn handle_lifecycle_warmup_children(
-    request: &HttpRequest,
-    runtime: &dyn ApiRuntime,
-) -> HttpResponse {
-    if !request.body.is_empty()
-        && serde_json::from_slice::<LifecycleWarmupRequest>(&request.body).is_err()
-    {
-        return lifecycle_error(400, "invalid_request", "invalid JSON");
-    }
-
-    match runtime.lifecycle_warmup_children() {
-        Ok(response) => HttpResponse::json(200, &response),
-        Err(e) => lifecycle_error_from_anyhow(&e),
-    }
-}
-
-pub fn handle_rivet_dispatch(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
-    if request.body.is_empty() {
-        return lifecycle_error(400, "invalid_request", "missing request body");
-    }
-
-    let payload: RivetDispatchRequest = match serde_json::from_slice(&request.body) {
-        Ok(value) => value,
-        Err(error) => {
-            return lifecycle_error(400, "invalid_request", &format!("invalid JSON: {}", error));
-        }
-    };
-
-    if payload.child.trim().is_empty() {
-        return lifecycle_error(400, "invalid_request", "child is required");
-    }
-    if payload.operation_id.trim().is_empty() {
-        return lifecycle_error(400, "invalid_request", "operation_id is required");
-    }
-    if matches!(
-        payload.delivery_policy(),
-        crate::pando::PandoDeliveryPolicy::DeadLetter
-    ) {
-        let Some(dead_letter) = payload.dead_letter.as_ref() else {
-            return lifecycle_error(
-                400,
-                "invalid_request",
-                "dead-letter policy requires dead-letter target",
-            );
-        };
-        if dead_letter.child.trim().is_empty() {
-            return lifecycle_error(400, "invalid_request", "dead-letter child is required");
-        }
-    }
-
-    match runtime.rivet_dispatch(payload) {
-        Ok(response) => HttpResponse::json(200, &response),
-        Err(error) => lifecycle_error_from_anyhow(&error),
-    }
-}
-
-pub fn handle_inspector_typed_calls(
-    request: &HttpRequest,
-    runtime: &dyn ApiRuntime,
-) -> HttpResponse {
-    let body = if request.body.is_empty() {
-        TypedCallHistoryRequest::default()
-    } else {
-        match serde_json::from_slice::<TypedCallHistoryRequest>(&request.body) {
-            Ok(value) => value,
-            Err(error) => {
-                return json_error(400, &format!("Invalid JSON: {}", error));
-            }
-        }
-    };
-
-    let limit = body.limit.clamp(1, MAX_LIMIT);
-    let query_limit = if body.has_correlation_filter() {
-        MAX_LIMIT
-    } else {
-        limit
-    };
-
-    match runtime.typed_call_history(query_limit) {
-        Ok(mut payload) => {
-            if body.has_correlation_filter() {
-                if let Some(object) = payload.as_object_mut() {
-                    let mut filtered_count: Option<usize> = None;
-                    if let Some(calls) = object.get_mut("calls").and_then(|v| v.as_array_mut()) {
-                        calls.retain(|call| call_matches_correlation_filter(call, &body));
-                        if calls.len() > limit {
-                            calls.truncate(limit);
-                        }
-                        filtered_count = Some(calls.len());
-                    }
-                    if let Some(count) = filtered_count {
-                        object.insert("count".to_string(), serde_json::json!(count));
-                    }
-                }
-            }
-            HttpResponse::json(200, &payload)
-        }
-        Err(error) => json_error(500, &format!("typed call history failed: {}", error)),
-    }
-}
-
-fn call_matches_correlation_filter(
-    call: &serde_json::Value,
-    filter: &TypedCallHistoryRequest,
-) -> bool {
-    let correlation = call.get("correlation");
-
-    let matches_string = |expected: &Option<String>, field: &str| {
-        expected
-            .as_ref()
-            .map(|value| {
-                correlation
-                    .and_then(|c| c.get(field))
-                    .and_then(|v| v.as_str())
-                    .map(|actual| actual == value)
-                    .unwrap_or(false)
-            })
-            .unwrap_or(true)
-    };
-
-    matches_string(&filter.rivet_run_id, "rivet_run_id")
-        && matches_string(&filter.rivet_actor_id, "rivet_actor_id")
-        && matches_string(&filter.rivet_workflow_id, "rivet_workflow_id")
-        && matches_string(&filter.rivet_job_id, "rivet_job_id")
-}
-
-pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
-    let parts: Vec<&str> = request.path[1..].split('/').collect();
-    if parts.len() != 3 {
-        return json_error(400, "Expected /child/{name}/{action}");
-    }
-    let child_name = parts[1];
-    let action = parts[2];
-
-    if BuiltinChild::from_route(child_name).is_some() {
-        match BuiltinChildRequest::from_http_parts(child_name, action, &request.body) {
-            Ok(builtin) => {
-                return match builtin.action {
-                    BuiltinChildAction::Health => {
-                        HttpResponse::json(200, &serde_json::json!({ "status": "healthy" }))
-                    }
-                    BuiltinChildAction::SpecDispatch(dispatch) => {
-                        match runtime.builtin_spec_dispatch(dispatch) {
-                            Ok(payload) => HttpResponse::json(200, &payload),
-                            Err(e) => json_error(400, &e.to_string()),
-                        }
-                    }
-                    BuiltinChildAction::LakeDispatch(dispatch) => {
-                        match runtime.builtin_lake_dispatch(dispatch) {
-                            Ok(payload) => HttpResponse::json(200, &payload),
-                            Err(e) => json_error(400, &e.to_string()),
-                        }
-                    }
-                    BuiltinChildAction::DoctorRun(_) => match runtime.builtin_doctor_run() {
-                        Ok(result) => HttpResponse::json(
-                            200,
-                            &serde_json::json!({
-                                "child": "doctor",
-                                "text": "",
-                                "data": result.data,
-                                "exit_code": result.exit_code,
-                            }),
-                        ),
-                        Err(e) => json_error(400, &e.to_string()),
-                    },
-                    BuiltinChildAction::SecretsDispatch(dispatch) => {
-                        runtime.builtin_secrets_dispatch(dispatch.operation.into_payload())
-                    }
-                };
-            }
-            Err(message) if message.starts_with("Unsupported action") => {}
-            Err(message) => return json_error(400, &message),
-        }
-    }
-
-    if action == "health" {
-        return match runtime.child_health(child_name) {
-            Ok(health) => {
-                let status = match health {
-                    crate::ChildHealth::Healthy => "healthy",
-                    crate::ChildHealth::Degraded(_) => "degraded",
-                    crate::ChildHealth::Unhealthy(_) => "unhealthy",
-                };
-                HttpResponse::json(200, &serde_json::json!({ "status": status }))
-            }
-            Err(e) => json_error(404, &e.to_string()),
-        };
-    }
-
-    let payload = if request.body.is_empty() {
-        serde_json::Value::Null
-    } else {
-        match serde_json::from_slice(&request.body) {
-            Ok(v) => v,
-            Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
-        }
-    };
-
-    if action == "call" {
-        let operation_id = payload
-            .get("operation_id")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-        if operation_id.is_empty() {
-            return json_error(400, "Missing operation_id for child typed call");
-        }
-        let args = payload
-            .get("args")
-            .cloned()
-            .unwrap_or(serde_json::json!([]));
-        let correlation = match payload.get("correlation") {
-            Some(value) => match serde_json::from_value::<crate::CallCorrelation>(value.clone()) {
-                Ok(parsed) => Some(parsed),
-                Err(error) => {
-                    return json_error(400, &format!("Invalid correlation payload: {}", error));
-                }
-            },
-            None => None,
-        };
-        return match runtime.child_call(child_name, operation_id, args, correlation) {
-            Ok(payload) => HttpResponse::json(200, &payload),
-            Err(e) => json_error(404, &e.to_string()),
-        };
-    }
-
-    match runtime.child_handle(child_name, action.to_string(), payload) {
-        Ok(payload) => HttpResponse::json(200, &payload),
-        Err(e) => json_error(404, &e.to_string()),
     }
 }
 
@@ -1574,6 +1024,67 @@ mod tests {
         };
         let query_response = handle_federation_query(&query_request, &StubRuntime);
         assert_eq!(query_response.status, 200);
+    }
+
+    #[test]
+    fn route_table_wiring_preserves_handler_surface() {
+        let routes = build_route_table(Arc::new(StubRuntime));
+
+        let get = HttpRequest {
+            method: "GET".to_string(),
+            path: "/health".to_string(),
+            headers: vec![],
+            body: vec![],
+        };
+        assert_eq!((routes.get_health)(&get).status, 200);
+        assert_eq!((routes.get_version)(&get).status, 200);
+
+        let lifecycle_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/lifecycle/load-pando".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({"name": "demo"})).unwrap(),
+        };
+        assert_eq!(
+            (routes.post_lifecycle_load_pando)(&lifecycle_request).status,
+            200
+        );
+
+        let rivet_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/rivet/dispatch".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({
+                "child": "folder-watch-actor",
+                "operation_id": "patina:watch/control.status",
+                "args": []
+            }))
+            .unwrap(),
+        };
+        assert_eq!((routes.post_rivet_dispatch)(&rivet_request).status, 200);
+
+        let inspector_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/inspector/typed-calls".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({"limit": 10})).unwrap(),
+        };
+        assert_eq!(
+            (routes.post_inspector_typed_calls)(&inspector_request).status,
+            200
+        );
+
+        let child_request = HttpRequest {
+            method: "POST".to_string(),
+            path: "/child/folder-watch-actor/call".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({
+                "operation_id": "patina:watch/control.status",
+                "args": []
+            }))
+            .unwrap(),
+        };
+        assert_eq!((routes.child_request)(&child_request).status, 200);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mother-http-api-module-split
-status: draft
+status: active
 created: 2026-04-14
 blocked_by:
   - durable-rust-unix-realignment-program
@@ -10,22 +10,27 @@ beliefs:
   - "[[unix-philosophy]]"
 related:
   - mother/src/http_api.rs
+  - mother/src/http_api/health.rs
+  - mother/src/http_api/lifecycle.rs
+  - mother/src/http_api/rivet.rs
+  - mother/src/http_api/inspector.rs
+  - mother/src/http_api/child.rs
   - mother/src/http_routes.rs
   - mother/src/lib.rs
   - layer/surface/reports/audit/2026-04-14-durable-rust-unix-realignment-audit.md
 exit_criteria:
   - id: mhams1-endpoint-domain-split
     text: "`http_api.rs` is split by endpoint domain (health, lifecycle, child, inspector, rivet, builtins)."
-    checked: false
+    checked: true
   - id: mhams2-contract-stability
     text: "Request/response JSON contracts remain backward-compatible for existing routes."
-    checked: false
+    checked: true
   - id: mhams3-route-wiring-parity
     text: "Router wiring remains equivalent; no route capability regression."
-    checked: false
+    checked: true
   - id: mhams4-tests
     text: "Handler and route tests pass with deterministic coverage for success + fail-closed paths."
-    checked: false
+    checked: true
 ---
 
 # refactor: mother http api module split
@@ -53,3 +58,12 @@ Recover clear API boundaries by splitting endpoint domains into focused modules 
 - No new endpoints.
 - No auth model changes.
 - No transport changes.
+
+## Verification
+
+```bash
+cargo check -p mother
+cargo check -p patina-ai
+cargo test -p mother http_api::tests -- --nocapture
+cargo run -q -- mother --help
+```
