@@ -19,25 +19,25 @@ related:
 exit_criteria:
   - id: sctb1-invariants-explicit
     text: "Create flow invariants are explicit in spec + code docs before implementation (no implicit transaction assumptions)."
-    checked: false
+    checked: true
   - id: sctb2-fs-git-db-consistency
     text: "Successful create leaves filesystem, git history, and patterns DB in consistent draft state for the same spec id/path."
-    checked: false
+    checked: true
   - id: sctb3-git-failure-compensation
     text: "If git stage/commit fails after file materialization, create flow removes newly materialized spec files/directories (best-effort) and returns deterministic error."
-    checked: false
+    checked: true
   - id: sctb4-db-failure-compensation
     text: "If DB write fails after git commit, create flow returns deterministic repair guidance and records enough context to reconcile without silent drift."
-    checked: false
+    checked: true
   - id: sctb5-no-partial-incidental-side-effects
     text: "No partial side effects are silently kept: all known failure boundaries are either compensated or surfaced with explicit operator repair steps."
-    checked: false
+    checked: true
   - id: sctb6-failure-path-tests
     text: "Deterministic tests cover at least: git add/commit failure path and DB write failure path, asserting fail-closed outcomes and repair messaging."
-    checked: false
+    checked: true
   - id: sctb7-command-contract-stable
     text: "`patina spec create` CLI contract (flags/args/output envelope) remains backward-compatible."
-    checked: false
+    checked: true
 ---
 
 # fix: spec create transaction boundary

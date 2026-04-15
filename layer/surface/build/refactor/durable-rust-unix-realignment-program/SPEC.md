@@ -43,8 +43,8 @@ exit_criteria:
     text: "`refactor/typed-operation-identity-hardening` spec is reviewed and approved in HITL before implementation."
     checked: false
   - id: drup7-spec-create-rewrite-explicitly-deferred
-    text: "Spec-create flow rewrite is explicitly deferred to a future full rewrite spec; no incidental churn lands under this program."
-    checked: false
+    text: "Spec-create flow rewrite is explicitly deferred to and implemented via dedicated spec `fix/spec-create-transaction-boundary`; no incidental churn lands under this program."
+    checked: true
 ---
 
 # refactor: Durable Rust + Unix realignment program
