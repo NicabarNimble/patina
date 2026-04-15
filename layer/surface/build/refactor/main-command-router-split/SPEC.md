@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: main-command-router-split
-status: draft
+status: active
 created: 2026-04-14
 blocked_by:
   - durable-rust-unix-realignment-program
@@ -39,10 +39,11 @@ Recover Unix-style command composition by decomposing top-level routing into foc
 
 ## Candidate module split
 
-- `src/main_dispatch/core.rs`
+- `src/main_dispatch/mod.rs`
 - `src/main_dispatch/mother.rs`
 - `src/main_dispatch/spec.rs`
 - `src/main_dispatch/scrape.rs`
+- `src/main_dispatch/child.rs`
 - `src/main_dispatch/dev.rs`
 
 ## Non-goals
@@ -50,3 +51,15 @@ Recover Unix-style command composition by decomposing top-level routing into foc
 - No command UX changes.
 - No option renames.
 - No protocol behavior changes.
+
+## Verification
+
+```bash
+cargo check -p patina-ai
+cargo test -p patina-ai main_dispatch::tests -- --nocapture
+cargo run -q -- mother --help
+cargo run -q -- spec --help
+cargo run -q -- scrape --help
+cargo run -q -- measure --help
+cargo run -q -- init --help
+```
