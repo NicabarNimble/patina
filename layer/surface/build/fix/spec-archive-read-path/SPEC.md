@@ -17,19 +17,19 @@ related:
 exit_criteria:
   - id: sarp1-archived-show-works
     text: "`patina spec show <archived-id>` succeeds by reading archived spec content from tag-backed source-of-truth."
-    checked: false
+    checked: true
   - id: sarp2-archived-check-works
     text: "`patina spec check <archived-id> --json` succeeds and reports criteria state for archived specs."
-    checked: false
+    checked: true
   - id: sarp3-disk-spec-regression-guard
     text: "On-disk spec show/check behavior is unchanged and covered by tests."
-    checked: false
+    checked: true
   - id: sarp4-fail-closed-missing-archive
     text: "Missing/invalid archive tag returns explicit deterministic error (no placeholder path read attempts)."
-    checked: false
+    checked: true
   - id: sarp5-tests
     text: "Deterministic tests cover archived success path + missing archive failure path."
-    checked: false
+    checked: true
 ---
 
 # fix: spec archive read path
@@ -56,7 +56,9 @@ Restore archived-spec read behavior so archived tags remain first-class queryabl
 ## Verification commands
 
 ```bash
-patina spec show mother-rivet-integration
-patina spec check mother-rivet-integration --json
-cargo test -p patina-ai commands::spec -- --nocapture
+PATINA_SPEC_DIRECT=1 ./target/debug/patina spec show mother-rivet-integration
+PATINA_SPEC_DIRECT=1 ./target/debug/patina spec check mother-rivet-integration --json
+PATINA_SPEC_DIRECT=1 ./target/debug/patina spec show child-construction-canon
+cargo test -p patina-ai commands::spec::internal::archive::tests::load_spec_read_only_reads_archived_tag_content -- --nocapture
+cargo test -p patina-ai commands::spec::internal::archive::tests::load_spec_read_only_fails_when_archive_tag_missing_spec_path -- --nocapture
 ```

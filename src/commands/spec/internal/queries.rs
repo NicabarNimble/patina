@@ -7,7 +7,7 @@ use std::path::Path;
 
 use patina::spec::{parse_spec_file, SpecFrontmatter, SpecStatus};
 
-use super::archive::load_spec;
+use super::archive::load_spec_read_only;
 use super::db_path;
 
 /// An unchecked exit criterion (for check results)
@@ -32,7 +32,7 @@ pub struct CheckResult {
 /// Returns pass/fail with details. Specs without exit criteria pass by default
 /// (backward compatible).
 pub fn check_spec_value(id: &str) -> Result<CheckResult> {
-    let loaded = load_spec(id)?;
+    let loaded = load_spec_read_only(id)?;
     let criteria = &loaded.frontmatter.exit_criteria;
 
     if criteria.is_empty() {
@@ -448,7 +448,7 @@ fn extract_code_targets(text: &str) -> Vec<String> {
 /// Default mode returns outlines only — compact for MCP (~500 tokens vs 17k).
 /// Full mode includes complete body and design text (for CLI display).
 pub fn show_spec_value(id: &str) -> Result<ShowResult> {
-    let loaded = load_spec(id)?;
+    let loaded = load_spec_read_only(id)?;
     let spec_path = loaded.file_path.clone();
 
     // Check for DESIGN.md in the same directory as SPEC.md

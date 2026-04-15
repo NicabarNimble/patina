@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::Serialize;
 use std::path::Path;
 
-use super::archive::load_spec;
+use super::archive::load_spec_read_only;
 use super::queries::extract_section_items;
 
 #[derive(Debug, Clone, Serialize)]
@@ -50,7 +50,7 @@ pub struct PacketBundle {
 }
 
 pub fn prompt_spec_value(id: &str) -> Result<PromptPacket> {
-    let loaded = load_spec(id)?;
+    let loaded = load_spec_read_only(id)?;
     let design_path = Path::new(&loaded.file_path)
         .parent()
         .map(|dir| dir.join("DESIGN.md"))
@@ -112,7 +112,7 @@ pub fn prompt_spec_value(id: &str) -> Result<PromptPacket> {
 }
 
 pub fn handoff_spec_value(id: &str) -> Result<HandoffPacket> {
-    let loaded = load_spec(id)?;
+    let loaded = load_spec_read_only(id)?;
     let design_path = Path::new(&loaded.file_path)
         .parent()
         .map(|dir| dir.join("DESIGN.md"))
