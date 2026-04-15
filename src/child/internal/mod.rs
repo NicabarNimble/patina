@@ -12,6 +12,7 @@ use crate::mother::GrantedIngressSource;
 mod child;
 pub(crate) mod host_support;
 mod pipeline;
+pub(crate) mod typed_conversion;
 
 #[cfg(test)]
 mod tests;

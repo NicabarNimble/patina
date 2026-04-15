@@ -38,7 +38,7 @@ exit_criteria:
     checked: true
   - id: drup5-conversion-spec-reviewed
     text: "`refactor/child-typed-conversion-boundary` spec is reviewed and approved in HITL with explicit conversion invariants."
-    checked: false
+    checked: true
   - id: drup6-typed-identity-spec-reviewed
     text: "`refactor/typed-operation-identity-hardening` spec is reviewed and approved in HITL before implementation."
     checked: false

@@ -11,37 +11,38 @@ beliefs:
   - "[[unix-philosophy]]"
 related:
   - src/child/internal/child.rs
+  - src/child/internal/typed_conversion.rs
   - src/child/runtime.rs
   - tests/wasm_integration.rs
   - layer/surface/reports/audit/2026-04-14-durable-rust-unix-realignment-audit.md
 exit_criteria:
   - id: ctcb1-conversion-module-extracted
     text: "JSON↔component typed conversion logic is extracted from `child.rs` into dedicated conversion modules with minimal public surface."
-    checked: false
+    checked: true
   - id: ctcb2-error-contract-locked
     text: "Conversion failures expose stable machine error codes + structured details (text may improve; code contract is stable)."
-    checked: false
+    checked: true
   - id: ctcb3-no-implicit-coercions
     text: "Transformer is strict/fail-closed: no implicit JSON coercions (e.g., string→int, float→int, missing required fields, unknown variant/enum cases)."
-    checked: false
+    checked: true
   - id: ctcb4-fail-closed-coverage
     text: "Deterministic tests cover invalid args/type-shape failures and confirm explicit typed error codes."
-    checked: false
+    checked: true
   - id: ctcb5-conformance-lock
     text: "Table-driven conformance tests lock behavior for representative WIT type families (scalar, record, tuple, list, option, variant, enum, result, flags)."
-    checked: false
+    checked: true
   - id: ctcb6-roundtrip-policy-locked
     text: "Round-trip policy is explicit: strict where bijective; otherwise normalized equivalence or explicit fail-closed behavior, with tests per policy."
-    checked: false
+    checked: true
   - id: ctcb7-explicit-results-envelope
     text: "Typed component result lifting uses explicit JSON envelope `{\"results\":[...]}` (including zero/one/many results) instead of shape-overloaded null/value/array output."
-    checked: false
+    checked: true
   - id: ctcb8-no-runtime-artifact-dependence
     text: "Core conversion tests do not require local `target/` runtime artifacts."
-    checked: false
+    checked: true
   - id: ctcb9-authority-path-unchanged
     text: "Typed dispatch authority path remains unchanged (`ChildCallRequest` -> registry policy -> child call)."
-    checked: false
+    checked: true
 ---
 
 # refactor: child typed conversion boundary
