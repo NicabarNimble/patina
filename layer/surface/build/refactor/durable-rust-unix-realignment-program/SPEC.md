@@ -25,16 +25,16 @@ related:
 exit_criteria:
   - id: drup1-archive-fix-landed
     text: "`fix/spec-archive-read-path` is complete and archived-spec show/check behavior is restored with deterministic tests."
-    checked: false
+    checked: true
   - id: drup2-router-spec-reviewed
     text: "`refactor/main-command-router-split` spec is reviewed and approved in HITL before implementation."
-    checked: false
+    checked: true
   - id: drup3-daemon-spec-reviewed
     text: "`refactor/mother-daemon-module-split` spec is reviewed and approved in HITL before implementation."
-    checked: false
+    checked: true
   - id: drup4-http-api-spec-reviewed
     text: "`refactor/mother-http-api-module-split` spec is reviewed and approved in HITL before implementation."
-    checked: false
+    checked: true
   - id: drup5-conversion-spec-reviewed
     text: "`refactor/child-typed-conversion-boundary` spec is reviewed and approved in HITL with explicit conversion invariants."
     checked: false

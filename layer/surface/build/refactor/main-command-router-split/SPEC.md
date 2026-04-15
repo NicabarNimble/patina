@@ -15,16 +15,16 @@ related:
 exit_criteria:
   - id: mcrs1-main-thin-shell
     text: "`main` is reduced to bootstrap + top-level dispatch shell; command-family routing is moved into dedicated modules."
-    checked: false
+    checked: true
   - id: mcrs2-command-parity
     text: "CLI behavior parity is preserved for representative command families (mother/spec/scrape/measure/project)."
-    checked: false
+    checked: true
   - id: mcrs3-no-behavioral-scope-creep
     text: "Refactor introduces no new command features/flags."
-    checked: false
+    checked: true
   - id: mcrs4-tests
     text: "Deterministic routing tests validate old/new dispatch equivalence for selected command payloads."
-    checked: false
+    checked: true
 ---
 
 # refactor: main command router split

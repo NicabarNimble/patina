@@ -11,10 +11,16 @@ beliefs:
 related:
   - mother/src/http_api.rs
   - mother/src/http_api/health.rs
+  - mother/src/http_api/atlas.rs
+  - mother/src/http_api/scry.rs
+  - mother/src/http_api/federation.rs
+  - mother/src/http_api/secrets.rs
+  - mother/src/http_api/pando.rs
   - mother/src/http_api/lifecycle.rs
   - mother/src/http_api/rivet.rs
   - mother/src/http_api/inspector.rs
   - mother/src/http_api/child.rs
+  - mother/src/http_api/tests/mod.rs
   - mother/src/http_routes.rs
   - mother/src/lib.rs
   - layer/surface/reports/audit/2026-04-14-durable-rust-unix-realignment-audit.md
@@ -29,7 +35,7 @@ exit_criteria:
     text: "Router wiring remains equivalent; no route capability regression."
     checked: true
   - id: mhams4-tests
-    text: "Handler and route tests pass with deterministic coverage for success + fail-closed paths."
+    text: "Handler and route tests pass with deterministic coverage for success + fail-closed paths, with test scaffolding moved under `http_api/tests/`."
     checked: true
 ---
 
@@ -45,13 +51,18 @@ Recover clear API boundaries by splitting endpoint domains into focused modules 
 
 ## Candidate split
 
-- `mother/src/http_api/core.rs` (traits + shared errors)
+- `mother/src/http_api.rs` retains shared DTOs + route table wiring
 - `mother/src/http_api/health.rs`
+- `mother/src/http_api/atlas.rs`
+- `mother/src/http_api/scry.rs`
+- `mother/src/http_api/federation.rs`
+- `mother/src/http_api/secrets.rs`
+- `mother/src/http_api/pando.rs`
 - `mother/src/http_api/lifecycle.rs`
 - `mother/src/http_api/child.rs`
 - `mother/src/http_api/inspector.rs`
 - `mother/src/http_api/rivet.rs`
-- `mother/src/http_api/tests/*`
+- `mother/src/http_api/tests/mod.rs`
 
 ## Non-goals
 
