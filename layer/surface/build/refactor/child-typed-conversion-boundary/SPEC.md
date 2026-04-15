@@ -64,6 +64,47 @@ Create a dedicated, test-locked conversion boundary for JSON↔WIT/component val
 6. **Scope posture:** refactor-first with strictness hardening; no contract-layer redesign in this slice.
 7. **Result shape decision:** use explicit JSON result envelope `{\"results\":[...]}` for typed component return lifting.
 
+## Conversion invariants (authoritative)
+
+1. **RT-INV-01 (typed identity where bijective)**
+   For bijective WIT families, `component_val -> json -> component_val` is identity-preserving.
+2. **RT-INV-02 (normalized equivalence where non-bijective)**
+   For non-bijective families, round-trip must satisfy documented normalized equivalence (or fail-closed), never silent coercion.
+3. **RT-INV-03 (fail-closed parse boundary)**
+   Invalid JSON shape/type for the target WIT signature fails with stable machine error code + structured details.
+4. **RT-INV-04 (result lifting explicitness)**
+   Typed call return lifting always uses `{"results":[...]}` envelope (including empty/one/many), never overloaded null/value/array shape.
+
+## Type-coverage matrix (must be test-locked)
+
+- Scalar (bool/signed/unsigned/float/char/string)
+  - Policy: strict parse, no implicit widening/narrowing coercion
+  - Round-trip: RT-INV-01 where representable; otherwise RT-INV-03
+- Record
+  - Policy: required fields required, unknown-field policy explicit (fail-closed unless documented otherwise)
+  - Round-trip: RT-INV-01
+- Tuple
+  - Policy: positional arity strict
+  - Round-trip: RT-INV-01
+- List
+  - Policy: element type strict
+  - Round-trip: RT-INV-01
+- Option
+  - Policy: explicit null/Some mapping documented and stable
+  - Round-trip: RT-INV-02 if normalization needed
+- Variant
+  - Policy: case name + payload shape strict
+  - Round-trip: RT-INV-02 or RT-INV-03 per case
+- Enum
+  - Policy: only declared variants accepted
+  - Round-trip: RT-INV-01
+- Result
+  - Policy: explicit ok/err channel mapping, no implicit success/failure inference
+  - Round-trip: RT-INV-02
+- Flags
+  - Policy: only declared flags accepted
+  - Round-trip: RT-INV-01
+
 ## Bytecode Alliance alignment target
 
 - Preserve Canonical ABI authority for typed value semantics.
