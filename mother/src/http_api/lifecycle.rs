@@ -121,27 +121,7 @@ pub(super) fn lifecycle_error_from_anyhow(error: &anyhow::Error) -> HttpResponse
         );
     }
 
-    // Legacy string-prefix fallback for compatibility with call sites not yet migrated.
-    let detail = error.to_string();
-    if let Some(value) = detail.strip_prefix("invalid_request: ") {
-        return lifecycle_error(400, "invalid_request", value);
-    }
-    if let Some(value) = detail.strip_prefix("child_not_found: ") {
-        return lifecycle_error(404, "child_not_found", value);
-    }
-    if let Some(value) = detail.strip_prefix("pando_not_found: ") {
-        return lifecycle_error(404, "pando_not_found", value);
-    }
-    if let Some(value) = detail.strip_prefix("operation_in_progress: ") {
-        return lifecycle_error(409, "operation_in_progress", value);
-    }
-    if let Some(value) = detail.strip_prefix("resource_exhausted: ") {
-        return lifecycle_error(429, "resource_exhausted", value);
-    }
-    if let Some(value) = detail.strip_prefix("internal_error: ") {
-        return lifecycle_error(500, "internal_error", value);
-    }
-    lifecycle_error(500, "internal_error", &detail)
+    lifecycle_error(500, "internal_error", &error.to_string())
 }
 
 pub fn handle_lifecycle_load_pando(

@@ -910,6 +910,35 @@ kind = "child"
     }
 
     #[test]
+    fn daemon_sources_do_not_emit_legacy_lifecycle_error_prefix_strings() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let files = [
+            "src/commands/mother/daemon/dispatch.rs",
+            "src/commands/mother/daemon/startup.rs",
+            "src/commands/mother/daemon/health.rs",
+        ];
+        let forbidden = [
+            "invalid_request: ",
+            "child_not_found: ",
+            "pando_not_found: ",
+            "operation_in_progress: ",
+            "resource_exhausted: ",
+            "internal_error: ",
+        ];
+
+        for rel_path in files {
+            let content = std::fs::read_to_string(root.join(rel_path))
+                .unwrap_or_else(|e| panic!("read {rel_path}: {e}"));
+            for marker in forbidden {
+                assert!(
+                    !content.contains(marker),
+                    "{rel_path} contains legacy lifecycle error marker: {marker}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn typed_wiring_unknown_from_emits_deny_audit_event() {
         with_temp_project(|project_root| {
             let runtime_store = patina::mother::MotherRuntimeStore::new(
