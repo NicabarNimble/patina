@@ -22,6 +22,7 @@ related:
   - layer/surface/build/refactor/mother-http-api-module-split/SPEC.md
   - layer/surface/build/refactor/child-typed-conversion-boundary/SPEC.md
   - layer/surface/build/refactor/typed-operation-identity-hardening/SPEC.md
+  - layer/surface/build/fix/spec-create-transaction-boundary/SPEC.md
 exit_criteria:
   - id: drup1-archive-fix-landed
     text: "`fix/spec-archive-read-path` is complete and archived-spec show/check behavior is restored with deterministic tests."

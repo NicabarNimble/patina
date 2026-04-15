@@ -28,6 +28,7 @@ making claims about how something was designed.
 - [cloudflare-worker-child](feat/cloudflare-worker-child/SPEC.md) — Patina child as Cloudflare Worker
 - [patina-durable-backup](feat/patina-durable-backup/SPEC.md) — durable backup system
 - [wit-deps-wasi-alignment](fix/wit-deps-wasi-alignment/SPEC.md) — replace flattened WASI P2 deps with upstream multi-file packages (io done, http/clocks/filesystem pending)
+- [spec-create-transaction-boundary](fix/spec-create-transaction-boundary/SPEC.md) — harden `spec create` fs/git/db failure boundaries with explicit invariants and compensation
 - [engine-consolidate](refactor/engine-consolidate/SPEC.md) — merge PipelineEngine + KnowledgeChildEngine
 - [interface-redesign](refactor/interface-redesign/SPEC.md) — Mother-managed interface registry, ephemeral projection, skill system (16 criteria)
 - [main-command-router-split](refactor/main-command-router-split/SPEC.md) — decompose top-level CLI dispatch into command-family modules
