@@ -23,7 +23,7 @@ exit_criteria:
     text: "Refactor introduces no new command features/flags."
     checked: true
   - id: mcrs4-tests
-    text: "Deterministic routing tests validate old/new dispatch equivalence for selected command payloads."
+    text: "Deterministic routing tests plus CLI integration parity tests validate family dispatch behavior for representative mother/spec/scrape/measure/project commands."
     checked: true
 ---
 
@@ -57,6 +57,7 @@ Recover Unix-style command composition by decomposing top-level routing into foc
 ```bash
 cargo check -p patina-ai
 cargo test -p patina-ai main_dispatch::tests -- --nocapture
+cargo test -p patina-ai --test main_router_dispatch_parity -- --nocapture
 cargo run -q -- mother --help
 cargo run -q -- spec --help
 cargo run -q -- scrape --help
