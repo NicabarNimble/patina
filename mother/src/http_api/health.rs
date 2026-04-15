@@ -71,7 +71,7 @@ struct ChildHealthJson {
     status: String,
 }
 
-pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
+pub fn handle_health(runtime: &(impl HealthApi + ?Sized)) -> HttpResponse {
     let children: Vec<ChildHealthJson> = runtime
         .health_all()
         .into_iter()
@@ -169,7 +169,7 @@ pub fn handle_health(runtime: &dyn ApiRuntime) -> HttpResponse {
     )
 }
 
-pub fn handle_version(runtime: &dyn ApiRuntime) -> HttpResponse {
+pub fn handle_version(runtime: &(impl HealthApi + ?Sized)) -> HttpResponse {
     HttpResponse::json(
         200,
         &serde_json::json!({

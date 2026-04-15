@@ -34,7 +34,10 @@ fn default_rivet_dispatch_args() -> serde_json::Value {
     serde_json::json!([])
 }
 
-pub fn handle_rivet_dispatch(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
+pub fn handle_rivet_dispatch(
+    request: &HttpRequest,
+    runtime: &(impl RivetApi + ?Sized),
+) -> HttpResponse {
     if request.body.is_empty() {
         return super::lifecycle::lifecycle_error(400, "invalid_request", "missing request body");
     }

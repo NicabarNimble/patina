@@ -2,7 +2,10 @@ use patina_protocol::{BuiltinChild, BuiltinChildAction, BuiltinChildRequest};
 
 use super::*;
 
-pub fn handle_child_request(request: &HttpRequest, runtime: &dyn ApiRuntime) -> HttpResponse {
+pub fn handle_child_request(
+    request: &HttpRequest,
+    runtime: &(impl ChildApi + ?Sized),
+) -> HttpResponse {
     let parts: Vec<&str> = request.path[1..].split('/').collect();
     if parts.len() != 3 {
         return json_error(400, "Expected /child/{name}/{action}");

@@ -31,7 +31,7 @@ fn default_typed_history_limit() -> usize {
 
 pub fn handle_inspector_typed_calls(
     request: &HttpRequest,
-    runtime: &dyn ApiRuntime,
+    runtime: &(impl InspectorApi + ?Sized),
 ) -> HttpResponse {
     let body = if request.body.is_empty() {
         TypedCallHistoryRequest::default()
