@@ -21,10 +21,10 @@ beliefs:
 exit_criteria:
 - id: isa1-launch-join-contract
   text: '`patina ai <interface>` follows 0/1/many rule: none=start, one=attach, many=prompt in TTY and fail-closed in non-interactive mode.'
-  checked: false
+  checked: true
 - id: isa2-no-new-flag-surface
   text: No new primary session-selection flags are introduced for this refactor; existing `--session` remains explicit override.
-  checked: false
+  checked: true
 - id: isa3-session-contained-durable-object
   text: Session is defined as a contained durable object with stable identity, lifecycle, and artifact references.
   checked: false
@@ -33,7 +33,7 @@ exit_criteria:
   checked: false
 - id: isa5-claude-flow-skills-intact
   text: Claude user flow and skill design remain intact; changes only ensure clean integration with session/tmux infrastructure.
-  checked: false
+  checked: true
 - id: isa6-pi-artifact-path
   text: PI has first-class session artifact creation and lifecycle updates wired through the same session object contract.
   checked: false
@@ -57,22 +57,22 @@ exit_criteria:
   checked: false
 - id: isa13-structured-yaml-frontmatter
   text: Claude and PI artifacts both use the canonical structured YAML frontmatter schema.
-  checked: false
+  checked: true
 - id: isa14-tmux-session-state-parity
   text: Claude and PI both integrate with the same tmux session-state infrastructure (lane binding, lookup, teardown semantics).
   checked: false
 - id: isa15-programmatic-ingest-frame-lock
   text: 'Session markdown frame is locked for programmatic ingestion: canonical YAML frontmatter keys and canonical section headings/order remain stable across Claude and PI.'
-  checked: false
+  checked: true
 - id: isa16-one-shot-cutover
   text: Migration mechanics are short-lived for this implementation session only; no long-lived shadow/dual-write migration mode remains after cutover.
   checked: false
 - id: isa17-spec-bound-session-contract
   text: Each session is explicitly bound to a work spec id and carries a stable continuity uid across restarts/takeovers.
-  checked: false
+  checked: true
 - id: isa18-user-verified-successor-flow
   text: When a prior session dies, successor session creation requires explicit user verification and records lineage in structured metadata.
-  checked: false
+  checked: true
 validated_against_commit: b78d1e19
 last_freshness_check: 2026-04-16
 freshness_scope:
@@ -424,6 +424,14 @@ This protocol is temporary and applies only while wiring this refactor today. It
    - lane identity/teardown alignment,
    - remove temporary migration scaffolding,
    - tests, docs, and local WIP reconciliation
+
+### Phase Progress (2026-04-16)
+
+- **Completed:** Frame lock validators + canonical heading discipline in session writes.
+- **Completed:** `work_spec`/`continuity_uid` frontmatter wiring and default hinting from active spec.
+- **Completed:** interactive many-session chooser + user-verified successor takeover path.
+- **Completed:** session-target tmux lane naming with legacy-lane teardown fallback.
+- **In progress:** PI distill lifecycle parity (start/end metadata correlation still to harden).
 
 ## Build Readiness
 
