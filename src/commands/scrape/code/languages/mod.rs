@@ -60,3 +60,18 @@ impl Language {
         Some(lang)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Language;
+
+    #[test]
+    fn from_extension_maps_mjs_to_javascript() {
+        assert_eq!(Language::from_extension("mjs"), Some(Language::JavaScript));
+    }
+
+    #[test]
+    fn from_extension_unknown_is_fail_closed() {
+        assert_eq!(Language::from_extension("not-a-real-ext"), None);
+    }
+}

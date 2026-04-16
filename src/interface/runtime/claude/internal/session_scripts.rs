@@ -8,18 +8,7 @@ use std::fs;
 use std::path::Path;
 
 use super::paths;
-
-// Embed command definitions from resources
-const SESSION_START_MD: &str = include_str!("../../../../../resources/claude/session-start.md");
-const SESSION_UPDATE_MD: &str = include_str!("../../../../../resources/claude/session-update.md");
-const SESSION_NOTE_MD: &str = include_str!("../../../../../resources/claude/session-note.md");
-const SESSION_END_MD: &str = include_str!("../../../../../resources/claude/session-end.md");
-
-// Embed patina-review command from resources
-const PATINA_REVIEW_MD: &str = include_str!("../../../../../resources/claude/patina-review.md");
-
-// Embed /spec skill from resources
-const SPEC_MD: &str = include_str!("../../../../../resources/claude/spec.md");
+use crate::mother::skills;
 
 fn wrapper_start() -> String {
     "#!/bin/bash\nexec env PATINA_AI_INTERFACE=claude patina ai session start --json --interface claude \"$@\"\n".to_string()
@@ -55,16 +44,46 @@ pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     write_script(&bin_path.join("session-end.sh"), &wrapper_end())?;
 
     // Deploy command definitions
-    fs::write(commands_path.join("session-start.md"), SESSION_START_MD)?;
-    fs::write(commands_path.join("session-update.md"), SESSION_UPDATE_MD)?;
-    fs::write(commands_path.join("session-note.md"), SESSION_NOTE_MD)?;
-    fs::write(commands_path.join("session-end.md"), SESSION_END_MD)?;
+    fs::write(
+        commands_path.join("session-start.md"),
+        skills::skill_content("claude", "session-start")
+            .and_then(|content| content.files.first().map(|file| file.bytes))
+            .unwrap_or_default(),
+    )?;
+    fs::write(
+        commands_path.join("session-update.md"),
+        skills::skill_content("claude", "session-update")
+            .and_then(|content| content.files.first().map(|file| file.bytes))
+            .unwrap_or_default(),
+    )?;
+    fs::write(
+        commands_path.join("session-note.md"),
+        skills::skill_content("claude", "session-note")
+            .and_then(|content| content.files.first().map(|file| file.bytes))
+            .unwrap_or_default(),
+    )?;
+    fs::write(
+        commands_path.join("session-end.md"),
+        skills::skill_content("claude", "session-end")
+            .and_then(|content| content.files.first().map(|file| file.bytes))
+            .unwrap_or_default(),
+    )?;
 
     // patina-review command (no shell script, just prompt)
-    fs::write(commands_path.join("patina-review.md"), PATINA_REVIEW_MD)?;
+    fs::write(
+        commands_path.join("patina-review.md"),
+        skills::skill_content("claude", "patina-review")
+            .and_then(|content| content.files.first().map(|file| file.bytes))
+            .unwrap_or_default(),
+    )?;
 
     // /spec skill (no shell script, just prompt — uses MCP tools)
-    fs::write(commands_path.join("spec.md"), SPEC_MD)?;
+    fs::write(
+        commands_path.join("spec.md"),
+        skills::skill_content("claude", "spec")
+            .and_then(|content| content.files.first().map(|file| file.bytes))
+            .unwrap_or_default(),
+    )?;
 
     Ok(())
 }

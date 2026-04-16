@@ -35,10 +35,10 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     }
 
-    let patina_config = paths::project::config_path(&project_path);
+    let is_patina_project = project::is_patina_project(&project_path);
     let interface_name: String;
 
-    if !patina_config.exists() {
+    if !is_patina_project {
         if options.auto_init {
             match prompt_are_you_lost(&project_path, explicit_interface.as_deref())? {
                 Some(selected) => {
@@ -50,7 +50,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
             }
         } else {
             bail!(
-                "Not a patina project (no .patina/ directory).\n\
+                "Not a patina project (expected .patina/config.toml and layer/).\n\
                  Run `patina init .` first."
             );
         }
@@ -85,7 +85,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         interface_name,
         title: None,
         requested_session: None,
-        persona: None,
+        voice: None,
         path: Some(project_path.display().to_string()),
         set_default: false,
         tmux: false,

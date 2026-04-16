@@ -3177,7 +3177,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "patina-ai"
-version = "0.49.0"
+version = "0.61.12"
 dependencies = [
  "anyhow",
  "approx",
@@ -3229,10 +3229,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-ai-adapter-ce-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-adapter-df-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-adapter-fsm-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-adapter-lc-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-adapter-rw-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-adapter-se-pando"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
 name = "patina-ai-child-belief-verifier"
 version = "0.1.0"
 dependencies = [
- "patina-sdk",
+ "patina-sdk-legacy",
  "serde",
  "serde_json",
 ]
@@ -3242,6 +3284,7 @@ name = "patina-ai-child-content-extractor"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "patina-sdk",
  "sha2",
  "uuid",
  "wit-bindgen 0.41.0",
@@ -3251,6 +3294,7 @@ dependencies = [
 name = "patina-ai-child-dedup-filter"
 version = "0.1.0"
 dependencies = [
+ "patina-sdk",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3258,7 +3302,7 @@ dependencies = [
 name = "patina-ai-child-doctor"
 version = "0.1.0"
 dependencies = [
- "patina-sdk",
+ "patina-sdk-legacy",
  "serde_json",
 ]
 
@@ -3267,6 +3311,7 @@ name = "patina-ai-child-file-system-monitor"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "patina-sdk",
  "sha2",
  "wit-bindgen 0.41.0",
 ]
@@ -3276,17 +3321,27 @@ name = "patina-ai-child-lakehouse-catalog"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "patina-sdk",
  "wit-bindgen 0.41.0",
 ]
 
 [[package]]
-name = "patina-ai-child-record-writer"
+name = "patina-ai-child-legacy-typed-bridge"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-ai-child-parquet-writer"
 version = "0.1.0"
 dependencies = [
  "arrow-array 55.2.0",
  "arrow-schema 55.2.0",
  "chrono",
  "parquet",
+ "patina-sdk",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3294,6 +3349,7 @@ dependencies = [
 name = "patina-ai-child-schema-enforcer"
 version = "0.1.0"
 dependencies = [
+ "patina-sdk",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3301,7 +3357,7 @@ dependencies = [
 name = "patina-ai-child-session-writer"
 version = "0.1.0"
 dependencies = [
- "patina-sdk",
+ "patina-sdk-legacy",
  "serde_json",
 ]
 
@@ -3309,7 +3365,7 @@ dependencies = [
 name = "patina-ai-child-spec-manager"
 version = "0.1.0"
 dependencies = [
- "patina-sdk",
+ "patina-sdk-legacy",
  "serde_json",
 ]
 
@@ -3327,6 +3383,13 @@ dependencies = [
 
 [[package]]
 name = "patina-sdk"
+version = "0.21.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-sdk-legacy"
 version = "0.21.0"
 dependencies = [
  "serde",

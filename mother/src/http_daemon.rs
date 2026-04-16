@@ -6,6 +6,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::microserver;
+use uuid::Uuid;
 
 pub const DEFAULT_MAX_BODY_SIZE: usize = 1_048_576;
 
@@ -146,6 +147,18 @@ impl HttpResponse {
         self.headers.push((name.to_string(), value.to_string()));
         self
     }
+
+    pub fn ensure_header(mut self, name: &str, value: &str) -> Self {
+        let needle = name.to_ascii_lowercase();
+        if !self
+            .headers
+            .iter()
+            .any(|(k, _)| k.to_ascii_lowercase() == needle)
+        {
+            self.headers.push((name.to_string(), value.to_string()));
+        }
+        self
+    }
 }
 
 pub fn json_error(status: u16, message: &str) -> HttpResponse {
@@ -180,15 +193,29 @@ pub fn handle_connection(
     max_body_size: usize,
     handler: &dyn Fn(HttpRequest) -> HttpResponse,
 ) {
+    let started = Instant::now();
     let req = match microserver::read_request(stream) {
         Some(Ok(req)) => from_micro(req),
         Some(Err(msg)) => {
-            let resp = to_micro(with_security_headers(json_error(400, &msg)));
+            let resp = to_micro(
+                with_security_headers(json_error(400, &msg))
+                    .ensure_header("X-Request-Id", &Uuid::new_v4().to_string()),
+            );
             microserver::write_response(stream, &resp);
             return;
         }
         None => return,
     };
+
+    let request_id = req
+        .header("x-request-id")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    let method = req.method.clone();
+    let path = req.path.clone();
 
     let resp = if req.body.len() > max_body_size {
         with_security_headers(json_error(413, "Request too large"))
@@ -203,11 +230,24 @@ pub fn handle_connection(
                 } else {
                     "unknown panic payload".to_string()
                 };
-                tracing::error!(panic_message, "http handler panicked");
+                tracing::error!(panic_message, request_id = %request_id, "http handler panicked");
                 with_security_headers(json_error(500, "internal server error"))
             }
         }
-    };
+    }
+    .ensure_header("X-Request-Id", &request_id);
+
+    let latency_ms = started.elapsed().as_millis() as u64;
+    tracing::info!(
+        event = "http_request",
+        request_id = %request_id,
+        method = %method,
+        path = %path,
+        status = resp.status,
+        latency_ms,
+        response_bytes = resp.body.len(),
+        "http request handled"
+    );
 
     microserver::write_response(stream, &to_micro(resp));
 }
@@ -228,16 +268,19 @@ pub fn accept_loop_tcp(
         match listener.accept() {
             Ok((mut stream, _)) => {
                 if shutdown_requested.load(Ordering::Relaxed) {
-                    let shutting_down = to_micro(with_security_headers(json_error(
-                        503,
-                        "Server shutting down",
-                    )));
+                    let shutting_down = to_micro(
+                        with_security_headers(json_error(503, "Server shutting down"))
+                            .ensure_header("X-Request-Id", &Uuid::new_v4().to_string()),
+                    );
                     microserver::write_response(&mut stream, &shutting_down);
                     let _ = stream.shutdown(Shutdown::Write);
                     continue;
                 }
                 let Some(permit) = pool.try_acquire() else {
-                    let busy = to_micro(with_security_headers(json_error(503, "Server busy")));
+                    let busy = to_micro(
+                        with_security_headers(json_error(503, "Server busy"))
+                            .ensure_header("X-Request-Id", &Uuid::new_v4().to_string()),
+                    );
                     microserver::write_response(&mut stream, &busy);
                     let _ = stream.shutdown(Shutdown::Write);
                     continue;
@@ -266,16 +309,60 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
-    fn send_request(addr: SocketAddr, path: &str) -> String {
+    fn send_request_with_headers(addr: SocketAddr, path: &str, headers: &[(&str, &str)]) -> String {
         let mut stream = TcpStream::connect(addr).unwrap();
-        let request =
-            format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n");
+        let mut request =
+            format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n");
+        for (name, value) in headers {
+            request.push_str(name);
+            request.push_str(": ");
+            request.push_str(value);
+            request.push_str("\r\n");
+        }
+        request.push_str("\r\n");
         stream.write_all(request.as_bytes()).unwrap();
         let _ = stream.shutdown(Shutdown::Write);
 
         let mut bytes = Vec::new();
         stream.read_to_end(&mut bytes).unwrap();
         String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    fn send_request(addr: SocketAddr, path: &str) -> String {
+        send_request_with_headers(addr, path, &[])
+    }
+
+    #[test]
+    fn request_id_header_is_propagated() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handler: Arc<dyn Fn(HttpRequest) -> HttpResponse + Send + Sync> =
+            Arc::new(|_| HttpResponse::json(200, &serde_json::json!({"ok": true})));
+
+        let server = std::thread::spawn(move || {
+            for stream in listener.incoming().take(2) {
+                let mut stream = stream.unwrap();
+                handle_connection(&mut stream, DEFAULT_MAX_BODY_SIZE, handler.as_ref());
+                let _ = stream.shutdown(Shutdown::Write);
+            }
+        });
+
+        let propagated =
+            send_request_with_headers(addr, "/ok", &[("X-Request-Id", "test-request-id-123")]);
+        assert!(
+            propagated.contains("X-Request-Id: test-request-id-123"),
+            "response missing propagated request id: {propagated}"
+        );
+
+        let generated = send_request(addr, "/ok");
+        assert!(
+            generated
+                .lines()
+                .any(|line| line.starts_with("X-Request-Id: ")),
+            "response missing generated request id: {generated}"
+        );
+
+        server.join().unwrap();
     }
 
     #[test]
@@ -405,16 +492,19 @@ pub fn accept_loop_uds(
         match listener.accept() {
             Ok((mut stream, _)) => {
                 if shutdown_requested.load(Ordering::Relaxed) {
-                    let shutting_down = to_micro(with_security_headers(json_error(
-                        503,
-                        "Server shutting down",
-                    )));
+                    let shutting_down = to_micro(
+                        with_security_headers(json_error(503, "Server shutting down"))
+                            .ensure_header("X-Request-Id", &Uuid::new_v4().to_string()),
+                    );
                     microserver::write_response(&mut stream, &shutting_down);
                     let _ = stream.shutdown(Shutdown::Write);
                     continue;
                 }
                 let Some(permit) = pool.try_acquire() else {
-                    let busy = to_micro(with_security_headers(json_error(503, "Server busy")));
+                    let busy = to_micro(
+                        with_security_headers(json_error(503, "Server busy"))
+                            .ensure_header("X-Request-Id", &Uuid::new_v4().to_string()),
+                    );
                     microserver::write_response(&mut stream, &busy);
                     let _ = stream.shutdown(Shutdown::Write);
                     continue;

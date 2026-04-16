@@ -29,7 +29,7 @@ Security is host-side for WASM children (host-proxied I/O — all calls go throu
 
 - [[safety-boundaries]] — user consent, project-scoped, no surprise side effects — both security models enforce these
 - [[pipes-are-processes-not-wasm]] — multi-runtime model requires dual security approach
-- [[persona-keypair-is-node-identity]] — UCAN capability tokens extend security with cryptographic scoping (future)
+- [[voice-keypair-is-node-identity]] — UCAN capability tokens extend security with cryptographic scoping (future)
 
 ## Attacks
 

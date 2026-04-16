@@ -1,0 +1,6 @@
+package patina:{{ child_name }}@0.1.0;
+
+world {{ child_name }} {
+    import wasi:logging/logging@0.1.0;
+    export patina:records/transform@0.1.0;
+}

@@ -1,16 +1,20 @@
 //! Child world — bindgen, engine, and WASM adapter.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Mutex;
 
 use anyhow::Result;
+use wasmtime::component::types::{ComponentFunc, ComponentItem};
 use wasmtime::component::{Component, Linker};
-use wasmtime::Store;
+use wasmtime::{AsContext, AsContextMut, Store};
 
-use super::{wasm_engine, ChildKind, ChildManifest, GrantedCapabilities, QueryDispatchFn};
+use super::{
+    wasm_engine, ChildIngressMode, ChildKind, ChildManifest, GrantedCapabilities, QueryDispatchFn,
+};
 use crate::mother::{
-    Child, ChildHealth, ChildRequest, ChildResponse, MotherHost, PendingEvent, TaskIntent,
-    TaskIntentKind,
+    Child, ChildCallRequest, ChildHealth, ChildRequest, ChildResponse, MotherHost, PendingEvent,
+    TaskIntent, TaskIntentKind,
 };
 
 mod bindings {
@@ -1013,6 +1017,15 @@ impl ChildEngine {
     ) -> Result<Box<dyn Child>> {
         Self::check_capabilities(manifest)?;
 
+        let exported_operations = discover_typed_component_operations(component);
+        validate_typed_operation_contract(
+            &manifest.name,
+            manifest.ingress_mode,
+            manifest.contract_default_operation.as_deref(),
+            &manifest.contract_allow_operations,
+            &exported_operations,
+        )?;
+
         let linker = Self::build_linker(manifest)?;
 
         let grants = manifest.granted_capabilities();
@@ -1065,12 +1078,39 @@ impl ChildEngine {
             active_bindings: std::collections::HashMap::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
-        let instance = bindings::Child::instantiate(&mut store, component, &linker)?;
+        let instance_pre = linker.instantiate_pre(component)?;
+        let component_instance = instance_pre.instantiate(&mut store)?;
+        let instance = bindings::Child::new(&mut store, &component_instance)?;
         instance.call_init(&mut store)?;
         let name = instance.call_name(&mut store)?;
+        let driver_mode = selected_typed_invocation_driver_mode();
+        let invocation_driver: Box<dyn InvocationDriver + Send + Sync> = match driver_mode {
+            TypedInvocationDriverMode::StrictTypedComponent => {
+                Box::new(TypedComponentInvocationDriver)
+            }
+            TypedInvocationDriverMode::CompatibilityHandleBridge => {
+                Box::new(HandleBridgeInvocationDriver)
+            }
+            TypedInvocationDriverMode::CompatibilityFailClosed => {
+                Box::new(FailClosedInvocationDriver)
+            }
+        };
+
+        tracing::info!(
+            child = %name,
+            driver = driver_mode.as_str(),
+            transitional = driver_mode.is_transitional(),
+            "typed invocation driver selected"
+        );
+
         Ok(Box::new(WasmChild {
             name,
-            inner: Mutex::new(WasmChildInner { store, instance }),
+            inner: Mutex::new(WasmChildInner {
+                store,
+                instance,
+                component_instance,
+            }),
+            invocation_driver,
         }))
     }
 }
@@ -1078,11 +1118,629 @@ impl ChildEngine {
 struct WasmChild {
     name: String,
     inner: Mutex<WasmChildInner>,
+    invocation_driver: Box<dyn InvocationDriver + Send + Sync>,
 }
 
 struct WasmChildInner {
     store: Store<HostState>,
     instance: bindings::Child,
+    component_instance: wasmtime::component::Instance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TypedInvocationErrorCode {
+    InvalidOperationId,
+    UnknownOperationExport,
+    ContractExportMismatch,
+    InvalidArgsShape,
+    ChildReturnedError,
+    ChildTrap,
+    InvalidChildJson,
+    NotImplemented,
+}
+
+impl TypedInvocationErrorCode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidOperationId => "invalid-operation-id",
+            Self::UnknownOperationExport => "unknown-operation-export",
+            Self::ContractExportMismatch => "contract-export-mismatch",
+            Self::InvalidArgsShape => "invalid-args-shape",
+            Self::ChildReturnedError => "child-returned-error",
+            Self::ChildTrap => "child-trap",
+            Self::InvalidChildJson => "invalid-child-json",
+            Self::NotImplemented => "not-implemented",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TypedInvocationError {
+    code: TypedInvocationErrorCode,
+    detail: String,
+    fields: BTreeMap<String, String>,
+}
+
+impl TypedInvocationError {
+    fn new(code: TypedInvocationErrorCode, detail: impl Into<String>) -> Self {
+        Self {
+            code,
+            detail: detail.into(),
+            fields: BTreeMap::new(),
+        }
+    }
+
+    fn with_field(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.fields.insert(key.into(), value.into());
+        self
+    }
+
+    #[cfg(test)]
+    fn code(&self) -> TypedInvocationErrorCode {
+        self.code
+    }
+
+    #[cfg(test)]
+    fn field(&self, key: &str) -> Option<&str> {
+        self.fields.get(key).map(String::as_str)
+    }
+}
+
+impl std::fmt::Display for TypedInvocationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "typed invocation {}: {}",
+            self.code.as_str(),
+            self.detail
+        )?;
+        if !self.fields.is_empty() {
+            write!(f, " (")?;
+            let mut first = true;
+            for (key, value) in &self.fields {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                first = false;
+                write!(f, "{}={}", key, value)?;
+            }
+            write!(f, ")")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for TypedInvocationError {}
+
+fn typed_invocation_error(
+    code: TypedInvocationErrorCode,
+    detail: impl std::fmt::Display,
+) -> anyhow::Error {
+    anyhow::Error::new(TypedInvocationError::new(code, detail.to_string()))
+}
+
+fn typed_invocation_error_with_fields<K, V, I>(
+    code: TypedInvocationErrorCode,
+    detail: impl Into<String>,
+    fields: I,
+) -> anyhow::Error
+where
+    K: Into<String>,
+    V: Into<String>,
+    I: IntoIterator<Item = (K, V)>,
+{
+    let mut error = TypedInvocationError::new(code, detail);
+    for (key, value) in fields {
+        error = error.with_field(key, value);
+    }
+    anyhow::Error::new(error)
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedTypedOperation {
+    operation_id: String,
+    interface: String,
+    function: String,
+    action: String,
+}
+
+const TYPED_OPERATION_ID_SHAPE: &str = "<package>:<interface>.<function>";
+
+fn is_valid_symbol_token(token: &str) -> bool {
+    !token.is_empty()
+        && token
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+fn is_valid_interface_version(version: &str) -> bool {
+    let mut parts = version.split('.');
+    let (Some(major), Some(minor), Some(patch)) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    if parts.next().is_some() {
+        return false;
+    }
+    [major, minor, patch]
+        .iter()
+        .all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()))
+}
+
+fn validate_typed_interface_identity(interface: &str, operation_id: &str) -> Result<()> {
+    let Some((package, interface_path)) = interface.split_once(':') else {
+        return Err(typed_invocation_error_with_fields(
+            TypedInvocationErrorCode::InvalidOperationId,
+            "operation id must include '<package>:<interface>' before function token",
+            [
+                ("operation_id", operation_id.to_string()),
+                ("expected_shape", TYPED_OPERATION_ID_SHAPE.to_string()),
+            ],
+        ));
+    };
+
+    if package.is_empty()
+        || interface_path.is_empty()
+        || package.contains(':')
+        || interface_path.contains(':')
+    {
+        return Err(typed_invocation_error_with_fields(
+            TypedInvocationErrorCode::InvalidOperationId,
+            "operation id has malformed package/interface section",
+            [
+                ("operation_id", operation_id.to_string()),
+                ("interface", interface.to_string()),
+                ("expected_shape", TYPED_OPERATION_ID_SHAPE.to_string()),
+            ],
+        ));
+    }
+
+    if !is_valid_symbol_token(package) {
+        return Err(typed_invocation_error_with_fields(
+            TypedInvocationErrorCode::InvalidOperationId,
+            "operation package token contains unsupported characters",
+            [
+                ("operation_id", operation_id.to_string()),
+                ("package", package.to_string()),
+            ],
+        ));
+    }
+
+    let segments = interface_path.split('/').collect::<Vec<_>>();
+    if segments.is_empty() || segments.iter().any(|segment| segment.is_empty()) {
+        return Err(typed_invocation_error_with_fields(
+            TypedInvocationErrorCode::InvalidOperationId,
+            "operation interface path must contain non-empty '/' segments",
+            [
+                ("operation_id", operation_id.to_string()),
+                ("interface", interface.to_string()),
+            ],
+        ));
+    }
+
+    for (index, segment) in segments.iter().enumerate() {
+        let is_last = index + 1 == segments.len();
+        if segment.contains('@') {
+            if !is_last || segment.matches('@').count() != 1 {
+                return Err(typed_invocation_error_with_fields(
+                    TypedInvocationErrorCode::InvalidOperationId,
+                    "versioned interface token is only allowed at the final path segment",
+                    [
+                        ("operation_id", operation_id.to_string()),
+                        ("interface", interface.to_string()),
+                        ("segment", (*segment).to_string()),
+                    ],
+                ));
+            }
+
+            let Some((name, version)) = segment.split_once('@') else {
+                return Err(typed_invocation_error_with_fields(
+                    TypedInvocationErrorCode::InvalidOperationId,
+                    "versioned interface token is malformed",
+                    [
+                        ("operation_id", operation_id.to_string()),
+                        ("segment", (*segment).to_string()),
+                    ],
+                ));
+            };
+
+            if !is_valid_symbol_token(name) || !is_valid_interface_version(version) {
+                return Err(typed_invocation_error_with_fields(
+                    TypedInvocationErrorCode::InvalidOperationId,
+                    "interface version token must be '<name>@<semver-major.minor.patch>'",
+                    [
+                        ("operation_id", operation_id.to_string()),
+                        ("segment", (*segment).to_string()),
+                    ],
+                ));
+            }
+        } else if !is_valid_symbol_token(segment) {
+            return Err(typed_invocation_error_with_fields(
+                TypedInvocationErrorCode::InvalidOperationId,
+                "operation interface segment contains unsupported characters",
+                [
+                    ("operation_id", operation_id.to_string()),
+                    ("segment", (*segment).to_string()),
+                ],
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn is_valid_function_token(function: &str) -> bool {
+    let mut chars = function.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_alphabetic() && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+fn resolve_typed_operation(operation_id: &str) -> Result<ResolvedTypedOperation> {
+    let operation_id = operation_id.trim();
+    let Some((interface, function)) = operation_id.rsplit_once('.') else {
+        return Err(typed_invocation_error_with_fields(
+            TypedInvocationErrorCode::InvalidOperationId,
+            "operation id is malformed",
+            [
+                ("operation_id", operation_id.to_string()),
+                ("expected_shape", TYPED_OPERATION_ID_SHAPE.to_string()),
+            ],
+        ));
+    };
+
+    validate_typed_interface_identity(interface, operation_id)?;
+
+    if !is_valid_function_token(function) {
+        return Err(typed_invocation_error_with_fields(
+            TypedInvocationErrorCode::InvalidOperationId,
+            "operation function token must start with a letter and only contain [A-Za-z0-9_-]",
+            [
+                ("operation_id", operation_id.to_string()),
+                ("function", function.to_string()),
+                ("expected_shape", TYPED_OPERATION_ID_SHAPE.to_string()),
+            ],
+        ));
+    }
+
+    Ok(ResolvedTypedOperation {
+        operation_id: operation_id.to_string(),
+        interface: interface.to_string(),
+        function: function.to_string(),
+        action: function.replace('_', "-"),
+    })
+}
+
+fn discover_typed_component_operations(component: &Component) -> BTreeSet<String> {
+    let mut operations = BTreeSet::new();
+    let component_type = component.component_type();
+    for (interface_name, item) in component_type.exports(wasm_engine()) {
+        let ComponentItem::ComponentInstance(instance) = item else {
+            continue;
+        };
+        for (function_name, function_item) in instance.exports(wasm_engine()) {
+            if matches!(function_item, ComponentItem::ComponentFunc(_)) {
+                operations.insert(format!("{}.{}", interface_name, function_name));
+            }
+        }
+    }
+    operations
+}
+
+fn ensure_operation_exported(
+    operation: &ResolvedTypedOperation,
+    exported_operations: &BTreeSet<String>,
+) -> Result<()> {
+    if exported_operations.contains(&operation.operation_id) {
+        return Ok(());
+    }
+
+    Err(typed_invocation_error_with_fields(
+        TypedInvocationErrorCode::UnknownOperationExport,
+        "operation is not present in discovered typed exports",
+        [
+            ("operation_id", operation.operation_id.clone()),
+            ("interface", operation.interface.clone()),
+            ("function", operation.function.clone()),
+            (
+                "exported_operation_count",
+                exported_operations.len().to_string(),
+            ),
+        ],
+    ))
+}
+
+fn validate_typed_operation_contract(
+    child_name: &str,
+    ingress_mode: ChildIngressMode,
+    contract_default_operation: Option<&str>,
+    contract_allow_operations: &[String],
+    exported_operations: &BTreeSet<String>,
+) -> Result<()> {
+    let typed_contract_present = ingress_mode != ChildIngressMode::Handle
+        || contract_default_operation.is_some()
+        || !contract_allow_operations.is_empty();
+
+    if !typed_contract_present {
+        return Ok(());
+    }
+
+    let mut declared_operations = Vec::new();
+    if let Some(default_operation) = contract_default_operation {
+        declared_operations.push(("default", default_operation));
+    }
+    for operation_id in contract_allow_operations {
+        declared_operations.push(("allow", operation_id.as_str()));
+    }
+
+    for (source, operation_id) in declared_operations {
+        let resolved = resolve_typed_operation(operation_id)?;
+        if ensure_operation_exported(&resolved, exported_operations).is_ok() {
+            continue;
+        }
+
+        return Err(typed_invocation_error_with_fields(
+            TypedInvocationErrorCode::ContractExportMismatch,
+            "typed contract operation is not exported by component",
+            [
+                ("child", child_name.to_string()),
+                ("source", source.to_string()),
+                ("operation_id", operation_id.to_string()),
+                (
+                    "exported_operation_count",
+                    exported_operations.len().to_string(),
+                ),
+            ],
+        ));
+    }
+
+    Ok(())
+}
+
+/// Strict typed-component mode is the canonical production path.
+/// Compatibility modes are transitional and must not redefine strict semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TypedInvocationDriverMode {
+    StrictTypedComponent,
+    CompatibilityHandleBridge,
+    CompatibilityFailClosed,
+}
+
+impl TypedInvocationDriverMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::StrictTypedComponent => "typed-component",
+            Self::CompatibilityHandleBridge => "compat-handle-bridge",
+            Self::CompatibilityFailClosed => "compat-fail-closed",
+        }
+    }
+
+    fn is_transitional(self) -> bool {
+        !matches!(self, Self::StrictTypedComponent)
+    }
+}
+
+fn typed_invocation_driver_mode_from_env(
+    fail_closed: Option<&str>,
+    explicit_driver: Option<&str>,
+) -> TypedInvocationDriverMode {
+    if fail_closed == Some("1") {
+        TypedInvocationDriverMode::CompatibilityFailClosed
+    } else if explicit_driver == Some("handle-bridge") {
+        TypedInvocationDriverMode::CompatibilityHandleBridge
+    } else {
+        TypedInvocationDriverMode::StrictTypedComponent
+    }
+}
+
+fn selected_typed_invocation_driver_mode() -> TypedInvocationDriverMode {
+    typed_invocation_driver_mode_from_env(
+        std::env::var("PATINA_TYPED_CALL_FAIL_CLOSED")
+            .ok()
+            .as_deref(),
+        std::env::var("PATINA_TYPED_CALL_DRIVER").ok().as_deref(),
+    )
+}
+
+fn encode_typed_args_for_handle(args: &serde_json::Value) -> Result<String> {
+    let Some(list) = args.as_array() else {
+        return Err(typed_invocation_error(
+            TypedInvocationErrorCode::InvalidArgsShape,
+            "typed call args must be a JSON array",
+        ));
+    };
+
+    match list.len() {
+        0 => Ok("{}".to_string()),
+        1 => serde_json::to_string(&list[0])
+            .map_err(|e| typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, e)),
+        _ => serde_json::to_string(args)
+            .map_err(|e| typed_invocation_error(TypedInvocationErrorCode::InvalidArgsShape, e)),
+    }
+}
+
+trait InvocationDriver {
+    fn call(
+        &self,
+        child_name: &str,
+        inner: &mut WasmChildInner,
+        request: &ChildCallRequest,
+    ) -> Result<ChildResponse>;
+}
+
+struct FailClosedInvocationDriver;
+
+impl InvocationDriver for FailClosedInvocationDriver {
+    fn call(
+        &self,
+        child_name: &str,
+        _inner: &mut WasmChildInner,
+        request: &ChildCallRequest,
+    ) -> Result<ChildResponse> {
+        Err(typed_invocation_error(
+            TypedInvocationErrorCode::NotImplemented,
+            format!(
+                "typed call not implemented for child '{}' operation '{}'",
+                child_name, request.operation_id
+            ),
+        ))
+    }
+}
+
+struct HandleBridgeInvocationDriver;
+
+impl InvocationDriver for HandleBridgeInvocationDriver {
+    fn call(
+        &self,
+        child_name: &str,
+        inner: &mut WasmChildInner,
+        request: &ChildCallRequest,
+    ) -> Result<ChildResponse> {
+        let op = resolve_typed_operation(&request.operation_id)?;
+        let payload_json = encode_typed_args_for_handle(&request.args)?;
+        let WasmChildInner {
+            store, instance, ..
+        } = inner;
+
+        match instance.call_handle(store, &op.action, &payload_json) {
+            Ok(Ok(json)) => serde_json::from_str(&json)
+                .map(|payload| ChildResponse { payload })
+                .map_err(|error| {
+                    typed_invocation_error(
+                        TypedInvocationErrorCode::InvalidChildJson,
+                        format!(
+                            "child '{}' operation '{}' returned invalid JSON: {}",
+                            child_name, request.operation_id, error
+                        ),
+                    )
+                }),
+            Ok(Err(error)) => Err(typed_invocation_error(
+                TypedInvocationErrorCode::ChildReturnedError,
+                format!(
+                    "child '{}' operation '{}' ({}/{}) failed: {}",
+                    child_name, request.operation_id, op.interface, op.function, error
+                ),
+            )),
+            Err(error) => Err(typed_invocation_error(
+                TypedInvocationErrorCode::ChildTrap,
+                format!(
+                    "child '{}' operation '{}' trapped: {}",
+                    child_name, request.operation_id, error
+                ),
+            )),
+        }
+    }
+}
+
+struct TypedComponentInvocationDriver;
+
+fn lookup_typed_component_func(
+    inner: &mut WasmChildInner,
+    op: &ResolvedTypedOperation,
+) -> Result<wasmtime::component::Func> {
+    let WasmChildInner {
+        store,
+        component_instance,
+        ..
+    } = inner;
+
+    let Some(interface_idx) =
+        component_instance.get_export_index(store.as_context_mut(), None, &op.interface)
+    else {
+        return Err(typed_invocation_error_with_fields(
+            TypedInvocationErrorCode::UnknownOperationExport,
+            "operation interface was not exported by component",
+            [
+                ("operation_id", op.operation_id.clone()),
+                ("interface", op.interface.clone()),
+                ("function", op.function.clone()),
+            ],
+        ));
+    };
+
+    let Some(function_idx) = component_instance.get_export_index(
+        store.as_context_mut(),
+        Some(&interface_idx),
+        &op.function,
+    ) else {
+        return Err(typed_invocation_error_with_fields(
+            TypedInvocationErrorCode::UnknownOperationExport,
+            "operation function was not exported under interface",
+            [
+                ("operation_id", op.operation_id.clone()),
+                ("interface", op.interface.clone()),
+                ("function", op.function.clone()),
+            ],
+        ));
+    };
+
+    component_instance
+        .get_func(store.as_context_mut(), function_idx)
+        .ok_or_else(|| {
+            typed_invocation_error_with_fields(
+                TypedInvocationErrorCode::UnknownOperationExport,
+                "resolved export exists but is not a component function",
+                [
+                    ("operation_id", op.operation_id.clone()),
+                    ("interface", op.interface.clone()),
+                    ("function", op.function.clone()),
+                ],
+            )
+        })
+}
+
+fn lower_typed_args_for_component(
+    args: &serde_json::Value,
+    ty: &ComponentFunc,
+) -> Result<Vec<wasmtime::component::Val>> {
+    super::typed_conversion::lower_typed_args_for_component(args, ty)
+}
+
+fn lift_component_results_to_json(
+    values: &[wasmtime::component::Val],
+    ty: &ComponentFunc,
+) -> Result<serde_json::Value> {
+    super::typed_conversion::lift_component_results_to_json(values, ty)
+}
+
+impl InvocationDriver for TypedComponentInvocationDriver {
+    fn call(
+        &self,
+        child_name: &str,
+        inner: &mut WasmChildInner,
+        request: &ChildCallRequest,
+    ) -> Result<ChildResponse> {
+        let op = resolve_typed_operation(&request.operation_id)?;
+        let func = lookup_typed_component_func(inner, &op)?;
+
+        let WasmChildInner { store, .. } = inner;
+        let func_ty = func.ty(store.as_context());
+        let lowered_args = lower_typed_args_for_component(&request.args, &func_ty)?;
+
+        let mut results = vec![wasmtime::component::Val::Bool(false); func_ty.results().len()];
+        func.call(store.as_context_mut(), &lowered_args, &mut results)
+            .map_err(|error| {
+                typed_invocation_error(
+                    TypedInvocationErrorCode::ChildTrap,
+                    format!(
+                        "child '{}' operation '{}' trapped: {}",
+                        child_name, request.operation_id, error
+                    ),
+                )
+            })?;
+        func.post_return(store.as_context_mut()).map_err(|error| {
+            typed_invocation_error(
+                TypedInvocationErrorCode::ChildTrap,
+                format!(
+                    "child '{}' operation '{}' post-return failed: {}",
+                    child_name, request.operation_id, error
+                ),
+            )
+        })?;
+
+        let payload = lift_component_results_to_json(&results, &func_ty)?;
+        Ok(ChildResponse { payload })
+    }
 }
 
 impl Child for WasmChild {
@@ -1092,7 +1750,9 @@ impl Child for WasmChild {
 
     fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmChildInner { store, instance } = &mut *inner;
+        let WasmChildInner {
+            store, instance, ..
+        } = &mut *inner;
         match instance.call_on_load(store)? {
             Ok(()) => Ok(()),
             Err(e) => Err(anyhow::anyhow!("WASM on_load failed: {}", e)),
@@ -1101,13 +1761,17 @@ impl Child for WasmChild {
 
     fn on_unload(&mut self) {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmChildInner { store, instance } = &mut *inner;
+        let WasmChildInner {
+            store, instance, ..
+        } = &mut *inner;
         let _ = instance.call_on_unload(store);
     }
 
     fn health(&self) -> ChildHealth {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmChildInner { store, instance } = &mut *inner;
+        let WasmChildInner {
+            store, instance, ..
+        } = &mut *inner;
         match instance.call_health(store) {
             Ok(h) => {
                 let reason = h.reason.unwrap_or_default();
@@ -1137,7 +1801,9 @@ impl Child for WasmChild {
 
     fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmChildInner { store, instance } = &mut *inner;
+        let WasmChildInner {
+            store, instance, ..
+        } = &mut *inner;
         let payload_json = serde_json::to_string(&request.payload)?;
         match instance.call_handle(store, &request.action, &payload_json)? {
             Ok(json) => Ok(ChildResponse {
@@ -1147,9 +1813,16 @@ impl Child for WasmChild {
         }
     }
 
+    fn call(&self, request: &ChildCallRequest) -> Result<ChildResponse> {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        self.invocation_driver.call(&self.name, &mut inner, request)
+    }
+
     fn drain(&mut self, limit: u32) -> Result<Vec<PendingEvent>> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmChildInner { store, instance } = &mut *inner;
+        let WasmChildInner {
+            store, instance, ..
+        } = &mut *inner;
         match instance.call_drain(store, limit)? {
             Ok(events) => Ok(events
                 .into_iter()
@@ -1168,7 +1841,9 @@ impl Child for WasmChild {
 
     fn tick(&mut self) -> Vec<TaskIntent> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
-        let WasmChildInner { store, instance } = &mut *inner;
+        let WasmChildInner {
+            store, instance, ..
+        } = &mut *inner;
         match instance.call_tick(store) {
             Ok(intents) => intents
                 .into_iter()
@@ -1215,8 +1890,15 @@ impl Child for WasmChild {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::bindings::HostState;
-    use super::GrantedCapabilities;
+    use super::{
+        encode_typed_args_for_handle, ensure_operation_exported, resolve_typed_operation,
+        typed_invocation_driver_mode_from_env, validate_typed_operation_contract, ChildIngressMode,
+        GrantedCapabilities, TypedInvocationDriverMode, TypedInvocationError,
+        TypedInvocationErrorCode,
+    };
 
     fn host_state_with_grants(grants: GrantedCapabilities) -> HostState {
         HostState {
@@ -1231,6 +1913,11 @@ mod tests {
             runtime: crate::mother::MotherRuntimeStore::default(),
             active_bindings: std::collections::HashMap::new(),
         }
+    }
+
+    fn typed_error(err: &anyhow::Error) -> &TypedInvocationError {
+        err.downcast_ref::<TypedInvocationError>()
+            .expect("expected typed invocation error payload")
     }
 
     #[test]
@@ -1264,5 +1951,134 @@ mod tests {
         let err = <HostState as super::bindings::patina::git::git::Host>::diff_stat(&mut state)
             .unwrap_err();
         assert!(err.contains("git toy not granted"), "got: {}", err);
+    }
+
+    #[test]
+    fn resolve_typed_operation_accepts_canonical_versioned_identity() {
+        let resolved = resolve_typed_operation("patina:watch/control@0.1.0.status")
+            .expect("operation id should resolve");
+        assert_eq!(resolved.interface, "patina:watch/control@0.1.0");
+        assert_eq!(resolved.function, "status");
+        assert_eq!(resolved.action, "status");
+    }
+
+    #[test]
+    fn resolve_typed_operation_keeps_compat_action_normalization_for_handle_bridge() {
+        let resolved = resolve_typed_operation("patina:watch/control.scan_now")
+            .expect("operation id should resolve");
+        assert_eq!(resolved.function, "scan_now");
+        assert_eq!(resolved.action, "scan-now");
+    }
+
+    #[test]
+    fn resolve_typed_operation_rejects_invalid_id_shape() {
+        let err = resolve_typed_operation("patina:watch/control")
+            .expect_err("missing function should fail closed");
+        let typed = typed_error(&err);
+        assert_eq!(typed.code(), TypedInvocationErrorCode::InvalidOperationId);
+        assert_eq!(
+            typed.field("expected_shape"),
+            Some("<package>:<interface>.<function>")
+        );
+    }
+
+    #[test]
+    fn resolve_typed_operation_rejects_missing_package_separator() {
+        let err = resolve_typed_operation("patina/watch.control")
+            .expect_err("missing package separator should fail closed");
+        let typed = typed_error(&err);
+        assert_eq!(typed.code(), TypedInvocationErrorCode::InvalidOperationId);
+        assert_eq!(typed.field("operation_id"), Some("patina/watch.control"));
+    }
+
+    #[test]
+    fn ensure_operation_exported_fails_for_unknown_exact_identity() {
+        let exports = BTreeSet::from(["patina:watch/control@0.1.0.status".to_string()]);
+        let op = resolve_typed_operation("patina:watch/control@0.1.0.configure")
+            .expect("operation should parse");
+        let err = ensure_operation_exported(&op, &exports)
+            .expect_err("unknown operation should fail closed");
+
+        let typed = typed_error(&err);
+        assert_eq!(
+            typed.code(),
+            TypedInvocationErrorCode::UnknownOperationExport
+        );
+        assert_eq!(
+            typed.field("operation_id"),
+            Some("patina:watch/control@0.1.0.configure")
+        );
+    }
+
+    #[test]
+    fn validate_typed_operation_contract_rejects_allowlist_export_mismatch() {
+        let exports = BTreeSet::from(["patina:watch/control@0.1.0.status".to_string()]);
+        let err = validate_typed_operation_contract(
+            "folder-watch-actor",
+            ChildIngressMode::WitOnly,
+            None,
+            &["patina:watch/control.status".to_string()],
+            &exports,
+        )
+        .expect_err("unversioned allowlist entry should fail exact export check");
+
+        let typed = typed_error(&err);
+        assert_eq!(
+            typed.code(),
+            TypedInvocationErrorCode::ContractExportMismatch
+        );
+        assert_eq!(typed.field("source"), Some("allow"));
+        assert_eq!(
+            typed.field("operation_id"),
+            Some("patina:watch/control.status")
+        );
+    }
+
+    #[test]
+    fn typed_driver_mode_defaults_to_strict_component_mode() {
+        let mode = typed_invocation_driver_mode_from_env(None, None);
+        assert_eq!(mode, TypedInvocationDriverMode::StrictTypedComponent);
+        assert!(!mode.is_transitional());
+    }
+
+    #[test]
+    fn typed_driver_mode_marks_compat_modes_as_transitional() {
+        let bridge = typed_invocation_driver_mode_from_env(None, Some("handle-bridge"));
+        assert_eq!(bridge, TypedInvocationDriverMode::CompatibilityHandleBridge);
+        assert!(bridge.is_transitional());
+
+        let fail_closed = typed_invocation_driver_mode_from_env(Some("1"), None);
+        assert_eq!(
+            fail_closed,
+            TypedInvocationDriverMode::CompatibilityFailClosed
+        );
+        assert!(fail_closed.is_transitional());
+    }
+
+    #[test]
+    fn encode_typed_args_for_handle_requires_array() {
+        let err = encode_typed_args_for_handle(&serde_json::json!({"foo": "bar"}))
+            .expect_err("object args should be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains(TypedInvocationErrorCode::InvalidArgsShape.as_str()),
+            "got: {}",
+            message
+        );
+    }
+
+    #[test]
+    fn encode_typed_args_for_handle_supports_zero_one_many_arity() {
+        let zero = encode_typed_args_for_handle(&serde_json::json!([])).expect("zero-arity");
+        assert_eq!(zero, "{}");
+
+        let one = encode_typed_args_for_handle(&serde_json::json!([{"watch_path": "/input"}]))
+            .expect("one-arity");
+        assert_eq!(one, "{\"watch_path\":\"/input\"}");
+
+        let many =
+            encode_typed_args_for_handle(&serde_json::json!([{"watch_path": "/input"}, true]))
+                .expect("many-arity");
+        assert_eq!(many, "[{\"watch_path\":\"/input\"},true]");
     }
 }

@@ -115,13 +115,13 @@ impl ProjectUid {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PersonaUid(String);
+pub struct VoiceUid(String);
 
-impl PersonaUid {
+impl VoiceUid {
     pub fn new(value: impl Into<String>) -> Result<Self> {
         let value = value.into();
         if value.trim().is_empty() {
-            anyhow::bail!("persona_uid must not be empty");
+            anyhow::bail!("voice_uid must not be empty");
         }
         Ok(Self(value))
     }
@@ -154,7 +154,7 @@ pub struct MotherSessionRecord {
     pub project_uid: String,
     pub file_id: String,
     pub title: String,
-    pub persona_uid: Option<String>,
+    pub voice_uid: Option<String>,
     pub status: MotherSessionStatus,
     pub interface_kind: String,
     pub interface_name: String,
@@ -341,7 +341,7 @@ impl MotherRuntimeStore {
                 project_uid TEXT NOT NULL,
                 file_id TEXT NOT NULL UNIQUE,
                 title TEXT NOT NULL,
-                persona_uid TEXT,
+                voice_uid TEXT,
                 status TEXT NOT NULL,
                 interface_kind TEXT NOT NULL,
                 interface_name TEXT NOT NULL,
@@ -402,6 +402,16 @@ impl MotherRuntimeStore {
             "ALTER TABLE mother_sessions ADD COLUMN starting_commit TEXT",
             [],
         );
+        if !column_exists(conn, "mother_sessions", "voice_uid")?
+            && column_exists(conn, "mother_sessions", &["persona", "uid"].join("_"))?
+        {
+            let legacy_col = ["persona", "uid"].join("_");
+            let sql = format!(
+                "ALTER TABLE mother_sessions RENAME COLUMN {} TO voice_uid",
+                legacy_col
+            );
+            let _ = conn.execute(&sql, []);
+        }
         // Vocabulary migration: adapter_name → interface_name
         let _ = conn.execute(
             "ALTER TABLE mother_sessions RENAME COLUMN adapter_name TO interface_name",
@@ -1032,7 +1042,7 @@ impl MotherRuntimeStore {
         tx.execute(
             r#"
             INSERT INTO mother_sessions (
-                runtime_id, project_uid, file_id, title, persona_uid, status,
+                runtime_id, project_uid, file_id, title, voice_uid, status,
                 interface_kind, interface_name, branch, start_tag, end_tag,
                 parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
@@ -1042,7 +1052,7 @@ impl MotherRuntimeStore {
                 record.project_uid,
                 record.file_id,
                 record.title,
-                record.persona_uid,
+                record.voice_uid,
                 record.status.as_str(),
                 record.interface_kind,
                 record.interface_name,
@@ -1086,7 +1096,7 @@ impl MotherRuntimeStore {
         let conn = self.open()?;
         conn.query_row(
             r#"
-            SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
+            SELECT runtime_id, project_uid, file_id, title, voice_uid, status,
                    interface_kind, interface_name, branch, start_tag, end_tag,
                    parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
@@ -1106,7 +1116,7 @@ impl MotherRuntimeStore {
         let conn = self.open()?;
         conn.query_row(
             r#"
-            SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
+            SELECT runtime_id, project_uid, file_id, title, voice_uid, status,
                    interface_kind, interface_name, branch, start_tag, end_tag,
                    parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
@@ -1126,7 +1136,7 @@ impl MotherRuntimeStore {
         let conn = self.open()?;
         let mut stmt = conn.prepare(
             r#"
-            SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
+            SELECT runtime_id, project_uid, file_id, title, voice_uid, status,
                    interface_kind, interface_name, branch, start_tag, end_tag,
                    parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
@@ -1145,12 +1155,12 @@ impl MotherRuntimeStore {
         project_uid: &ProjectUid,
         interface_name: &str,
         interface_kind: &InterfaceKindId,
-        persona_uid: Option<&PersonaUid>,
+        voice_uid: Option<&VoiceUid>,
     ) -> Result<Option<MotherSessionRecord>> {
         let conn = self.open()?;
         conn.query_row(
             r#"
-            SELECT runtime_id, project_uid, file_id, title, persona_uid, status,
+            SELECT runtime_id, project_uid, file_id, title, voice_uid, status,
                    interface_kind, interface_name, branch, start_tag, end_tag,
                    parent_runtime_id, handoff_from_runtime_id, starting_commit, created_at, updated_at
             FROM mother_sessions
@@ -1158,7 +1168,7 @@ impl MotherRuntimeStore {
               AND status = 'active'
               AND interface_name = ?2
               AND interface_kind = ?3
-              AND ((?4 IS NULL AND persona_uid IS NULL) OR persona_uid = ?4)
+              AND ((?4 IS NULL AND voice_uid IS NULL) OR voice_uid = ?4)
             ORDER BY updated_at DESC, created_at DESC
             LIMIT 1
             "#,
@@ -1166,7 +1176,7 @@ impl MotherRuntimeStore {
                 project_uid.as_str(),
                 interface_name,
                 interface_kind.as_str(),
-                persona_uid.map(PersonaUid::as_str)
+                voice_uid.map(VoiceUid::as_str)
             ],
             map_mother_session_row,
         )
@@ -1216,7 +1226,7 @@ fn map_mother_session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MotherSes
         project_uid: row.get(1)?,
         file_id: row.get(2)?,
         title: row.get(3)?,
-        persona_uid: row.get(4)?,
+        voice_uid: row.get(4)?,
         status: MotherSessionStatus::from_db(&status),
         interface_kind: row.get(6)?,
         interface_name: row.get(7)?,
@@ -1229,6 +1239,15 @@ fn map_mother_session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MotherSes
         created_at: row.get(14)?,
         updated_at: row.get(15)?,
     })
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let pragma = format!("PRAGMA table_info({})", table);
+    let mut stmt = conn.prepare(&pragma)?;
+    let names = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(names.iter().any(|name| name == column))
 }
 
 #[cfg(test)]
@@ -1368,7 +1387,7 @@ mod tests {
             project_uid: "proj-1234".to_string(),
             file_id: "20260311-100000-ABCD".to_string(),
             title: "OpenCode session".to_string(),
-            persona_uid: None,
+            voice_uid: None,
             status: MotherSessionStatus::Active,
             interface_kind: "opencode".to_string(),
             interface_name: "opencode".to_string(),
@@ -1386,7 +1405,7 @@ mod tests {
             project_uid: "proj-1234".to_string(),
             file_id: "20260311-100001-EFGH".to_string(),
             title: "Gemini session".to_string(),
-            persona_uid: Some("persona-1".to_string()),
+            voice_uid: Some("voice-1".to_string()),
             status: MotherSessionStatus::Active,
             interface_kind: "gemini".to_string(),
             interface_name: "gemini".to_string(),
@@ -1408,8 +1427,8 @@ mod tests {
         let gemini_kind = InterfaceKindId::new("gemini").unwrap();
         let active = store.list_active_mother_sessions(&project_uid).unwrap();
         assert_eq!(active.len(), 2);
-        let persona_uid = PersonaUid::new("persona-1").unwrap();
-        let missing_persona_uid = PersonaUid::new("persona-missing").unwrap();
+        let voice_uid = VoiceUid::new("voice-1").unwrap();
+        let missing_voice_uid = VoiceUid::new("voice-missing").unwrap();
         assert!(store
             .find_active_mother_session_for_interface(
                 &project_uid,
@@ -1424,7 +1443,7 @@ mod tests {
                 &project_uid,
                 "gemini",
                 &gemini_kind,
-                Some(&persona_uid),
+                Some(&voice_uid),
             )
             .unwrap()
             .is_some());
@@ -1433,7 +1452,7 @@ mod tests {
                 &project_uid,
                 "gemini",
                 &gemini_kind,
-                Some(&missing_persona_uid),
+                Some(&missing_voice_uid),
             )
             .unwrap()
             .is_none());

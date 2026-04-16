@@ -1,0 +1,14 @@
+[package]
+name = "__NAME__"
+version = "0.1.0"
+edition = "2021"
+description = "Patina legacy child"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+patina-sdk = { package = "patina-sdk-legacy", path = "../sdk/patina-sdk-legacy", features = ["child"] }
+serde_json = "1.0"

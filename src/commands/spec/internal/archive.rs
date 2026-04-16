@@ -350,6 +350,7 @@ fn archived_spec_status(id: &str) -> Option<SpecStatus> {
 }
 
 /// A fully loaded spec: metadata + parsed content. For mutation paths.
+#[derive(Debug)]
 pub(super) struct LoadedSpec {
     pub file_path: String,
     pub status: Option<SpecStatus>,
@@ -359,12 +360,126 @@ pub(super) struct LoadedSpec {
     pub body: String,
 }
 
+fn archived_tag_from_marker(file_path: &str) -> Option<&str> {
+    file_path
+        .strip_prefix("(archived: ")
+        .and_then(|rest| rest.strip_suffix(')'))
+}
+
+fn archived_spec_rel_path(tag_name: &str, id: &str) -> Result<String> {
+    let output = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", tag_name])
+        .output()
+        .with_context(|| format!("Failed to inspect archived tag '{}'", tag_name))?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to inspect archived tag '{}': {}",
+            tag_name,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let expected_suffix = format!("/{}/SPEC.md", id);
+    let mut candidates = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| line.ends_with("/SPEC.md"))
+        .filter(|line| line.ends_with(&expected_suffix))
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+
+    candidates.sort();
+    candidates.dedup();
+
+    match candidates.len() {
+        1 => Ok(candidates.remove(0)),
+        0 => anyhow::bail!(
+            "Archived tag '{}' does not contain archived SPEC.md path for id '{}'",
+            tag_name,
+            id
+        ),
+        _ => anyhow::bail!(
+            "Archived tag '{}' contains multiple SPEC.md candidates for id '{}': {}",
+            tag_name,
+            id,
+            candidates.join(", ")
+        ),
+    }
+}
+
+fn read_archived_spec_from_tag(tag_name: &str, rel_path: &str) -> Result<String> {
+    let object = format!("{}:{}", tag_name, rel_path);
+    let output = Command::new("git")
+        .args(["show", &object])
+        .output()
+        .with_context(|| format!("Failed to read archived spec from '{}'", object))?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to read archived spec from '{}': {}",
+            object,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Load a spec for read/query paths.
+///
+/// Supports both on-disk specs and archived specs stored in git tags.
+pub(super) fn load_spec_read_only(id: &str) -> Result<LoadedSpec> {
+    let found = find_spec(id)?;
+
+    let (resolved_path, content) =
+        if let Some(tag_name) = archived_tag_from_marker(&found.file_path) {
+            let rel_path = archived_spec_rel_path(tag_name, id)?;
+            let content = read_archived_spec_from_tag(tag_name, &rel_path)?;
+            (format!("(archived: {}:{})", tag_name, rel_path), content)
+        } else {
+            let content = std::fs::read_to_string(&found.file_path)
+                .with_context(|| format!("Failed to read {}", found.file_path))?;
+            (found.file_path.clone(), content)
+        };
+
+    let (frontmatter, body) =
+        parse_spec_file(&content).with_context(|| format!("Failed to parse {}", resolved_path))?;
+
+    if frontmatter.id != id {
+        anyhow::bail!(
+            "Frontmatter ID '{}' doesn't match lookup key '{}' in {}",
+            frontmatter.id,
+            id,
+            resolved_path
+        );
+    }
+
+    Ok(LoadedSpec {
+        file_path: resolved_path,
+        status: found.status,
+        title: found.title,
+        content,
+        frontmatter,
+        body,
+    })
+}
+
 /// Load a spec fully from disk (find + read + parse). For mutations.
 ///
 /// Asserts that the frontmatter ID matches the lookup key to prevent
 /// ID source-of-truth drift (see spec-mutation-cleanup § Refactor 1).
 pub(super) fn load_spec(id: &str) -> Result<LoadedSpec> {
     let found = find_spec(id)?;
+    if let Some(tag_name) = archived_tag_from_marker(&found.file_path) {
+        anyhow::bail!(
+            "Spec '{}' is archived at tag '{}'; mutation commands require on-disk specs",
+            id,
+            tag_name
+        );
+    }
+
     let content = std::fs::read_to_string(&found.file_path)
         .with_context(|| format!("Failed to read {}", found.file_path))?;
     let (frontmatter, body) = parse_spec_file(&content)
@@ -429,5 +544,103 @@ mod tests {
                 s
             );
         }
+    }
+
+    fn run_git(repo: &std::path::Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(args)
+            .status()
+            .expect("run git");
+        assert!(status.success(), "git {:?} failed", args);
+    }
+
+    fn with_temp_git_repo<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
+        let _guard = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        run_git(temp.path(), &["init", "-q"]);
+        run_git(
+            temp.path(),
+            &["config", "user.email", "spec-test@example.com"],
+        );
+        run_git(temp.path(), &["config", "user.name", "Spec Test"]);
+
+        let old_cwd = std::env::current_dir().ok();
+        std::env::set_current_dir(temp.path()).expect("set cwd");
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(temp.path())));
+
+        // Best-effort restore: old cwd if it still exists, otherwise stable project root.
+        if let Some(path) = old_cwd.as_ref().filter(|path| path.exists()) {
+            let _ = std::env::set_current_dir(path);
+        } else {
+            let _ = std::env::set_current_dir(env!("CARGO_MANIFEST_DIR"));
+        }
+
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+
+    #[test]
+    fn load_spec_read_only_reads_archived_tag_content() {
+        with_temp_git_repo(|repo| {
+            let spec_path = repo.join("layer/surface/build/feat/demo-archived/SPEC.md");
+            std::fs::create_dir_all(spec_path.parent().expect("spec dir")).expect("mkdir spec dir");
+            std::fs::write(
+                &spec_path,
+                "---\ntype: feat\nid: demo-archived\nstatus: complete\n---\n# feat: demo-archived\n\n## Goal\n\n",
+            )
+            .expect("write spec");
+            run_git(repo, &["add", "."]);
+            run_git(repo, &["commit", "-m", "add spec"]);
+            run_git(
+                repo,
+                &["tag", "-a", "spec/demo-archived", "-m", "archive demo"],
+            );
+
+            std::fs::remove_file(&spec_path).expect("remove spec");
+            std::fs::remove_dir_all(repo.join("layer/surface/build/feat/demo-archived"))
+                .expect("remove spec dir");
+            run_git(repo, &["add", "-A"]);
+            run_git(repo, &["commit", "-m", "remove spec"]);
+
+            let loaded = load_spec_read_only("demo-archived").expect("load archived spec");
+            assert_eq!(loaded.frontmatter.id, "demo-archived");
+            assert!(
+                loaded.file_path.contains(
+                    "(archived: spec/demo-archived:layer/surface/build/feat/demo-archived/SPEC.md)"
+                ),
+                "unexpected path marker: {}",
+                loaded.file_path
+            );
+        });
+    }
+
+    #[test]
+    fn load_spec_read_only_fails_when_archive_tag_missing_spec_path() {
+        with_temp_git_repo(|repo| {
+            std::fs::write(repo.join("README.md"), "demo\n").expect("write readme");
+            run_git(repo, &["add", "README.md"]);
+            run_git(repo, &["commit", "-m", "init"]);
+            run_git(
+                repo,
+                &["tag", "-a", "spec/bad-archived", "-m", "archive bad"],
+            );
+
+            let err = load_spec_read_only("bad-archived")
+                .expect_err("expected missing archived path error");
+            assert!(
+                err.to_string()
+                    .contains("does not contain archived SPEC.md path for id 'bad-archived'"),
+                "got: {}",
+                err
+            );
+        });
     }
 }

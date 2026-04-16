@@ -1,0 +1,13 @@
+[[interface]]
+name = "codex"
+display_name = "Codex Fixture"
+classification = "hitl"
+command = "true"
+detect_commands = ["true"]
+tmux_policy = "auto"
+version = "fixture"
+mcp = { config_candidates = ["~/.config/codex/settings.json"] }
+managed_paths = [
+  { relative_path = "AGENTS.md", kind = "file" },
+  { relative_path = ".codex", kind = "directory" },
+]

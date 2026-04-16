@@ -22,6 +22,9 @@ use crate::commands::spec::internal;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, Clone, clap::Subcommand, serde::Serialize, serde::Deserialize)]
 pub enum SpecCommands {
@@ -36,6 +39,17 @@ pub enum SpecCommands {
         blocked_by: Vec<String>,
         #[arg(long)]
         related: Vec<String>,
+        /// Target Patina project path or project UID (8-hex) where the spec should live
+        #[arg(long)]
+        project: Option<String>,
+        /// Allow creating in another project even when that target has no active session
+        #[arg(long, default_value_t = false)]
+        #[serde(default)]
+        force_cross_project: bool,
+        /// Internal: source project root used for cross-project provenance linking
+        #[arg(long, hide = true)]
+        #[serde(default)]
+        origin_project: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -203,9 +217,108 @@ impl SpecCommands {
     }
 }
 
-pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
-    let json_mode = command.wants_json();
-    let (text, data) = match command {
+#[derive(Debug, Clone, Default)]
+struct SpecRouteContext {
+    project: Option<String>,
+    origin_project: Option<String>,
+}
+
+thread_local! {
+    static SPEC_ROUTE_CONTEXT: RefCell<Option<SpecRouteContext>> = const { RefCell::new(None) };
+}
+
+pub fn execute_command_value_with_route(
+    command: SpecCommands,
+    project: Option<String>,
+    origin_project: Option<String>,
+) -> Result<Value> {
+    let previous = SPEC_ROUTE_CONTEXT.with(|slot| {
+        slot.replace(Some(SpecRouteContext {
+            project,
+            origin_project,
+        }))
+    });
+    let result = execute_command_value(command);
+    SPEC_ROUTE_CONTEXT.with(|slot| {
+        slot.replace(previous);
+    });
+    result
+}
+
+fn current_route_context() -> SpecRouteContext {
+    SPEC_ROUTE_CONTEXT
+        .with(|slot| slot.borrow().clone())
+        .unwrap_or_default()
+}
+
+fn looks_like_project_uid(value: &str) -> bool {
+    value.len() == 8
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+fn canonical_project_root(path: &Path) -> Result<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    absolute
+        .canonicalize()
+        .with_context(|| format!("Project path not found: {}", absolute.display()))
+}
+
+fn resolve_project_uid_to_path(uid: &str) -> Result<PathBuf> {
+    let store = crate::mother::MotherRuntimeStore::default();
+    let projects = store.list_registered_projects()?;
+    let Some(project) = projects.into_iter().find(|entry| entry.project_uid == uid) else {
+        anyhow::bail!(
+            "Unknown project uid '{}'. Register it first by running `patina init .` in that project.",
+            uid
+        );
+    };
+    canonical_project_root(Path::new(&project.project_path))
+}
+
+fn ensure_patina_project(path: &Path) -> Result<()> {
+    if !crate::project::is_patina_project(path) {
+        anyhow::bail!(
+            "Target is not a Patina project: {}\nRun `patina init .` in that directory first.",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn resolve_target_project_root(selector: Option<&str>) -> Result<(PathBuf, String)> {
+    let root = match selector.map(str::trim).filter(|value| !value.is_empty()) {
+        None => std::env::current_dir()?,
+        Some(value) if looks_like_project_uid(value) && !Path::new(value).exists() => {
+            resolve_project_uid_to_path(value)?
+        }
+        Some(value) => canonical_project_root(Path::new(value))?,
+    };
+
+    ensure_patina_project(&root)?;
+    let uid = crate::project::register_with_mother(&root)?;
+    Ok((root, uid))
+}
+
+fn resolve_origin_project_root(origin_project: Option<&str>) -> Result<PathBuf> {
+    let root = match origin_project
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value) => canonical_project_root(Path::new(value))?,
+        None => std::env::current_dir()?,
+    };
+    ensure_patina_project(&root)?;
+    Ok(root)
+}
+
+fn strip_routing_from_command(command: &SpecCommands) -> SpecCommands {
+    match command.clone() {
         SpecCommands::Create {
             r#type,
             id,
@@ -213,44 +326,209 @@ pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
             description,
             blocked_by,
             related,
+            json,
             ..
-        } => (
-            Some(format!("Created spec '{}'", id)),
-            serde_json::to_value(internal::create_spec_value(
-                &r#type,
-                &id,
-                title.as_deref(),
-                description.as_deref(),
-                blocked_by,
-                related,
-            )?)
-            .ok(),
+        } => SpecCommands::Create {
+            r#type,
+            id,
+            title,
+            description,
+            blocked_by,
+            related,
+            project: None,
+            force_cross_project: false,
+            origin_project: None,
+            json,
+        },
+        other => other,
+    }
+}
+
+fn execute_spec_command_in_project(project_root: &Path, command: &SpecCommands) -> Result<Value> {
+    let exe = std::env::current_exe().context("Failed to resolve patina executable path")?;
+    let serialized = serde_json::to_string(&strip_routing_from_command(command))?;
+
+    let output = Command::new(exe)
+        .current_dir(project_root)
+        .env("PATINA_SPEC_DIRECT", "1")
+        .env("PATINA_SPEC_DIRECT_COMMAND_JSON", serialized)
+        .args(["spec", "next", "--json"])
+        .output()
+        .with_context(|| {
+            format!(
+                "Failed to execute spec command in project {}",
+                project_root.display()
+            )
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let detail = if stderr.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            stderr.trim().to_string()
+        };
+        anyhow::bail!(
+            "Cross-project spec dispatch failed in {}: {}",
+            project_root.display(),
+            detail
+        );
+    }
+
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|e| anyhow::anyhow!("Failed to decode subprocess output: {}", e))?;
+    serde_json::from_str(stdout.trim())
+        .map_err(|e| anyhow::anyhow!("Failed to parse subprocess JSON output: {}", e))
+}
+
+fn resolve_spec_command_route(
+    route: &SpecRouteContext,
+    command: &SpecCommands,
+) -> Result<Option<Value>> {
+    if route.project.is_some() && !matches!(command, SpecCommands::Create { .. }) {
+        let (target_root, _) = resolve_target_project_root(route.project.as_deref())?;
+        return Ok(Some(execute_spec_command_in_project(
+            &target_root,
+            command,
+        )?));
+    }
+    Ok(None)
+}
+
+fn render_spec_response(json_mode: bool, text: Option<String>, data: Option<Value>) -> Value {
+    json!({
+        "child": "spec-manager",
+        "json": json_mode,
+        "text": text,
+        "data": data.unwrap_or(serde_json::Value::Null)
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_create_spec_command(
+    route: &SpecRouteContext,
+    type_str: String,
+    id: String,
+    title: Option<String>,
+    description: Option<String>,
+    blocked_by: Vec<String>,
+    mut related: Vec<String>,
+    project: Option<String>,
+    force_cross_project: bool,
+    origin_project: Option<String>,
+) -> Result<(Option<String>, Option<Value>)> {
+    let selected_project = project.or(route.project.clone());
+    let selected_origin = origin_project.or(route.origin_project.clone());
+
+    let origin_root = resolve_origin_project_root(selected_origin.as_deref())?;
+    let origin_uid = crate::project::register_with_mother(&origin_root)?;
+    let (target_root, target_uid) = resolve_target_project_root(selected_project.as_deref())?;
+    let cross_project = origin_uid != target_uid;
+
+    if cross_project {
+        let origin_link = format!("origin-project:{}", origin_uid);
+        if !related.iter().any(|entry| entry == &origin_link) {
+            related.push(origin_link);
+        }
+
+        if !force_cross_project && crate::session::current_session_file_id(&target_root)?.is_none()
+        {
+            anyhow::bail!(
+                "Cross-project spec create denied: target project '{}' has no active session.
+                 Remediation: run `patina ai pi --path {} --title 'spec-init'` first,
+                 or re-run with --force-cross-project.",
+                target_uid,
+                target_root.display()
+            );
+        }
+    }
+
+    let mut created = internal::create_spec_value_for_project(
+        &target_root,
+        Some(&target_uid),
+        internal::CreateSpecRequest {
+            type_str,
+            id,
+            title,
+            description,
+            blocked_by,
+            related,
+        },
+    )?;
+    created.cross_project = cross_project;
+    if cross_project {
+        created.origin_project_uid = Some(origin_uid);
+    }
+
+    let created_id = created.spec_id.clone();
+    Ok((
+        Some(format!(
+            "Created spec '{}'{}",
+            created_id,
+            if cross_project {
+                " (cross-project)"
+            } else {
+                ""
+            }
+        )),
+        serde_json::to_value(created).ok(),
+    ))
+}
+
+fn execute_local_spec_command(
+    command: SpecCommands,
+    route: &SpecRouteContext,
+) -> Result<(Option<String>, Option<Value>)> {
+    match command {
+        SpecCommands::Create {
+            r#type,
+            id,
+            title,
+            description,
+            blocked_by,
+            related,
+            project,
+            force_cross_project,
+            origin_project,
+            ..
+        } => execute_create_spec_command(
+            route,
+            r#type,
+            id,
+            title,
+            description,
+            blocked_by,
+            related,
+            project,
+            force_cross_project,
+            origin_project,
         ),
         SpecCommands::Archive { id, dry_run, stale } => {
             if stale {
                 internal::archive_stale_specs(dry_run)?;
-                (
+                Ok((
                     Some("Archived stale specs".to_string()),
                     Some(json!({"stale": true, "dry_run": dry_run})),
-                )
+                ))
             } else if let Some(id) = id {
                 internal::archive_spec(&id, dry_run)?;
-                (
+                Ok((
                     Some(format!("Archived spec '{}'", id)),
                     Some(json!({"id": id, "dry_run": dry_run})),
-                )
+                ))
             } else {
                 anyhow::bail!("Spec ID required. Use `patina spec archive <id>` or --stale");
             }
         }
-        SpecCommands::Ready { .. } => (
+        SpecCommands::Ready { .. } => Ok((
             None,
             serde_json::to_value(internal::get_ready_specs()?).ok(),
-        ),
-        SpecCommands::Blocked { .. } => (
+        )),
+        SpecCommands::Blocked { .. } => Ok((
             None,
             serde_json::to_value(internal::get_blocked_specs()?).ok(),
-        ),
+        )),
         SpecCommands::List { status, target, .. } => {
             let parsed_status = status
                 .as_deref()
@@ -260,43 +538,43 @@ pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
                 status: parsed_status,
                 target,
             };
-            (
+            Ok((
                 None,
                 serde_json::to_value(internal::get_all_specs(&filters)?).ok(),
-            )
+            ))
         }
-        SpecCommands::Promote { id, force, .. } => (
+        SpecCommands::Promote { id, force, .. } => Ok((
             None,
             serde_json::to_value(internal::promote_spec_value(&id, force)?).ok(),
-        ),
+        )),
         SpecCommands::Complete {
             id, major, force, ..
-        } => (
+        } => Ok((
             None,
             serde_json::to_value(internal::complete_spec_value(&id, major, force)?).ok(),
-        ),
-        SpecCommands::Abandon { id, reason, .. } => (
+        )),
+        SpecCommands::Abandon { id, reason, .. } => Ok((
             None,
             serde_json::to_value(internal::abandon_spec_value(&id, reason.as_deref())?).ok(),
-        ),
-        SpecCommands::Pause { id, reason, .. } => (
+        )),
+        SpecCommands::Pause { id, reason, .. } => Ok((
             None,
             serde_json::to_value(internal::pause_spec_value(&id, &reason)?).ok(),
-        ),
-        SpecCommands::Resume { id, force, .. } => (
+        )),
+        SpecCommands::Resume { id, force, .. } => Ok((
             None,
             serde_json::to_value(internal::resume_spec_value(&id, force)?).ok(),
-        ),
-        SpecCommands::Block { id, by, reason, .. } => (
+        )),
+        SpecCommands::Block { id, by, reason, .. } => Ok((
             None,
             serde_json::to_value(internal::block_spec_value(&id, &by, &reason)?).ok(),
-        ),
+        )),
         SpecCommands::Split {
             id,
             new_id,
             description,
             ..
-        } => (
+        } => Ok((
             None,
             serde_json::to_value(internal::split_spec_value(
                 &id,
@@ -304,57 +582,62 @@ pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
                 description.as_deref(),
             )?)
             .ok(),
-        ),
-        SpecCommands::Show { id, .. } => (
+        )),
+        SpecCommands::Show { id, .. } => Ok((
             None,
             serde_json::to_value(internal::show_spec_value(&id)?).ok(),
-        ),
-        SpecCommands::Prompt { id, .. } => (
+        )),
+        SpecCommands::Prompt { id, .. } => Ok((
             None,
             serde_json::to_value(internal::prompt_spec_value(&id)?).ok(),
-        ),
-        SpecCommands::Handoff { id, .. } => (
+        )),
+        SpecCommands::Handoff { id, .. } => Ok((
             None,
             serde_json::to_value(internal::handoff_spec_value(&id)?).ok(),
-        ),
-        SpecCommands::Packet { id, .. } => (
+        )),
+        SpecCommands::Packet { id, .. } => Ok((
             None,
             serde_json::to_value(internal::packet_spec_value(&id)?).ok(),
-        ),
+        )),
         SpecCommands::Set {
             id, field, value, ..
-        } => (
+        } => Ok((
             None,
             serde_json::to_value(internal::set_spec_value(&id, &field, &value)?).ok(),
-        ),
-        SpecCommands::Next { .. } => (
+        )),
+        SpecCommands::Next { .. } => Ok((
             None,
             serde_json::to_value(internal::next_spec_value()?).ok(),
-        ),
-        SpecCommands::Check { id, .. } => (
+        )),
+        SpecCommands::Check { id, .. } => Ok((
             None,
             serde_json::to_value(internal::check_spec_value(&id)?).ok(),
-        ),
-        SpecCommands::History { id, .. } => (
+        )),
+        SpecCommands::History { id, .. } => Ok((
             None,
             serde_json::to_value(internal::history_spec_value(&id)?).ok(),
-        ),
-        SpecCommands::Rename { id, new_id, .. } => (
+        )),
+        SpecCommands::Rename { id, new_id, .. } => Ok((
             None,
             serde_json::to_value(internal::rename_spec_value(&id, &new_id)?).ok(),
-        ),
-        SpecCommands::Reopen { id, .. } => (
+        )),
+        SpecCommands::Reopen { id, .. } => Ok((
             None,
             serde_json::to_value(internal::reopen_spec_value(&id)?).ok(),
-        ),
-    };
+        )),
+    }
+}
 
-    Ok(json!({
-        "child": "spec-manager",
-        "json": json_mode,
-        "text": text,
-        "data": data.unwrap_or(serde_json::Value::Null)
-    }))
+pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
+    let route = current_route_context();
+
+    if let Some(routed) = resolve_spec_command_route(&route, &command)? {
+        return Ok(routed);
+    }
+
+    let json_mode = command.wants_json();
+    let (text, data) = execute_local_spec_command(command, &route)?;
+    Ok(render_spec_response(json_mode, text, data))
 }
 
 // ============================================================================

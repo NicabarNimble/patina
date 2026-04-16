@@ -1,0 +1,10 @@
+[child]
+name = "watch-null-sink"
+kind = "child"
+role = "app"
+
+[needs]
+toys = ["logging", "measure"]
+
+[needs.metrics]
+watch_events_dropped = { type = "counter", labels = [] }

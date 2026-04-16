@@ -27,6 +27,28 @@ pub struct DegradedChildInfo {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ChildWarmupInfo {
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoryInfo {
+    #[serde(default)]
+    pub rss_bytes: Option<u64>,
+    #[serde(default)]
+    pub max_rss_bytes: Option<u64>,
+    #[serde(default)]
+    pub soft_limit_bytes: Option<u64>,
+    #[serde(default)]
+    pub pressure: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct HealthInfo {
     pub version: String,
     pub uptime_secs: u64,
@@ -50,6 +72,14 @@ pub struct HealthInfo {
     pub children_total: usize,
     #[serde(default)]
     pub children_degraded: Vec<DegradedChildInfo>,
+    #[serde(default)]
+    pub startup_profile: Option<String>,
+    #[serde(default)]
+    pub rivet_integration: Option<String>,
+    #[serde(default)]
+    pub child_warmup: Option<ChildWarmupInfo>,
+    #[serde(default)]
+    pub memory: Option<MemoryInfo>,
 }
 
 #[derive(Debug, Clone)]
@@ -190,6 +220,10 @@ mod tests {
         assert_eq!(info.children_ready_count, 0);
         assert_eq!(info.children_total, 0);
         assert!(info.children_degraded.is_empty());
+        assert!(info.startup_profile.is_none());
+        assert!(info.rivet_integration.is_none());
+        assert!(info.child_warmup.is_none());
+        assert!(info.memory.is_none());
     }
 
     #[test]
@@ -210,7 +244,11 @@ mod tests {
             "control_plane_ready":true,
             "children_ready_count":1,
             "children_total":2,
-            "children_degraded":[{"name":"catalog","reason":"on_load failed"}]
+            "children_degraded":[{"name":"catalog","reason":"on_load failed"}],
+            "startup_profile":"core",
+            "rivet_integration":"disabled",
+            "child_warmup":{"mode":"manual","state":"pending"},
+            "memory":{"max_rss_bytes":1024,"soft_limit_bytes":2048,"pressure":"ok"}
         }"#;
         let info: HealthInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.child_count, 1);
@@ -231,6 +269,18 @@ mod tests {
                 .first()
                 .map(|entry| entry.name.as_str()),
             Some("catalog")
+        );
+        assert_eq!(info.startup_profile.as_deref(), Some("core"));
+        assert_eq!(info.rivet_integration.as_deref(), Some("disabled"));
+        assert_eq!(
+            info.child_warmup
+                .as_ref()
+                .map(|warmup| warmup.state.as_str()),
+            Some("pending")
+        );
+        assert_eq!(
+            info.memory.as_ref().and_then(|memory| memory.max_rss_bytes),
+            Some(1024)
         );
     }
 }

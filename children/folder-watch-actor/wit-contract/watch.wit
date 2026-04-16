@@ -1,0 +1,76 @@
+package patina:watch@0.1.0;
+
+interface types {
+    record watcher-config {
+        watch-path: string,
+        stream-name: string,
+        recursive: bool,
+        include-hidden: bool,
+        emit-existing-on-start: bool,
+        extensions: list<string>,
+    }
+
+    record watcher-stats {
+        ticks: u64,
+        scans: u64,
+        files-seen-total: u64,
+        changes-detected-total: u64,
+        events-emitted-total: u64,
+        last-scan-at: option<string>,
+        last-error: option<string>,
+        last-scan-duration-ms: option<u64>,
+    }
+
+    record file-fingerprint {
+        size-bytes: u64,
+        modified-unix-ms: u64,
+        sha256: string,
+    }
+
+    enum change-kind {
+        created,
+        modified,
+        deleted,
+    }
+
+    record file-change {
+        watcher: string,
+        stream-name: string,
+        change-kind: change-kind,
+        absolute-path: string,
+        relative-path: string,
+        size-bytes: option<u64>,
+        modified-unix-ms: option<u64>,
+        sha256: option<string>,
+        detected-at: string,
+    }
+
+    record scan-outcome {
+        files-seen: u64,
+        created: u64,
+        modified: u64,
+        deleted: u64,
+        emitted: u64,
+        duration-ms: u64,
+    }
+}
+
+interface control {
+    use types.{watcher-config, watcher-stats, scan-outcome};
+
+    configure: func(config: watcher-config, reset-snapshot: bool) -> result<watcher-config, string>;
+    status: func() -> watcher-stats;
+    scan-now: func() -> result<scan-outcome, string>;
+    reset: func() -> result<_, string>;
+}
+
+interface events {
+    use types.{file-change};
+
+    emit: func(change: file-change) -> result<_, string>;
+}
+
+world watch-contracts {
+    export control;
+    import events;
+}

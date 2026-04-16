@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::state::{
     InterfaceKindId, MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus,
-    PersonaUid, ProjectUid,
+    ProjectUid, VoiceUid,
 };
 use crate::MotherRuntimeStore;
 
@@ -41,13 +41,13 @@ impl SessionStateService {
         project_uid: &ProjectUid,
         interface_name: &str,
         interface_kind: &InterfaceKindId,
-        persona_uid: Option<&PersonaUid>,
+        voice_uid: Option<&VoiceUid>,
     ) -> Result<Option<MotherSessionRecord>> {
         self.store.find_active_mother_session_for_interface(
             project_uid,
             interface_name,
             interface_kind,
-            persona_uid,
+            voice_uid,
         )
     }
 

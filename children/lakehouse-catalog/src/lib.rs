@@ -5,23 +5,15 @@ wit_bindgen::generate!({
 });
 
 use chrono::Utc;
+use patina_sdk::toys;
 
 struct LakehouseCatalog;
-
-fn keyvalue_error_to_string(err: wasi::keyvalue::store::Error) -> String {
-    match err {
-        wasi::keyvalue::store::Error::NoSuchStore => "no-such-store".to_string(),
-        wasi::keyvalue::store::Error::AccessDenied => "access-denied".to_string(),
-        wasi::keyvalue::store::Error::Other(msg) => format!("other({msg})"),
-    }
-}
 
 impl exports::patina::records::catalog::Guest for LakehouseCatalog {
     fn register(
         files: Vec<patina::records::types::FileWritten>,
     ) -> Result<Vec<patina::records::types::CatalogEntry>, String> {
-        let bucket = wasi::keyvalue::store::open("patina:lakehouse-catalog")
-            .map_err(keyvalue_error_to_string)?;
+        let bucket = toys::keyvalue::open("patina:lakehouse-catalog")?;
 
         let mut entries = Vec::new();
         for file in files {
@@ -42,15 +34,12 @@ impl exports::patina::records::catalog::Guest for LakehouseCatalog {
                 entry.registered_at,
                 entry.schema_version
             );
-            bucket
-                .set(&key, value.as_bytes())
-                .map_err(keyvalue_error_to_string)?;
+            bucket.set(&key, value.as_bytes())?;
 
             entries.push(entry);
         }
 
-        wasi::logging::logging::log(
-            wasi::logging::logging::Level::Info,
+        toys::log::info(
             "lakehouse-catalog",
             &format!("registered {} files", entries.len()),
         );

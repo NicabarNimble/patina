@@ -1,0 +1,27 @@
+package patina:watch@0.1.0;
+
+interface types {
+    enum change-kind {
+        created,
+        modified,
+        deleted,
+    }
+
+    record file-change {
+        watcher: string,
+        stream-name: string,
+        change-kind: change-kind,
+        absolute-path: string,
+        relative-path: string,
+        size-bytes: option<u64>,
+        modified-unix-ms: option<u64>,
+        sha256: option<string>,
+        detected-at: string,
+    }
+}
+
+interface events {
+    use types.{file-change};
+
+    emit: func(change: file-change) -> result<_, string>;
+}

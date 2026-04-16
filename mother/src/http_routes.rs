@@ -8,6 +8,9 @@ type RouteHandler = Arc<dyn Fn(&HttpRequest) -> HttpResponse + Send + Sync>;
 pub struct RouteTable {
     pub get_health: RouteHandler,
     pub get_version: RouteHandler,
+    pub get_atlas_dashboard: RouteHandler,
+    pub get_atlas_snapshot: RouteHandler,
+    pub post_bridge_translate: RouteHandler,
     pub post_scry: RouteHandler,
     pub post_federation_status: RouteHandler,
     pub post_federation_refresh: RouteHandler,
@@ -20,6 +23,9 @@ pub struct RouteTable {
     pub post_lifecycle_load_pando: RouteHandler,
     pub post_lifecycle_refresh: RouteHandler,
     pub post_lifecycle_reload_child: RouteHandler,
+    pub post_lifecycle_warmup_children: RouteHandler,
+    pub post_rivet_dispatch: RouteHandler,
+    pub post_inspector_typed_calls: RouteHandler,
     pub child_request: RouteHandler,
 }
 
@@ -42,6 +48,27 @@ impl Router {
         let response = match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/health") => (self.routes.get_health)(request),
             ("GET", "/version") => (self.routes.get_version)(request),
+            ("GET", "/atlas") | ("GET", "/atlas/index.html") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_atlas_dashboard)(request)
+                }
+            }
+            ("GET", "/atlas/atlas.json") | ("GET", "/api/atlas/snapshot") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_atlas_snapshot)(request)
+                }
+            }
+            ("POST", "/api/bridge/translate") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_bridge_translate)(request)
+                }
+            }
             ("POST", "/api/scry") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -126,6 +153,27 @@ impl Router {
                     (self.routes.post_lifecycle_reload_child)(request)
                 }
             }
+            ("POST", "/api/lifecycle/warmup-children") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_lifecycle_warmup_children)(request)
+                }
+            }
+            ("POST", "/api/rivet/dispatch") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_rivet_dispatch)(request)
+                }
+            }
+            ("POST", "/api/inspector/typed-calls") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_inspector_typed_calls)(request)
+                }
+            }
             _ if request.path.starts_with("/child/") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -145,5 +193,92 @@ impl Router {
             .header("Authorization")
             .map(|header| header.as_bytes().ct_eq(expected.as_bytes()).into())
             .unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ok_json() -> HttpResponse {
+        HttpResponse::json(200, &serde_json::json!({"ok": true}))
+    }
+
+    fn test_routes() -> RouteTable {
+        RouteTable {
+            get_health: Arc::new(|_| ok_json()),
+            get_version: Arc::new(|_| ok_json()),
+            get_atlas_dashboard: Arc::new(|_| HttpResponse {
+                status: 200,
+                headers: vec![("Content-Type".to_string(), "text/html".to_string())],
+                body: b"<html>atlas</html>".to_vec(),
+            }),
+            get_atlas_snapshot: Arc::new(|_| ok_json()),
+            post_bridge_translate: Arc::new(|_| ok_json()),
+            post_scry: Arc::new(|_| ok_json()),
+            post_federation_status: Arc::new(|_| ok_json()),
+            post_federation_refresh: Arc::new(|_| ok_json()),
+            post_federation_query: Arc::new(|_| ok_json()),
+            get_secrets_cache: Arc::new(|_| ok_json()),
+            post_secrets_cache: Arc::new(|_| ok_json()),
+            post_secrets_lock: Arc::new(|_| ok_json()),
+            post_pando_registry_init: Arc::new(|_| ok_json()),
+            get_pando_list: Arc::new(|_| ok_json()),
+            post_lifecycle_load_pando: Arc::new(|_| ok_json()),
+            post_lifecycle_refresh: Arc::new(|_| ok_json()),
+            post_lifecycle_reload_child: Arc::new(|_| ok_json()),
+            post_lifecycle_warmup_children: Arc::new(|_| ok_json()),
+            post_rivet_dispatch: Arc::new(|_| ok_json()),
+            post_inspector_typed_calls: Arc::new(|_| ok_json()),
+            child_request: Arc::new(|_| ok_json()),
+        }
+    }
+
+    fn request(method: &str, path: &str, auth: Option<&str>) -> HttpRequest {
+        HttpRequest {
+            method: method.to_string(),
+            path: path.to_string(),
+            headers: auth
+                .map(|value| vec![("Authorization".to_string(), value.to_string())])
+                .unwrap_or_default(),
+            body: vec![],
+        }
+    }
+
+    #[test]
+    fn atlas_routes_require_auth_when_router_requires_auth() {
+        let router = Router::new(true, "token-123".to_string(), test_routes());
+
+        let html = router.route(&request("GET", "/atlas", None));
+        assert_eq!(html.status, 401);
+
+        let json = router.route(&request("GET", "/atlas/atlas.json", None));
+        assert_eq!(json.status, 401);
+    }
+
+    #[test]
+    fn atlas_routes_allow_with_valid_auth_header() {
+        let router = Router::new(true, "token-123".to_string(), test_routes());
+        let header = "Bearer token-123";
+
+        let html = router.route(&request("GET", "/atlas", Some(header)));
+        assert_eq!(html.status, 200);
+
+        let json = router.route(&request("GET", "/atlas/atlas.json", Some(header)));
+        assert_eq!(json.status, 200);
+    }
+
+    #[test]
+    fn lifecycle_warmup_route_is_wired() {
+        let router = Router::new(false, "token-123".to_string(), test_routes());
+        let response = router.route(&request("POST", "/api/lifecycle/warmup-children", None));
+        assert_eq!(response.status, 200);
+    }
+
+    #[test]
+    fn rivet_dispatch_route_is_wired() {
+        let router = Router::new(false, "token-123".to_string(), test_routes());
+        let response = router.route(&request("POST", "/api/rivet/dispatch", None));
+        assert_eq!(response.status, 200);
     }
 }

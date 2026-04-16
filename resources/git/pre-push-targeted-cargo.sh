@@ -5,6 +5,34 @@ set -euo pipefail
 
 repo_root=$(git rev-parse --show-toplevel)
 
+is_test_mode() {
+    [[ "${PATINA_PRE_PUSH_TEST_MODE:-0}" == "1" ]]
+}
+
+run_cargo() {
+    if is_test_mode; then
+        if [[ "${1:-}" == "metadata" ]]; then
+            printf '%s\n' '{"packages":[]}'
+            return 0
+        fi
+        echo "[test-mode] cargo $*"
+        return 0
+    fi
+    cargo "$@"
+}
+
+run_script() {
+    local script_path="$1"
+    shift || true
+
+    if is_test_mode; then
+        echo "[test-mode] bash $script_path $*"
+        return 0
+    fi
+
+    bash "$script_path" "$@"
+}
+
 collect_changed_files() {
     local upstream
     if upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null); then
@@ -23,12 +51,43 @@ collect_changed_files() {
     fi
 }
 
-mapfile -t changed_files < <(collect_changed_files | sed '/^$/d')
+read_changed_files() {
+    if [[ -n "${PATINA_PRE_PUSH_CHANGED_FILES:-}" ]]; then
+        printf '%s\n' "$PATINA_PRE_PUSH_CHANGED_FILES"
+        return
+    fi
+
+    collect_changed_files
+}
+
+is_cargo_impact_file() {
+    local file="$1"
+    case "$file" in
+        Cargo.toml|*/Cargo.toml|Cargo.lock|rust-toolchain.toml|rust-toolchain|build.rs|*/build.rs)
+            return 0
+            ;;
+        *.rs|*.c|*.h|*.cc|*.cpp|*.cxx|*.hpp|*.hxx|*.wit)
+            return 0
+            ;;
+        wit/*|sdk/*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+changed_files=()
+while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    changed_files+=("$line")
+done < <(read_changed_files | sed '/^$/d')
 
 if [[ "${#changed_files[@]}" -eq 0 ]]; then
     echo "No changed files detected. Running full workspace checks (fail-closed)."
-    cargo clippy --workspace -- -D warnings
-    cargo test --workspace --lib
+    run_cargo clippy --workspace -- -D warnings
+    run_cargo test --workspace --lib
     exit 0
 fi
 
@@ -41,6 +100,7 @@ echo ""
 run_full_workspace=false
 ducklake_trigger=false
 schema_trigger=false
+cargo_impact_files=()
 
 for file in "${changed_files[@]}"; do
     case "$file" in
@@ -60,18 +120,44 @@ for file in "${changed_files[@]}"; do
             schema_trigger=true
             ;;
     esac
+
+    if is_cargo_impact_file "$file"; then
+        cargo_impact_files+=("$file")
+    fi
 done
+
+ran_cargo_lane=false
 
 if [[ "$run_full_workspace" == true ]]; then
     echo "Broad-impact files changed. Escalating to full workspace clippy + unit tests."
-    cargo clippy --workspace -- -D warnings
-    cargo test --workspace --lib
+    run_cargo clippy --workspace -- -D warnings
+    run_cargo test --workspace --lib
+    ran_cargo_lane=true
+elif [[ "${#cargo_impact_files[@]}" -eq 0 ]]; then
+    echo "No cargo-impacting files detected. Skipping cargo clippy/test lane."
 else
-    metadata_json=$(cargo metadata --no-deps --format-version 1)
-    mapfile -t package_rows < <(jq -r '.packages[] | [.name, .manifest_path] | @tsv' <<<"$metadata_json")
+    metadata_json=$(run_cargo metadata --no-deps --format-version 1)
+    package_rows=()
+    while IFS= read -r row; do
+        [[ -n "$row" ]] || continue
+        package_rows+=("$row")
+    done < <(jq -r '.packages[] | [.name, .manifest_path] | @tsv' <<<"$metadata_json")
 
-    declare -A impacted_packages=()
-    for file in "${changed_files[@]}"; do
+    impacted_packages_list=""
+
+    add_impacted_package() {
+        local package="$1"
+        if [[ -z "$impacted_packages_list" ]]; then
+            impacted_packages_list="$package"
+            return
+        fi
+        if printf '%s\n' "$impacted_packages_list" | grep -Fxq "$package"; then
+            return
+        fi
+        impacted_packages_list+=$'\n'"$package"
+    }
+
+    for file in "${cargo_impact_files[@]}"; do
         abs_file="$repo_root/$file"
         best_package=""
         best_len=0
@@ -91,41 +177,55 @@ else
         done
 
         if [[ -n "$best_package" ]]; then
-            impacted_packages["$best_package"]=1
+            add_impacted_package "$best_package"
         fi
     done
 
-    if [[ "${#impacted_packages[@]}" -eq 0 ]]; then
+    if [[ -z "$impacted_packages_list" ]]; then
         echo "Could not resolve impacted package set. Escalating to full workspace checks."
-        cargo clippy --workspace -- -D warnings
-        cargo test --workspace --lib
+        run_cargo clippy --workspace -- -D warnings
+        run_cargo test --workspace --lib
     else
-        mapfile -t sorted_packages < <(printf '%s\n' "${!impacted_packages[@]}" | sort)
+        sorted_packages=()
+        while IFS= read -r package; do
+            [[ -n "$package" ]] || continue
+            sorted_packages+=("$package")
+        done < <(printf '%s\n' "$impacted_packages_list" | sort -u)
+        echo "Cargo-impacting files:"
+        for file in "${cargo_impact_files[@]}"; do
+            echo "  - $file"
+        done
         echo "Impacted packages: ${sorted_packages[*]}"
         echo ""
         for package in "${sorted_packages[@]}"; do
             echo "📦 Running clippy for $package..."
-            cargo clippy -p "$package" -- -D warnings
+            run_cargo clippy -p "$package" -- -D warnings
         done
         echo ""
         for package in "${sorted_packages[@]}"; do
             echo "Running unit tests for $package..."
-            cargo test -p "$package" --lib
+            run_cargo test -p "$package" --lib
         done
     fi
+
+    ran_cargo_lane=true
 fi
 
 if [[ "$ducklake_trigger" == true ]]; then
     echo ""
     echo "📦 Path-triggered check: DuckLake parity"
-    bash resources/scripts/check-ducklake-parity.sh
+    run_script resources/scripts/check-ducklake-parity.sh
 fi
 
 if [[ "$schema_trigger" == true ]]; then
     echo ""
     echo "📦 Path-triggered check: schema consistency"
-    cargo run --release --quiet -- schema check
+    run_cargo run --release --quiet -- schema check
 fi
 
 echo ""
-echo "✅ Tier 2 targeted cargo lane passed."
+if [[ "$ran_cargo_lane" == true ]]; then
+    echo "✅ Tier 2 targeted cargo lane passed."
+else
+    echo "✅ Tier 2 targeted checks passed (cargo lane skipped; no cargo-impacting paths)."
+fi

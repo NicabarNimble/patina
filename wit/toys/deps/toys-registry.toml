@@ -3,6 +3,11 @@ file = "patina-connect.wit"
 source = "patina"
 version = "0.2.0"
 
+[patina-config]
+file = "patina-config.wit"
+source = "patina"
+version = "0.1.0"
+
 [patina-events-stream]
 file = "patina-events-stream.wit"
 source = "patina"

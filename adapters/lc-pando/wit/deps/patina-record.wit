@@ -1,0 +1,23 @@
+package patina:records@0.1.0;
+
+interface types {
+    record file-written {
+        file-path: string,
+        record-count: u64,
+        written-at: string,
+    }
+
+    record catalog-entry {
+        file-path: string,
+        record-count: u64,
+        written-at: string,
+        registered-at: string,
+        schema-version: u32,
+    }
+}
+
+interface catalog {
+    use types.{file-written, catalog-entry};
+
+    register: func(files: list<file-written>) -> result<list<catalog-entry>, string>;
+}

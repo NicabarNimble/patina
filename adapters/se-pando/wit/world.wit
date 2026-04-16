@@ -1,0 +1,7 @@
+package patina:se-pando@0.1.0;
+
+world se-pando {
+    import patina:pando/extract@0.1.0;
+    import patina:records/transform@0.1.0;
+    export patina:pando/transform@0.1.0;
+}

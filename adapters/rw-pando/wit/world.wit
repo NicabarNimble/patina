@@ -1,0 +1,7 @@
+package patina:rw-pando@0.1.0;
+
+world rw-pando {
+    import patina:pando/transform@0.1.0;
+    import patina:records/write@0.1.0;
+    export patina:pando/write@0.1.0;
+}

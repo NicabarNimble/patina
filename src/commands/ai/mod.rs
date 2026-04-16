@@ -62,7 +62,7 @@ pub struct AiLaunchArgs {
     session: Option<String>,
 
     #[arg(long)]
-    persona: Option<String>,
+    voice: Option<String>,
 
     #[arg(long)]
     path: Option<String>,
@@ -122,6 +122,12 @@ pub enum AiCommands {
         launch: AiLaunchArgs,
     },
 
+    /// Launch PI through the Patina AI interface
+    Pi {
+        #[command(flatten)]
+        launch: AiLaunchArgs,
+    },
+
     /// List active Patina AI sessions for this project
     List {
         #[arg(long)]
@@ -175,7 +181,7 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             interface_name: "claude".to_string(),
             title: launch.title,
             requested_session: launch.session,
-            persona: launch.persona,
+            voice: launch.voice,
             path: launch.path,
             set_default: launch.default,
             tmux: launch.tmux,
@@ -185,7 +191,7 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             interface_name: "opencode".to_string(),
             title: launch.title,
             requested_session: launch.session,
-            persona: launch.persona,
+            voice: launch.voice,
             path: launch.path,
             set_default: launch.default,
             tmux: launch.tmux,
@@ -195,7 +201,17 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             interface_name: "gemini".to_string(),
             title: launch.title,
             requested_session: launch.session,
-            persona: launch.persona,
+            voice: launch.voice,
+            path: launch.path,
+            set_default: launch.default,
+            tmux: launch.tmux,
+            no_tmux: launch.no_tmux,
+        }),
+        Some(AiCommands::Pi { launch }) => surface::launch(surface::AiLaunchRequest {
+            interface_name: "pi".to_string(),
+            title: launch.title,
+            requested_session: launch.session,
+            voice: launch.voice,
             path: launch.path,
             set_default: launch.default,
             tmux: launch.tmux,
@@ -229,12 +245,14 @@ mod tests {
             ["patina", "claude", "--default"],
             ["patina", "opencode", "--default"],
             ["patina", "gemini", "--default"],
+            ["patina", "pi", "--default"],
         ] {
             let parsed = AiCli::try_parse_from(args).unwrap();
             match parsed.command {
                 AiCommands::Claude { launch }
                 | AiCommands::OpenCode { launch }
-                | AiCommands::Gemini { launch } => assert!(launch.default),
+                | AiCommands::Gemini { launch }
+                | AiCommands::Pi { launch } => assert!(launch.default),
                 other => panic!("unexpected command: {other:?}"),
             }
         }
@@ -246,12 +264,14 @@ mod tests {
             ["patina", "claude", "--tmux"],
             ["patina", "opencode", "--no-tmux"],
             ["patina", "gemini", "--tmux"],
+            ["patina", "pi", "--no-tmux"],
         ] {
             let parsed = AiCli::try_parse_from(args).unwrap();
             match parsed.command {
                 AiCommands::Claude { launch }
                 | AiCommands::OpenCode { launch }
-                | AiCommands::Gemini { launch } => {
+                | AiCommands::Gemini { launch }
+                | AiCommands::Pi { launch } => {
                     assert!(launch.tmux || launch.no_tmux)
                 }
                 other => panic!("unexpected command: {other:?}"),

@@ -1,0 +1,9 @@
+package patina:sdk@0.1.0;
+
+world sdk-types {
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    import patina:measure/measure@0.1.0;
+    import patina:config/config@0.1.0;
+    import patina:records/types@0.1.0;
+}

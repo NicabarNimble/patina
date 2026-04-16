@@ -1,116 +1,75 @@
 # patina-sdk
 
-`patina-sdk` is the authoring surface for Patina WASM children.
+`patina-sdk` is the SDK for push-pure Patina WASM children.
 
-## SDK Crate
+It is designed to be used alongside `wit_bindgen::generate!` in each child.
+Children keep their own WIT world and authoritative trait-signature types. The
+SDK provides ergonomic outside toy helpers and convenience type exports.
 
-`patina-sdk` is a single crate. Import it directly and enable toy features as needed.
+## Decision Tree
 
-## 5-Minute Onramp
+- Building a new push-pure child? Use `patina-sdk`.
+- Maintaining a legacy service child (`handle(action, payload)`)? Use
+  `patina-sdk-legacy` with feature `child`.
+- Maintaining a legacy grammar pipeline child? Use `patina-sdk-legacy` with
+  feature `pipeline`.
 
-1. Generate a child from the template:
+## What This SDK Provides
+
+- `toys::log::{info,warn,error}`
+- `toys::keyvalue::{open, Bucket::{get,set,exists}}`
+- `toys::measure::{counter,gauge}`
+- `toys::config::get`
+- `prelude` and root exports for shared SDK-facing types
+
+## Backend-neutral contract (required)
+
+Children authored with `patina-sdk` must remain orchestration-backend neutral.
+
+- ✅ Author business contracts in WIT (`patina:*` interfaces/worlds).
+- ✅ Use toys/WASI capabilities only (`log`, `measure`, `config`, `keyvalue`, etc.).
+- ✅ Accept orchestration metadata only as normal contract inputs when needed.
+- ❌ Do **not** import Rivet/queue/workflow SDKs in child business code.
+- ❌ Do **not** encode orchestrator IDs into WIT package/interface naming.
+
+Mother (or other orchestrators) may adapt external triggers into typed calls, but child logic stays portable.
+
+## Child Pattern
+
+```rust
+use patina_sdk::toys;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "my-child",
+    generate_all,
+});
+
+struct MyChild;
+
+impl exports::patina::records::transform::Guest for MyChild {
+    fn transform(
+        records: Vec<patina::records::types::RecordEnvelope>,
+    ) -> Result<patina::records::types::TransformResult, String> {
+        toys::log::info("my-child", "processing batch");
+        toys::measure::counter("records_seen", records.len() as f64)?;
+        Ok(patina::records::types::TransformResult {
+            accepted: records,
+            rejected: Vec::new(),
+        })
+    }
+}
+
+export!(MyChild);
+```
+
+## Template
+
+Generate a new child scaffold with:
 
 ```sh
 cargo generate --path sdk/template
 ```
-
-2. Build the child (WASM):
-
-```sh
-cargo build --target wasm32-wasip2
-```
-
-3. Ensure `child.toml` uses `[child].name` as canonical identity and `[needs].toys` for grants.
-
-4. Install the child artifact + manifest into Patina's children directory.
-
-5. Start Mother and verify the child loads:
-
-```sh
-patina mother start
-patina mother status
-```
-
-## Child Baseline
-
-Use this feature set for a minimal child:
-
-```toml
-[dependencies]
-patina-sdk = { version = "0.21", features = ["child", "toy-log"] }
-```
-
-Add toys incrementally (`toy-state`, `toy-lake`, `toy-session`, `toy-git`, etc.)
-as your `child.toml` grants expand.
-
-## World Features
-
-Enable exactly one world feature per crate:
-
-- `child` (default path)
-- `pipeline` (experimental lane)
-
-## Stability Policy
-
-| Lane | Status | Policy |
-| --- | --- | --- |
-| `child` | stable | canonical child authoring surface |
-| `pipeline` | experimental | opt-in, no stability promises yet |
-
-## Breaking Change (2026-03)
-
-- `mother-child` SDK feature is retired.
-- `MotherChild` trait and `register_mother_child!` are removed from `patina-sdk`.
-- Migrate child crates to `child` (preferred) or `pipeline` where appropriate.
-
-## Toy Definition
-
-A toy is a controlled opening in the WASM sandbox wall.
-
-- Mother defines the opening; children do not invent new toys.
-- Grants are explicit via `child.toml` (`[needs].toys` + optional `[needs.scopes]`).
-- Scopes shape authority (domains, sources, names, resources); they do not create new toy kinds.
-- Domain logic belongs in children; toys provide boundary access only.
-
-Litmus test for adding/keeping a toy:
-
-- "Why can't the child do this itself from pure WASM compute?"
-- If the child can do it without host authority, it is an SDK/library concern, not a toy.
-
-Anti-goals:
-
-- Toys are not convenience wrappers for provider-specific product logic.
-- Toys are not a child-defined extension surface.
-- Toys are not a way to bypass scoped grants or host-side policy checks.
-
-## Canonical Toybox (v1)
-
-Canonical lock fields are tracked in `sdk-toybox-definition` design (`direction`, `host boundary`, `scope knobs`, `tier`, rationale).
-
-Quick index by tier:
-
-- Core: `log`, `state`, `git`, `peer`, `task`
-- Data: `lake`, `measure`, `connector`
-- Agent: `query`, `messaging`, `session`, `events`, `ingress`, `fetch`, `belief`, `graph`
-
-Treat this as finite platform surface. New toy proposals must pass the toy litmus test and spec-authorized migration policy.
-
-## Child Relationships
-
-Children can declare mediated event relationships in `child.toml`:
-
-```toml
-[relationships]
-emits = ["data-ingested"]
-listens = ["data-ingested"]
-```
-
-Use this to describe child-to-child flow while keeping Mother as the routing authority.
-
-Example pattern:
-
-- `ducklake` emits `data-ingested` after sync
-- `session-writer` listens to `data-ingested` and appends activity notes
 
 ## License
 

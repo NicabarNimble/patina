@@ -179,6 +179,23 @@ mod tests {
                             &serde_json::json!({"version": "test"}),
                         )
                     }),
+                    get_atlas_dashboard: Arc::new(|_| crate::http_daemon::HttpResponse {
+                        status: 200,
+                        headers: vec![("Content-Type".to_string(), "text/html".to_string())],
+                        body: b"<html>atlas</html>".to_vec(),
+                    }),
+                    get_atlas_snapshot: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(
+                            200,
+                            &serde_json::json!({"summary": {"spec_count": 0}}),
+                        )
+                    }),
+                    post_bridge_translate: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(
+                            200,
+                            &serde_json::json!({"verdict": "allow"}),
+                        )
+                    }),
                     post_scry: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
@@ -222,6 +239,15 @@ mod tests {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     post_lifecycle_reload_child: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_lifecycle_warmup_children: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_rivet_dispatch: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_inspector_typed_calls: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     child_request: Arc::new(|_| {
@@ -274,6 +300,23 @@ mod tests {
                             &serde_json::json!({"version": "test"}),
                         )
                     }),
+                    get_atlas_dashboard: Arc::new(|_| crate::http_daemon::HttpResponse {
+                        status: 200,
+                        headers: vec![("Content-Type".to_string(), "text/html".to_string())],
+                        body: b"<html>atlas</html>".to_vec(),
+                    }),
+                    get_atlas_snapshot: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(
+                            200,
+                            &serde_json::json!({"summary": {"spec_count": 0}}),
+                        )
+                    }),
+                    post_bridge_translate: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(
+                            200,
+                            &serde_json::json!({"verdict": "allow"}),
+                        )
+                    }),
                     post_scry: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
@@ -317,6 +360,15 @@ mod tests {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     post_lifecycle_reload_child: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_lifecycle_warmup_children: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_rivet_dispatch: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_inspector_typed_calls: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     child_request: Arc::new(|_| {

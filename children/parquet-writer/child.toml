@@ -1,0 +1,19 @@
+[child]
+name = "parquet-writer"
+kind = "child"
+role = "app"
+
+[needs]
+toys = ["logging", "keyvalue", "measure", "filesystem"]
+
+[needs.inside]
+accepts = ["patina:records/transform"]
+
+[needs.scopes.filesystem.output]
+path = "/tmp"
+mode = "read-write"
+
+[needs.metrics]
+records_written = { type = "counter", labels = [] }
+batch_size = { type = "gauge", labels = [] }
+write_latency_ms = { type = "gauge", labels = [] }

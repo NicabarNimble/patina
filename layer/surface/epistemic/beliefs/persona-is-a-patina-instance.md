@@ -7,7 +7,7 @@ entrenchment: medium
 status: scoped
 endorsed: true
 extracted: 2026-03-02
-revised: 2026-03-21
+revised: 2026-04-09
 ---
 
 # persona-is-a-patina-instance
@@ -46,9 +46,10 @@ A persona is a full Patina instance — its own beliefs, plugins, projects, and 
 
 ## Scope Rationale
 
-Scoped by [[session-20260320-212325-011658000]] (2026-03-21). The sovereignty principle survives — personas have their own beliefs, children, and projects, and they don't pollute each other. But "separate Patina instance" is wrong. A persona is a **cryptographic namespace within Mother**, not a separate Mother. Mother = machine node. Multiple personas live on one Mother, crypto-separated by keypair. A persona can span multiple Mothers (same key on multiple machines, synced via P2P). Projects link to personas via `.patina/persona` — they live on disk independently and declare which persona they belong to. The refined model: Mother is hardware, persona is identity, project is workspace.
+Scoped by [[session-20260320-212325-011658000]] (2026-03-21). The sovereignty principle survives — identities have their own beliefs, children, and projects, and they do not pollute each other. But "separate Patina instance" is wrong. The Era 3 identity is a **cryptographic namespace within Mother**, not a separate Mother. Mother = machine node. Multiple voices live on one Mother, crypto-separated by keypair. A voice can span multiple Mothers (same key on multiple machines, synced via P2P). Projects link to voices via `.patina/voice` — they live on disk independently and declare which voice they belong to. The refined model: Mother is hardware, voice is identity, project is workspace.
 
 ## Revision Log
 
 - 2026-03-02: Created — metrics computed by `patina scrape`
 - 2026-03-21: Scoped — "separate instance" → "crypto namespace within Mother". Sovereignty survives, but persona is not a separate Mother. Mother = machine node, persona = keypair-scoped namespace.
+- 2026-04-09: Revised — updated scoped rationale terminology from persona to voice for Era 3 identity namespace (`.patina/voice`, Mother voice model).

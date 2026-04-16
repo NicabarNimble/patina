@@ -1,0 +1,29 @@
+package patina:legacy-typed-bridge@0.1.0;
+
+interface seam {
+    record bridge-request {
+        action: string,
+        legacy-toys: list<string>,
+        payload: string,
+    }
+
+    enum bridge-verdict {
+        allow,
+        deny,
+    }
+
+    record bridge-response {
+        action: string,
+        verdict: bridge-verdict,
+        typed-toys: list<string>,
+        denied-toys: list<string>,
+        payload: string,
+    }
+
+    translate: func(request: bridge-request) -> bridge-response;
+}
+
+world legacy-typed-bridge {
+    import wasi:logging/logging@0.1.0;
+    export seam;
+}

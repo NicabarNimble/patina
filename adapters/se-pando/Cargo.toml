@@ -1,0 +1,18 @@
+[package]
+name = "patina-ai-adapter-se-pando"
+version = "0.1.0"
+edition = "2021"
+description = "Pando schema transform adapter"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen = "0.41.0"
+
+[package.metadata.component]
+package = "patina:se-pando"
+
+[package.metadata.component.target]
+path = "wit"
+world = "se-pando"

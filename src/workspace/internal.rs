@@ -128,44 +128,47 @@ pub fn setup() -> Result<SetupResult> {
         .with_context(|| format!("Failed to create {}", mother.display()))?;
     println!("  ✓ Created {}", mother.display());
 
-    // ~/.patina/mother/persona/default/
-    let persona_dir =
-        paths::mother::persona::ensure_persona_dir("default").map_err(|e| anyhow::anyhow!(e))?;
-    let beliefs_db =
-        paths::mother::persona::beliefs_db("default").map_err(|e| anyhow::anyhow!(e))?;
+    // ~/.patina/mother/voice/default/
+    let voice_dir =
+        paths::mother::voice::ensure_voice_dir("default").map_err(|e| anyhow::anyhow!(e))?;
+    let beliefs_db = paths::mother::voice::beliefs_db("default").map_err(|e| anyhow::anyhow!(e))?;
     rusqlite::Connection::open(&beliefs_db)
         .with_context(|| format!("Failed to initialize {}", beliefs_db.display()))?;
     let identity_age =
-        paths::mother::persona::identity_age("default").map_err(|e| anyhow::anyhow!(e))?;
+        paths::mother::voice::identity_age("default").map_err(|e| anyhow::anyhow!(e))?;
     if !identity_age.exists() {
         fs::write(&identity_age, "")
             .with_context(|| format!("Failed to create {}", identity_age.display()))?;
     }
-    println!("  ✓ Created {}", persona_dir.display());
+    println!("  ✓ Created {}", voice_dir.display());
 
     // ~/.patina/interfaces/
     fs::create_dir_all(&interfaces)?;
 
-    // ~/.patina/interfaces/{claude,gemini,codex}/
-    for iface in &["claude", "gemini", "codex"] {
+    let supported_interfaces = crate::interface::supported_ai_interfaces();
+
+    // ~/.patina/interfaces/{...}/
+    for iface in &supported_interfaces {
         fs::create_dir_all(interfaces.join(iface))?;
     }
 
     println!("  ✓ Installing interface templates...");
     crate::interface::templates::install_all(&interfaces)?;
-    println!("  ✓ Installed interfaces: claude, gemini, codex");
+    println!(
+        "  ✓ Installed interfaces: {}",
+        supported_interfaces.join(", ")
+    );
 
     // Detect installed interfaces
     let mut detected = Vec::new();
     let mut interfaces_config = InterfacesConfig::default();
 
     // Detect available interfaces
-    for (name, mcp_config) in [
-        ("claude", Some("~/.claude/settings.json")),
-        ("gemini", None),
-        ("codex", None),
-        ("opencode", None),
-    ] {
+    for name in &supported_interfaces {
+        let mcp_config = match *name {
+            "claude" => Some("~/.claude/settings.json"),
+            _ => None,
+        };
         if detect_cli(name) {
             detected.push(name.to_string());
             interfaces_config.entries.insert(
@@ -180,7 +183,7 @@ pub fn setup() -> Result<SetupResult> {
     }
 
     println!("\nDetecting LLM interfaces...");
-    for name in &["claude", "gemini", "codex", "opencode"] {
+    for name in &supported_interfaces {
         if detected.contains(&name.to_string()) {
             println!("  ✓ {} (found)", name);
         } else {
@@ -224,12 +227,10 @@ pub fn setup() -> Result<SetupResult> {
     Ok(SetupResult {
         mother_path: mother,
         workspace_path,
-        interfaces_installed: vec![
-            "claude".to_string(),
-            "gemini".to_string(),
-            "codex".to_string(),
-            "opencode".to_string(),
-        ],
+        interfaces_installed: supported_interfaces
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect::<Vec<_>>(),
         interfaces_detected: detected,
         default_interface,
     })
@@ -248,7 +249,7 @@ pub fn ensure_workspace() -> Result<()> {
     let interfaces = paths::interfaces_dir();
     if !interfaces.exists() {
         fs::create_dir_all(&interfaces)?;
-        for iface in &["claude", "gemini", "codex"] {
+        for iface in crate::interface::supported_ai_interfaces() {
             fs::create_dir_all(interfaces.join(iface))?;
         }
         crate::interface::templates::install_all(&interfaces)?;
@@ -311,7 +312,7 @@ pub fn workspace_info() -> Result<WorkspaceInfo> {
 
     let interfaces = paths::interfaces_dir();
     let mut installed = Vec::new();
-    for name in &["claude", "gemini", "codex"] {
+    for name in crate::interface::supported_ai_interfaces() {
         if interfaces.join(name).exists() {
             installed.push(name.to_string());
         }

@@ -49,10 +49,10 @@ fn typed_child_interface_contracts_remain_locked() {
 
     let (dedup_imports, dedup_exports) = import_export_names(&child_wasm_path("dedup_filter"));
     assert!(
-        dedup_imports
+        !dedup_imports
             .iter()
             .any(|name| name == "patina:records/transform@0.1.0"),
-        "dedup-filter missing transform import seam: {dedup_imports:?}"
+        "dedup-filter unexpectedly imports transform: {dedup_imports:?}"
     );
     assert!(
         dedup_exports
@@ -77,18 +77,18 @@ fn typed_child_interface_contracts_remain_locked() {
         "content-extractor missing extract export: {extract_exports:?}"
     );
 
-    let (write_imports, write_exports) = import_export_names(&child_wasm_path("record_writer"));
+    let (write_imports, write_exports) = import_export_names(&child_wasm_path("parquet_writer"));
     assert!(
-        write_imports
+        !write_imports
             .iter()
             .any(|name| name == "patina:records/transform@0.1.0"),
-        "record-writer missing transform import seam: {write_imports:?}"
+        "parquet-writer unexpectedly imports transform: {write_imports:?}"
     );
     assert!(
         write_exports
             .iter()
             .any(|name| name == "patina:records/write@0.1.0"),
-        "record-writer missing write export: {write_exports:?}"
+        "parquet-writer missing write export: {write_exports:?}"
     );
 
     let (_, catalog_exports) = import_export_names(&child_wasm_path("lakehouse_catalog"));

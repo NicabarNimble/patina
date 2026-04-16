@@ -12,6 +12,7 @@ use crate::mother::GrantedIngressSource;
 mod child;
 pub(crate) mod host_support;
 mod pipeline;
+pub(crate) mod typed_conversion;
 
 #[cfg(test)]
 mod tests;
@@ -92,6 +93,43 @@ impl std::fmt::Display for ChildKind {
         match self {
             Self::Child => write!(f, "child"),
             Self::Pipeline => write!(f, "pipeline"),
+        }
+    }
+}
+
+/// Child business ingress policy for `child` world manifests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChildIngressMode {
+    Handle,
+    Hybrid,
+    WitOnly,
+}
+
+impl Default for ChildIngressMode {
+    fn default() -> Self {
+        Self::Handle
+    }
+}
+
+impl std::str::FromStr for ChildIngressMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "handle" => Ok(Self::Handle),
+            "hybrid" => Ok(Self::Hybrid),
+            "wit-only" => Ok(Self::WitOnly),
+            other => anyhow::bail!("unknown child ingress mode: '{}'", other),
+        }
+    }
+}
+
+impl std::fmt::Display for ChildIngressMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Handle => write!(f, "handle"),
+            Self::Hybrid => write!(f, "hybrid"),
+            Self::WitOnly => write!(f, "wit-only"),
         }
     }
 }
@@ -448,6 +486,15 @@ pub struct ChildManifest {
     /// Inside toy shapes this child accepts from composition.
     /// Declared in [needs.inside].accepts. Empty for handle-based children.
     pub inside_accepts: Vec<String>,
+    /// Business ingress policy for `child` world.
+    /// Parsed from [child.ingress].mode. Defaults to `handle`.
+    pub ingress_mode: ChildIngressMode,
+    /// Optional default WIT business operation id.
+    /// Parsed from [child.contract].default.
+    pub contract_default_operation: Option<String>,
+    /// Allowed WIT business operation ids.
+    /// Parsed from [child.contract].allow. Empty = no explicit allowlist.
+    pub contract_allow_operations: Vec<String>,
 }
 
 // =========================================================================
@@ -553,6 +600,40 @@ impl ChildManifest {
             .and_then(|v| v.as_str())
             .unwrap_or("0.0.0")
             .to_string();
+
+        let ingress_mode = if let Some(mode_value) = child
+            .get("ingress")
+            .and_then(|v| v.as_table())
+            .and_then(|ingress| ingress.get("mode"))
+        {
+            let mode_str = mode_value
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("child.ingress.mode must be a string"))?;
+            mode_str.parse::<ChildIngressMode>()?
+        } else {
+            ChildIngressMode::default()
+        };
+
+        let contract_default_operation = child
+            .get("contract")
+            .and_then(|v| v.as_table())
+            .and_then(|contract| contract.get("default"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        let contract_allow_operations = child
+            .get("contract")
+            .and_then(|v| v.as_table())
+            .and_then(|contract| contract.get("allow"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         let needs_table = table.get("needs").and_then(|v| v.as_table());
         let needs_toys = needs_table
@@ -1062,6 +1143,9 @@ impl ChildManifest {
             belief_write_actions,
             toys,
             inside_accepts,
+            ingress_mode,
+            contract_default_operation,
+            contract_allow_operations,
         })
     }
 

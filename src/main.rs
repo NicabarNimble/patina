@@ -4,6 +4,7 @@ use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 mod commands;
+mod main_dispatch;
 mod preflight;
 mod retrieval;
 #[cfg(test)]
@@ -297,6 +298,10 @@ enum Commands {
         /// Enable contribution mode (create fork for PRs)
         #[arg(long, requires = "url")]
         contrib: bool,
+
+        /// Sparse checkout path (repeatable; shorthand mode)
+        #[arg(long = "sparse", requires = "url", action = clap::ArgAction::Append)]
+        sparse: Vec<String>,
     },
 
     /// Manage embedding models in mother cache
@@ -408,6 +413,33 @@ enum Commands {
         json: bool,
     },
 
+    /// Build deterministic spec + MCT visibility atlas (JSON/HTML/server)
+    Atlas {
+        /// Output path. Defaults: stdout for JSON, layer/surface/reports/atlas/spec-atlas.html for HTML.
+        #[arg(long, short)]
+        output: Option<String>,
+
+        /// Emit standalone HTML dashboard
+        #[arg(long)]
+        html: bool,
+
+        /// Emit JSON snapshot
+        #[arg(long)]
+        json: bool,
+
+        /// Serve a local read-only dashboard server
+        #[arg(long)]
+        serve: bool,
+
+        /// Bind host for --serve mode
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+
+        /// Bind port for --serve mode
+        #[arg(long, default_value_t = 7417)]
+        port: u16,
+    },
+
     /// Show project health from measurement data
     Measure {
         /// Show raw metrics and history (maintainer view)
@@ -453,6 +485,10 @@ enum Commands {
 
     /// Manage spec lifecycle (archive completed specs)
     Spec {
+        /// Target Patina project path or project UID for cross-project spec operations
+        #[arg(long)]
+        project: Option<String>,
+
         #[command(subcommand)]
         command: commands::spec::SpecCommands,
     },
@@ -961,13 +997,26 @@ enum ChildCommands {
         #[arg(last = true)]
         args: Vec<String>,
     },
+    /// Call a typed WIT business operation on a child
+    Call {
+        /// Child name (matches <name>.wasm in command-children dir)
+        name: String,
+        /// Fully-qualified operation id (`package:interface.function`)
+        operation_id: String,
+        /// JSON args payload (positional array)
+        #[arg(default_value = "[]")]
+        args_json: String,
+    },
     /// Create a new child project from template
     Init {
         /// Child name (valid Rust crate name, e.g. "review-bot")
         name: String,
-        /// Child world: child, pipeline
-        #[arg(long)]
+        /// Child world: child, pipeline (default: child)
+        #[arg(long, default_value = "child")]
         world: String,
+        /// Use legacy scaffold lane (maintenance only)
+        #[arg(long)]
+        legacy: bool,
         /// Build the child after scaffolding
         #[arg(long)]
         build: bool,
@@ -975,131 +1024,6 @@ enum ChildCommands {
         #[arg(long, requires = "build")]
         release: bool,
     },
-}
-
-/// Build a query dispatch closure for children with query grants.
-///
-/// Returns None if the child has no host_query grants. Otherwise,
-/// returns a closure that dispatches to context/scry/assay engines.
-fn make_query_dispatch(
-    manifest: &patina::child::engine::ChildManifest,
-) -> Option<patina::child::engine::QueryDispatchFn> {
-    if manifest.host_query_kinds.is_empty() {
-        return None;
-    }
-
-    // Lazy QueryEngine — created on first scry call
-    let mut query_engine: Option<retrieval::QueryEngine> = None;
-
-    Some(Box::new(move |kind: &str, params: &str| {
-        let args: serde_json::Value =
-            serde_json::from_str(params).map_err(|e| format!("invalid params: {}", e))?;
-
-        match kind {
-            "context" => {
-                let topic = args.get("topic").and_then(|v| v.as_str());
-                commands::context::get_project_context(topic).map_err(|e| format!("context: {}", e))
-            }
-            "scry" => {
-                let query_str = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                if query_str.is_empty() {
-                    return Err("scry requires 'query' parameter".to_string());
-                }
-                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-                let all_repos = args
-                    .get("all_repos")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
-
-                let engine = query_engine.get_or_insert_with(retrieval::QueryEngine::new);
-                let options = retrieval::QueryOptions {
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                };
-                let results = engine
-                    .query_with_options(query_str, limit, &options)
-                    .map_err(|e| format!("scry: {}", e))?;
-
-                // JSON array for structured guest consumption
-                let json_results: Vec<serde_json::Value> = results
-                    .iter()
-                    .map(|r| {
-                        serde_json::json!({
-                            "score": r.fused_score,
-                            "doc_id": r.doc_id,
-                            "content": r.content,
-                        })
-                    })
-                    .collect();
-                serde_json::to_string(&json_results).map_err(|e| format!("serialize: {}", e))
-            }
-            "assay" => {
-                use commands::assay::{AssayOptions, QueryType};
-
-                let query_type = args
-                    .get("query_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("inventory");
-                let pattern = args
-                    .get("pattern")
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
-                let all_repos = args
-                    .get("all_repos")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
-                let query = args.get("query").and_then(|v| v.as_str()).map(String::from);
-
-                let qt = match query_type {
-                    "imports" => QueryType::Imports,
-                    "importers" => QueryType::Importers,
-                    "functions" => QueryType::Functions,
-                    "callers" => QueryType::Callers,
-                    "callees" => QueryType::Callees,
-                    "derive" => QueryType::Derive,
-                    "search" => {
-                        let q = query.or_else(|| pattern.clone()).unwrap_or_default();
-                        if q.is_empty() {
-                            return Err("assay search requires 'query' or 'pattern'".into());
-                        }
-                        QueryType::Search { query: q }
-                    }
-                    "cochange" => {
-                        let file = pattern.clone().unwrap_or_default();
-                        if file.is_empty() {
-                            return Err("assay cochange requires 'pattern'".into());
-                        }
-                        QueryType::Cochange { file }
-                    }
-                    "belief" => {
-                        let id = pattern.clone().unwrap_or_default();
-                        if id.is_empty() {
-                            return Err("assay belief requires 'pattern'".into());
-                        }
-                        QueryType::Belief { id }
-                    }
-                    _ => QueryType::Inventory,
-                };
-
-                let options = AssayOptions {
-                    query_type: qt,
-                    pattern,
-                    limit,
-                    json: true,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                };
-
-                commands::assay::execute_query(&options).map_err(|e| format!("assay: {}", e))
-            }
-            _ => Err(format!("unknown query kind: {}", kind)),
-        }
-    }))
 }
 
 fn main() -> Result<()> {
@@ -1138,65 +1062,17 @@ fn main() -> Result<()> {
         }
         #[cfg(feature = "dev")]
         Some(Commands::Upgrade { check, json }) => {
-            commands::dev::upgrade::execute(check, json)?;
+            main_dispatch::dev::dispatch_upgrade(check, json)?;
         }
         #[cfg(feature = "dev")]
-        Some(Commands::Dev { command }) => match command {
-            DevCommands::Validate { json } => {
-                commands::dev::validate::execute(json)?;
-            }
-            DevCommands::Release { bump, dry_run } => {
-                commands::dev::release::execute(
-                    bump.map(|b| match b {
-                        BumpType::Major => "major",
-                        BumpType::Minor => "minor",
-                        BumpType::Patch => "patch",
-                    }),
-                    dry_run,
-                )?;
-            }
-            DevCommands::SyncInterfaces { interface, dry_run } => {
-                commands::dev::sync_adapters::execute(interface.as_deref(), dry_run)?;
-            }
-            DevCommands::BumpVersion {
-                component,
-                bump_type,
-                dry_run,
-            } => {
-                let bump_str = match bump_type {
-                    BumpType::Major => "major",
-                    BumpType::Minor => "minor",
-                    BumpType::Patch => "patch",
-                };
-                commands::dev::bump_version::execute(&component, bump_str, dry_run)?;
-            }
-            DevCommands::UpdateFixtures { fixture } => {
-                commands::dev::update_fixtures::execute(fixture.as_deref())?;
-            }
-        },
+        Some(Commands::Dev { command }) => {
+            main_dispatch::dev::dispatch_dev(command)?;
+        }
         Some(Commands::Scrape { command, rebuild }) => {
-            if rebuild {
-                commands::scrape::execute_rebuild()?;
-            } else {
-                match command {
-                    None => commands::scrape::execute_all()?,
-                    Some(ScrapeCommands::Code { args }) => {
-                        commands::scrape::execute_code(args.init, args.force)?
-                    }
-                    Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
-                    Some(ScrapeCommands::Sessions { full }) => {
-                        commands::scrape::execute_sessions(full)?
-                    }
-                    Some(ScrapeCommands::Layer { full }) => commands::scrape::execute_layer(full)?,
-                }
-            }
+            main_dispatch::scrape::dispatch_scrape(command, rebuild)?;
         }
         Some(Commands::Oxidize { repo }) => {
-            if let Some(repo_name) = repo {
-                commands::oxidize::oxidize_for_repo(&repo_name)?;
-            } else {
-                commands::oxidize::oxidize()?;
-            }
+            main_dispatch::scrape::dispatch_oxidize(repo)?;
         }
         Some(Commands::Rebuild {
             scrape,
@@ -1204,13 +1080,7 @@ fn main() -> Result<()> {
             force,
             dry_run,
         }) => {
-            let options = commands::rebuild::RebuildOptions {
-                scrape_only: scrape,
-                oxidize_only: oxidize,
-                force,
-                dry_run,
-            };
-            commands::rebuild::execute(options)?;
+            main_dispatch::scrape::dispatch_rebuild(scrape, oxidize, force, dry_run)?;
         }
         Some(Commands::Scry {
             command,
@@ -1229,55 +1099,26 @@ fn main() -> Result<()> {
             detail,
             rank,
         }) => {
-            // Handle subcommands first
-            if let Some(subcmd) = command {
-                match subcmd {
-                    ScryCommands::Orient { path, limit } => {
-                        commands::scry::execute_orient(&path, limit)?;
-                    }
-                    ScryCommands::Recent { query, days, limit } => {
-                        commands::scry::execute_recent(query.as_deref(), days, limit)?;
-                    }
-                    ScryCommands::Why { doc_id, query } => {
-                        commands::scry::execute_why(&doc_id, &query)?;
-                    }
-                    ScryCommands::Open { query_id, rank } => {
-                        commands::scry::execute_open(&query_id, rank)?;
-                    }
-                    ScryCommands::Copy { query_id, rank } => {
-                        commands::scry::execute_copy(&query_id, rank)?;
-                    }
-                    ScryCommands::Feedback {
-                        query_id,
-                        signal,
-                        comment,
-                    } => {
-                        commands::scry::execute_feedback(&query_id, &signal, comment.as_deref())?;
-                    }
-                }
-            } else if let Some(ref query_id) = detail {
-                // D3: --detail mode — fetch full content for one result
-                commands::scry::execute_detail(query_id, rank)?;
-            } else {
-                let options = commands::scry::ScryOptions {
-                    limit,
-                    min_score,
-                    dimension: None,
-                    file,
-                    repo,
-                    all_repos,
-                    include_issues,
-                    include_persona: !no_persona,
-                    explain,
-                    belief,
-                    content_type,
-                    impact,
-                };
-                commands::scry::execute(query.as_deref(), options)?;
-            }
+            main_dispatch::scrape::dispatch_scry(
+                command,
+                query,
+                file,
+                belief,
+                content_type,
+                limit,
+                min_score,
+                repo,
+                all_repos,
+                include_issues,
+                no_persona,
+                explain,
+                impact,
+                detail,
+                rank,
+            )?;
         }
         Some(Commands::Context { topic }) => {
-            commands::context::execute(topic.as_deref())?;
+            main_dispatch::scrape::dispatch_context(topic)?;
         }
         Some(Commands::Eval {
             dimension,
@@ -1288,266 +1129,34 @@ fn main() -> Result<()> {
             scry_raw,
             combined,
         }) => {
-            if feedback {
-                commands::eval::execute_feedback()?;
-            } else if nl {
-                commands::eval::execute_nl()?;
-            } else if assay {
-                commands::eval::execute_assay()?;
-            } else if scry_raw {
-                commands::eval::execute_scry_raw()?;
-            } else if scry {
-                commands::eval::execute_scry()?;
-            } else if combined {
-                commands::eval::execute_combined()?;
-            } else {
-                commands::eval::execute(dimension.map(|d| d.as_str().to_string()))?;
-            }
+            main_dispatch::scrape::dispatch_eval(
+                dimension, feedback, nl, assay, scry, scry_raw, combined,
+            )?;
         }
-        Some(Commands::Bench { command }) => match command {
-            BenchCommands::Grammar { files } => {
-                commands::bench::execute_grammar(files)?;
-            }
-            BenchCommands::Retrieval {
-                query_set,
-                limit,
-                json,
-                verbose,
-                rrf_k,
-                fetch_multiplier,
-                oracle,
-                repo,
-            } => {
-                let options = commands::bench::BenchOptions {
-                    query_set,
-                    limit,
-                    json,
-                    verbose,
-                    rrf_k,
-                    fetch_multiplier,
-                    oracle,
-                    repo,
-                };
-                commands::bench::execute(options)?;
-            }
-            BenchCommands::Generate {
-                from_commits: _,
-                repo,
-                limit,
-                output,
-            } => {
-                let options = commands::bench::GenerateOptions {
-                    repo,
-                    limit,
-                    output,
-                };
-                commands::bench::generate(options)?;
-            }
-        },
-        Some(Commands::Persona { command }) => match command {
-            PersonaCommands::Note {
-                content,
-                domains,
-                supersedes,
-            } => {
-                commands::persona::execute_note(&content, domains, supersedes)?;
-            }
-            PersonaCommands::Query {
-                query,
-                limit,
-                min_score,
-                domains,
-            } => {
-                commands::persona::execute_query(&query, limit, min_score, domains)?;
-            }
-            PersonaCommands::List { limit, domains } => {
-                commands::persona::execute_list(limit, domains)?;
-            }
-            PersonaCommands::Materialize => {
-                commands::persona::execute_materialize()?;
-            }
-            PersonaCommands::Status => {
-                commands::persona::execute_status()?;
-            }
-        },
+        Some(Commands::Bench { command }) => {
+            main_dispatch::scrape::dispatch_bench(command)?;
+        }
+        Some(Commands::Persona { command }) => {
+            main_dispatch::scrape::dispatch_persona(command)?;
+        }
         Some(Commands::Doctor { json }) => {
             commands::doctor::execute_cli(json)?;
         }
-        Some(Commands::Child { command }) => match command {
-            ChildCommands::List => commands::child::execute_list()?,
-            ChildCommands::Init {
-                name,
-                world,
-                build,
-                release,
-            } => {
-                let world: patina::child::engine::ChildKind = world.parse()?;
-                let cwd = std::env::current_dir()?;
-                let project_dir = patina::child::scaffold::scaffold(&cwd, &name, &world)?;
-
-                let profile = if release { "release" } else { "debug" };
-                let artifact = project_dir
-                    .join(format!("target/wasm32-wasip2/{}", profile))
-                    .join(format!("{}.wasm", name.replace('-', "_")));
-
-                println!("Created {} child: {}", world, project_dir.display());
-                println!();
-                println!("  cd {}", name);
-                if release {
-                    println!("  cargo build --target wasm32-wasip2 --release");
-                } else {
-                    println!("  cargo build --target wasm32-wasip2");
-                }
-                println!();
-                println!("Artifact will be at: {}", artifact.display());
-
-                if build {
-                    // Proactive rustup check before attempting the build
-                    let has_target = std::process::Command::new("rustup")
-                        .args(["target", "list", "--installed"])
-                        .output()
-                        .map(|o| {
-                            String::from_utf8_lossy(&o.stdout)
-                                .lines()
-                                .any(|l| l.trim() == "wasm32-wasip2")
-                        })
-                        .unwrap_or(false);
-
-                    if !has_target {
-                        eprintln!("Missing wasm32-wasip2 target. Install it:");
-                        eprintln!("  rustup target add wasm32-wasip2");
-                        std::process::exit(1);
-                    }
-
-                    println!();
-                    println!("Building ({})...", profile);
-                    let mut cargo_args = vec!["build", "--target", "wasm32-wasip2"];
-                    if release {
-                        cargo_args.push("--release");
-                    }
-
-                    let status = std::process::Command::new("cargo")
-                        .args(&cargo_args)
-                        .current_dir(&project_dir)
-                        .status();
-
-                    match status {
-                        Ok(s) if s.success() => {
-                            println!("Built: {}", artifact.display());
-                        }
-                        Ok(s) => {
-                            eprintln!("Build failed (exit code {})", s.code().unwrap_or(-1));
-                            std::process::exit(1);
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to run cargo: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-            }
-            ChildCommands::Run { name, args } => {
-                let command_children_dir = patina::paths::child::command_children_dir();
-                let wasm_path = command_children_dir.join(format!("{}.wasm", name));
-                let toml_path = command_children_dir.join(format!("{}.toml", name));
-
-                if !wasm_path.exists() {
-                    anyhow::bail!(
-                        "child '{}' not found at {}\nInstall: cp {}.wasm {}",
-                        name,
-                        wasm_path.display(),
-                        name,
-                        command_children_dir.display()
-                    );
-                }
-
-                let manifest = if toml_path.exists() {
-                    patina::child::engine::ChildManifest::from_path(&toml_path)?
-                } else {
-                    anyhow::bail!(
-                        "child manifest not found at {}\nKnowledge-child and pipeline children require a .toml manifest",
-                        toml_path.display()
-                    );
-                };
-
-                let wasm_bytes = std::fs::read(&wasm_path)?;
-
-                // Auto-detect world from manifest and dispatch
-                match &manifest.world {
-                    patina::child::engine::ChildKind::Child => {
-                        let action = args.first().map(|s| s.as_str()).unwrap_or("health");
-                        let payload_str = args.get(1).map(|s| s.as_str()).unwrap_or("{}");
-
-                        let engine = patina::child::engine::ChildEngine::new()?;
-                        let component = engine.load_component(&wasm_bytes)?;
-                        let query_fn = make_query_dispatch(&manifest);
-                        let mut child =
-                            engine.instantiate_child(&component, &manifest, query_fn)?;
-
-                        use patina::mother::MotherHost;
-                        struct CliHost;
-                        impl MotherHost for CliHost {
-                            fn log(&self, child: &str, message: &str) {
-                                eprintln!("[{}] {}", child, message);
-                            }
-                        }
-                        child.on_load(&CliHost)?;
-
-                        if action == "health" {
-                            let health = child.health();
-                            println!("{:?}", health);
-                        } else if action == "tick" {
-                            println!("{}", serde_json::to_string_pretty(&child.tick())?);
-                        } else if action == "drain" {
-                            let limit = payload_str.parse::<u32>().unwrap_or(64);
-                            match child.drain(limit) {
-                                Ok(events) => {
-                                    println!("{}", serde_json::to_string_pretty(&events)?)
-                                }
-                                Err(e) => {
-                                    eprintln!("error: {}", e);
-                                    std::process::exit(1);
-                                }
-                            }
-                        } else {
-                            let request = patina::mother::ChildRequest {
-                                action: action.to_string(),
-                                payload: serde_json::from_str(payload_str)
-                                    .unwrap_or(serde_json::Value::String(payload_str.to_string())),
-                            };
-                            match child.handle(&request) {
-                                Ok(response) => {
-                                    println!(
-                                        "{}",
-                                        serde_json::to_string_pretty(&response.payload)?
-                                    );
-                                }
-                                Err(e) => {
-                                    eprintln!("error: {}", e);
-                                    std::process::exit(1);
-                                }
-                            }
-                        }
-                    }
-                    patina::child::engine::ChildKind::Pipeline => {
-                        let request = args.first().map(|s| s.as_str()).unwrap_or("{}");
-                        let engine = patina::child::engine::PipelineEngine::new()?;
-                        let component = engine.load_component(&wasm_bytes)?;
-                        let response = engine.handle(&component, &name, request)?;
-                        println!("{}", response);
-                    }
-                }
-            }
-        },
+        Some(Commands::Child { command }) => {
+            main_dispatch::child::dispatch(command)?;
+        }
         Some(Commands::Repo {
             command,
             url,
             contrib,
-        }) => commands::repo::execute_cli(command, url, contrib)?,
+            sparse,
+        }) => commands::repo::execute_cli(command, url, contrib, sparse)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
         Some(Commands::Connect { command }) => commands::connect::execute_cli(command)?,
         Some(Commands::Lake { command }) => commands::lake::execute_cli(command)?,
-        Some(Commands::Mother { command }) => commands::mother::execute_cli(command)?,
+        Some(Commands::Mother { command }) => {
+            main_dispatch::mother::dispatch_mother(command)?;
+        }
         Some(Commands::Pando { command }) => commands::pando::execute_cli(command)?,
         Some(Commands::Secrets { command, flags }) => {
             commands::secrets::execute_cli(command, flags)?
@@ -1588,8 +1197,8 @@ fn main() -> Result<()> {
                 commands::setup::execute_grammars(options)?;
             }
         },
-        Some(Commands::Spec { command }) => {
-            commands::spec::execute(command)?;
+        Some(Commands::Spec { project, command }) => {
+            main_dispatch::spec::dispatch_spec(project, command)?;
         }
         Some(Commands::Schema { command }) => match command {
             commands::schema::SchemaCommands::Install { path } => {
@@ -1630,19 +1239,31 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Serve { host, port, mcp }) => {
-            // Deprecated: delegate to mother start with warning
-            eprintln!("Warning: `patina serve` is deprecated, use `patina mother start` instead.");
-            if mcp {
-                anyhow::bail!("MCP server path has been retired; use `patina mother start`");
-            } else {
-                let options = commands::mother::DaemonOptions { host, port };
-                commands::mother::daemon::run_server(options)?;
-            }
+            // MCP server path has been retired; legacy `serve --mcp` is rejected in dispatch.
+            main_dispatch::mother::dispatch_serve(host, port, mcp)?;
         }
         Some(Commands::Interface { command }) => commands::interface::execute(command)?,
         Some(Commands::Report { output, repo, json }) => {
             let options = commands::report::ReportOptions { output, repo, json };
             commands::report::execute(options)?;
+        }
+        Some(Commands::Atlas {
+            output,
+            html,
+            json,
+            serve,
+            host,
+            port,
+        }) => {
+            let options = commands::atlas::AtlasOptions {
+                output,
+                html,
+                json,
+                serve,
+                host,
+                port,
+            };
+            commands::atlas::execute(options)?;
         }
         Some(Commands::Measure {
             system,
@@ -1674,156 +1295,7 @@ fn main() -> Result<()> {
             repo,
             all_repos,
         }) => {
-            let options = match command {
-                None => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Inventory,
-                    pattern,
-                    limit,
-                    json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-                Some(AssayCommands::Inventory {
-                    pattern,
-                    limit,
-                    json,
-                }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Inventory,
-                    pattern,
-                    limit,
-                    json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-                Some(AssayCommands::Imports {
-                    module,
-                    limit,
-                    json,
-                }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Imports,
-                    pattern: Some(module),
-                    limit,
-                    json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-                Some(AssayCommands::Importers {
-                    module,
-                    limit,
-                    json,
-                }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Importers,
-                    pattern: Some(module),
-                    limit,
-                    json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-                Some(AssayCommands::Functions {
-                    pattern,
-                    limit,
-                    json,
-                }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Functions,
-                    pattern,
-                    limit,
-                    json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-                Some(AssayCommands::Callers {
-                    function,
-                    limit,
-                    json,
-                }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Callers,
-                    pattern: Some(function),
-                    limit,
-                    json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-                Some(AssayCommands::Callees {
-                    function,
-                    limit,
-                    json,
-                }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Callees,
-                    pattern: Some(function),
-                    limit,
-                    json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-                Some(AssayCommands::Derive { json }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Derive,
-                    pattern: None,
-                    limit: 0,
-                    json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-                Some(AssayCommands::DeriveMoments { json }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::DeriveMoments,
-                    pattern: None,
-                    limit: 0,
-                    json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-                Some(AssayCommands::Search {
-                    query: search_query,
-                    limit: search_limit,
-                    json: search_json,
-                    include_issues,
-                }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Search {
-                        query: search_query,
-                    },
-                    pattern: None,
-                    limit: search_limit,
-                    json: search_json,
-                    repo,
-                    all_repos,
-                    include_issues,
-                },
-                Some(AssayCommands::Cochange {
-                    file,
-                    limit: cochange_limit,
-                    json: cochange_json,
-                }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Cochange { file },
-                    pattern: None,
-                    limit: cochange_limit,
-                    json: cochange_json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-                Some(AssayCommands::Belief {
-                    id,
-                    limit: belief_limit,
-                    json: belief_json,
-                }) => commands::assay::AssayOptions {
-                    query_type: commands::assay::QueryType::Belief { id },
-                    pattern: None,
-                    limit: belief_limit,
-                    json: belief_json,
-                    repo,
-                    all_repos,
-                    ..Default::default()
-                },
-            };
-            commands::assay::execute(options)?;
+            main_dispatch::scrape::dispatch_assay(command, pattern, limit, json, repo, all_repos)?;
         }
     }
 

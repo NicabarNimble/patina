@@ -5,27 +5,106 @@ version = "0.1.0"
 
 [[children]]
 name = "file-system-monitor"
+id = "fsm"
+
+[[children]]
+name = "fsm-pando"
+id = "fsm-pando"
 
 [[children]]
 name = "content-extractor"
+id = "ce"
+
+[[children]]
+name = "ce-pando"
+id = "ce-pando"
 
 [[children]]
 name = "schema-enforcer"
+id = "se"
+
+[[children]]
+name = "se-pando"
+id = "schema-transform"
 
 [[children]]
 name = "dedup-filter"
+id = "df"
 
 [[children]]
-name = "record-writer"
+name = "df-pando"
+id = "dedup-transform"
+
+[[children]]
+name = "parquet-writer"
+id = "rw"
+
+[[children]]
+name = "rw-pando"
+id = "rw-pando"
 
 [[children]]
 name = "lakehouse-catalog"
+id = "lc"
+
+[[children]]
+name = "lc-pando"
+id = "lc-pando"
 
 [composition]
-wiring = [
-  "file-system-monitor.file.found -> content-extractor",
-  "content-extractor.record.extracted -> schema-enforcer",
-  "schema-enforcer.record.validated -> dedup-filter",
-  "dedup-filter.record.ready -> record-writer",
-  "record-writer.file.written -> lakehouse-catalog",
-]
+entry = { child = "lc-pando", toy = "patina:pando/catalog" }
+
+[[composition.wiring]]
+from = "fsm"
+to = "fsm-pando"
+toy = "patina:records/source"
+
+[[composition.wiring]]
+from = "fsm-pando"
+to = "ce-pando"
+toy = "patina:pando/source"
+
+[[composition.wiring]]
+from = "ce"
+to = "ce-pando"
+toy = "patina:records/extract"
+
+[[composition.wiring]]
+from = "ce-pando"
+to = "schema-transform"
+toy = "patina:pando/extract"
+
+[[composition.wiring]]
+from = "se"
+to = "schema-transform"
+toy = "patina:records/transform"
+
+[[composition.wiring]]
+from = "schema-transform"
+to = "dedup-transform"
+toy = "patina:pando/transform"
+
+[[composition.wiring]]
+from = "df"
+to = "dedup-transform"
+toy = "patina:records/transform"
+
+[[composition.wiring]]
+from = "dedup-transform"
+to = "rw-pando"
+toy = "patina:pando/transform"
+
+[[composition.wiring]]
+from = "rw"
+to = "rw-pando"
+toy = "patina:records/write"
+
+[[composition.wiring]]
+from = "rw-pando"
+to = "lc-pando"
+toy = "patina:pando/write"
+
+[[composition.wiring]]
+from = "lc"
+to = "lc-pando"
+toy = "patina:records/catalog"

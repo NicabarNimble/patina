@@ -28,6 +28,7 @@
 pub mod broker;
 pub mod doctor_runtime;
 mod internal;
+pub mod skills;
 
 // Bridge module: state logic now lives in the mother crate.
 // Re-export so existing `crate::mother::state::*` paths continue to compile.
@@ -43,13 +44,13 @@ use patina_protocol::{
 
 // Child trait exports
 pub use crate::child::runtime::{
-    Child, ChildHealth, ChildRequest, ChildResponse, MotherHost, PendingEvent, TaskIntent,
-    TaskIntentKind, Toy,
+    CallCorrelation, Child, ChildCallRequest, ChildHealth, ChildRequest, ChildResponse, MotherHost,
+    PendingEvent, TaskIntent, TaskIntentKind, Toy,
 };
 pub use mother_crate::state::{
     InterfaceKindId, LakeCursorUpdate, MotherRuntimeStore, MotherSessionParticipant,
-    MotherSessionRecord, MotherSessionStatus, PersonaUid, ProjectUid, QueuedTask, RunStatus,
-    TaskStatus,
+    MotherSessionRecord, MotherSessionStatus, ProjectUid, QueuedTask, RunStatus, TaskStatus,
+    VoiceUid,
 };
 pub use mother_crate::toys::{GrantedIngressSource, GrantedToys};
 

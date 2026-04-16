@@ -1,0 +1,13 @@
+package patina:measure@0.1.0;
+
+interface measure {
+    record metric {
+        name: string,
+        value: f64,
+        labels: list<tuple<string, string>>,
+    }
+
+    emit: func(metric: metric) -> result<_, string>;
+    gauge: func(name: string, value: f64) -> result<_, string>;
+    counter: func(name: string, delta: f64) -> result<_, string>;
+}

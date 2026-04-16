@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wit-bindgen = "0.41.0"
+patina-sdk = { path = "../../sdk/patina-sdk" }
 
 [package.metadata.component]
 package = "patina:schema-enforcer"

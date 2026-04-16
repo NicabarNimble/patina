@@ -1,12 +1,13 @@
 [child]
 name = "__NAME__"
 version = "0.1.0"
-description = "Patina pipeline child"
+description = "Patina legacy pipeline child"
 kind = "pipeline"
+role = "grammar"
 patina_min = "0.21.0"
 
 [needs]
-toys = ["log"]
+toys = ["logging"]
 
 [provides]
 pipeline_ops = ["parse"]

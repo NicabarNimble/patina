@@ -40,6 +40,10 @@ pub enum RepoCommands {
         #[arg(long)]
         contrib: bool,
 
+        /// Sparse checkout path (repeatable)
+        #[arg(long = "sparse", value_name = "PATH", action = clap::ArgAction::Append)]
+        sparse: Vec<String>,
+
         /// Skip building semantic indices (faster, lexical search only)
         #[arg(long)]
         no_oxidize: bool,
@@ -98,6 +102,7 @@ pub fn execute_cli(
     command: Option<RepoCommands>,
     url: Option<String>,
     contrib: bool,
+    sparse: Vec<String>,
 ) -> Result<()> {
     let cmd = match (command, url) {
         // Subcommand form: patina repo add/list/update/etc
@@ -105,12 +110,14 @@ pub fn execute_cli(
             Some(RepoCommands::Add {
                 url,
                 contrib,
+                sparse,
                 no_oxidize,
             }),
             _,
         ) => RepoCommand::Add {
             url,
             contrib,
+            sparse,
             no_oxidize,
         },
         (Some(RepoCommands::List { status }), _) => RepoCommand::List { status },
@@ -143,11 +150,12 @@ pub fn execute_cli(
         (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
         (Some(RepoCommands::Show { name }), _) => RepoCommand::Show { name },
 
-        // Shorthand form: patina repo <url> [--contrib]
+        // Shorthand form: patina repo <url> [--contrib] [--sparse path]
         // Note: --no-oxidize not available in shorthand, defaults to false (oxidize runs)
         (None, Some(url)) => RepoCommand::Add {
             url,
             contrib,
+            sparse,
             no_oxidize: false,
         },
 
@@ -165,8 +173,8 @@ pub fn execute_cli(
 ///
 /// With `--contrib`, also creates a GitHub fork and sets up push remote.
 /// With `--no-oxidize`, skips building semantic indices (faster, lexical search only).
-pub fn add(url: &str, contrib: bool, no_oxidize: bool) -> Result<()> {
-    internal::add_repo(url, contrib, no_oxidize)
+pub fn add(url: &str, contrib: bool, no_oxidize: bool, sparse: Vec<String>) -> Result<()> {
+    internal::add_repo(url, contrib, no_oxidize, sparse)
 }
 
 /// List all registered repositories
@@ -223,6 +231,11 @@ pub fn migrate_registry_paths() -> bool {
     let mut updates: Vec<(String, String)> = Vec::new(); // (name, new_path)
 
     for (name, entry) in registry.repos.iter() {
+        if !entry.sparse.is_empty() {
+            // Sparse entries are already on a dedicated cache lane.
+            continue;
+        }
+
         let expected_path = cache_base.join(name);
         let expected_path_str = expected_path.to_string_lossy().to_string();
 
@@ -268,8 +281,9 @@ pub fn execute(command: RepoCommand) -> Result<()> {
         RepoCommand::Add {
             url,
             contrib,
+            sparse,
             no_oxidize,
-        } => add(&url, contrib, no_oxidize),
+        } => add(&url, contrib, no_oxidize, sparse),
         RepoCommand::List { status } => {
             let repos = list()?;
             if repos.is_empty() {
@@ -281,23 +295,39 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             println!("📚 Registered Repositories\n");
 
             if status {
-                println!("{:<40} {:<8} STATUS", "NAME", "CONTRIB");
-                println!("{}", "─".repeat(80));
+                println!("{:<40} {:<8} {:<10} STATUS", "NAME", "CONTRIB", "MODE");
+                println!("{}", "─".repeat(100));
 
                 for repo in repos {
                     let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
+                    let mode = if repo.sparse.is_empty() {
+                        "full".to_string()
+                    } else {
+                        format!("sparse({})", repo.sparse.len())
+                    };
                     let status_str =
                         internal::check_repo_status(&repo.path, repo.synced_commit.as_deref());
-                    println!("{:<40} {:<8} {}", repo.name, contrib_str, status_str);
+                    println!(
+                        "{:<40} {:<8} {:<10} {}",
+                        repo.name, contrib_str, mode, status_str
+                    );
                 }
             } else {
-                println!("{:<40} {:<8} DOMAINS", "NAME", "CONTRIB");
-                println!("{}", "─".repeat(80));
+                println!("{:<40} {:<8} {:<10} DOMAINS", "NAME", "CONTRIB", "MODE");
+                println!("{}", "─".repeat(100));
 
                 for repo in repos {
                     let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
+                    let mode = if repo.sparse.is_empty() {
+                        "full".to_string()
+                    } else {
+                        format!("sparse({})", repo.sparse.len())
+                    };
                     let domains = repo.domains.join(", ");
-                    println!("{:<40} {:<8} {}", repo.name, contrib_str, domains);
+                    println!(
+                        "{:<40} {:<8} {:<10} {}",
+                        repo.name, contrib_str, mode, domains
+                    );
                 }
             }
             Ok(())
@@ -331,6 +361,7 @@ pub enum RepoCommand {
     Add {
         url: String,
         contrib: bool,
+        sparse: Vec<String>,
         no_oxidize: bool,
     },
     List {
@@ -359,6 +390,7 @@ mod tests {
         let add = RepoCommand::Add {
             url: "https://github.com/test/repo".to_string(),
             contrib: false,
+            sparse: vec!["design/mvp".to_string()],
             no_oxidize: false,
         };
         assert!(matches!(add, RepoCommand::Add { .. }));

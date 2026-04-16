@@ -25,7 +25,7 @@ pub struct AiLaunchRequest {
     pub interface_name: String,
     pub title: Option<String>,
     pub requested_session: Option<String>,
-    pub persona: Option<String>,
+    pub voice: Option<String>,
     pub path: Option<String>,
     pub set_default: bool,
     pub tmux: bool,
@@ -39,7 +39,7 @@ pub fn launch_default() -> Result<()> {
         interface_name,
         title: None,
         requested_session: None,
-        persona: None,
+        voice: None,
         path: None,
         set_default: false,
         tmux: false,
@@ -146,7 +146,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         );
     }
 
-    if !patina::paths::project::config_path(&project_path).exists() {
+    if !project::is_patina_project(&project_path) {
         match launch_internal::prompt_are_you_lost(&project_path, Some(&interface_name))? {
             Some(_) => {
                 project_path = launch_internal::resolve_project_path(Some(
@@ -185,14 +185,14 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         interface::set_project_default_interface(&project_path, &interface_name)?;
     }
 
-    let resolved_persona_uid = resolve_persona_uid(request.persona.as_deref(), &project_path);
+    let resolved_voice_uid = resolve_voice_uid(request.voice.as_deref(), &project_path);
 
     let checkin = check_in(&InterfaceCheckIn {
         interface_kind: iface.interface_kind(),
         interface_name: interface_name.clone(),
         project_root: project_path.clone(),
         project_uid: project::get_uid(&project_path),
-        requested_persona: resolved_persona_uid.clone(),
+        requested_voice: resolved_voice_uid.clone(),
         requested_session: request.requested_session,
         title: request.title,
         capabilities: iface.capabilities(),
@@ -237,8 +237,8 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
             checkin.artifact_path.display().to_string(),
         ),
     ];
-    if let Some(persona_uid) = checkin.persona_uid.as_ref() {
-        env.push(("PATINA_PERSONA_UID".to_string(), persona_uid.clone()));
+    if let Some(voice_uid) = checkin.voice_uid.as_ref() {
+        env.push(("PATINA_VOICE_UID".to_string(), voice_uid.clone()));
     }
 
     let bundle = interface::interface_bundle(&interface_name)?;
@@ -287,7 +287,7 @@ fn record_ai_session_started(
     let payload = serde_json::json!({
         "session_id": checkin.session_file_id,
         "runtime_id": checkin.session_runtime_id,
-        "persona_uid": checkin.persona_uid,
+        "voice_uid": checkin.voice_uid,
         "interface": interface_name,
         "artifact": checkin.artifact_path,
         "attached_existing": false,
@@ -303,16 +303,65 @@ fn record_ai_session_started(
     Ok(())
 }
 
-fn resolve_persona_uid(explicit: Option<&str>, project_root: &std::path::Path) -> Option<String> {
-    // Launch-time persona scope precedence:
-    // 1) explicit CLI flag, 2) project binding `.patina/persona`, 3) none.
-    // Cryptographic persona binding is a later phase; this function only
-    // resolves the current namespace selector used by check-in/session scoping.
-    explicit
+fn resolve_voice_uid(explicit: Option<&str>, project_root: &std::path::Path) -> Option<String> {
+    let old_voice_binding = project_root.join(".patina/persona");
+    let new_voice_binding = project::voice_path(project_root);
+    if old_voice_binding.exists() && !new_voice_binding.exists() {
+        if let Err(error) = std::fs::rename(&old_voice_binding, &new_voice_binding) {
+            eprintln!(
+                "[ai] warning: failed to migrate project voice binding '{}' -> '{}': {}",
+                old_voice_binding.display(),
+                new_voice_binding.display(),
+                error
+            );
+        }
+    }
+
+    // Launch-time voice scope precedence:
+    // 1) explicit CLI flag, 2) project binding `.patina/voice`, 3) none.
+    let resolved = explicit
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
-        .or_else(|| project::get_persona(project_root))
+        .or_else(|| project::get_voice(project_root));
+
+    if let Some(voice_uid) = resolved.as_deref() {
+        let old_voice_dir = patina::paths::patina_home()
+            .join("mother")
+            .join("persona")
+            .join(voice_uid);
+        let new_voice_dir = patina::paths::mother::voice::voice_dir(voice_uid).ok();
+
+        if let Some(new_voice_dir) = new_voice_dir {
+            if old_voice_dir.exists() && !new_voice_dir.exists() {
+                if let Some(parent) = new_voice_dir.parent() {
+                    if let Err(error) = std::fs::create_dir_all(parent) {
+                        eprintln!(
+                            "[ai] warning: failed to prepare voice dir '{}' for migration: {}",
+                            parent.display(),
+                            error
+                        );
+                    }
+                }
+                if let Err(error) = std::fs::rename(&old_voice_dir, &new_voice_dir) {
+                    eprintln!(
+                        "[ai] warning: failed to migrate voice store '{}' -> '{}': {}",
+                        old_voice_dir.display(),
+                        new_voice_dir.display(),
+                        error
+                    );
+                }
+            } else if old_voice_dir.exists() && new_voice_dir.exists() {
+                eprintln!(
+                    "[ai] warning: both legacy and current voice stores exist for '{}'; preferring '{}'",
+                    voice_uid,
+                    new_voice_dir.display()
+                );
+            }
+        }
+    }
+
+    resolved
 }
 
 #[cfg(test)]
@@ -410,22 +459,69 @@ mod tests {
     }
 
     #[test]
-    fn resolve_persona_uid_prefers_explicit_over_project_binding() {
+    fn resolve_voice_uid_prefers_explicit_over_project_binding() {
         let temp = setup_project();
-        let persona_path = project::persona_path(temp.path());
-        fs::write(&persona_path, "persona-project\n").unwrap();
+        let voice_path = project::voice_path(temp.path());
+        fs::write(&voice_path, "voice-project\n").unwrap();
 
-        let resolved = resolve_persona_uid(Some("persona-cli"), temp.path());
-        assert_eq!(resolved.as_deref(), Some("persona-cli"));
+        let resolved = resolve_voice_uid(Some("voice-cli"), temp.path());
+        assert_eq!(resolved.as_deref(), Some("voice-cli"));
     }
 
     #[test]
-    fn resolve_persona_uid_falls_back_to_project_binding() {
+    fn resolve_voice_uid_falls_back_to_project_binding() {
         let temp = setup_project();
-        let persona_path = project::persona_path(temp.path());
-        fs::write(&persona_path, "persona-project\n").unwrap();
+        let voice_path = project::voice_path(temp.path());
+        fs::write(&voice_path, "voice-project\n").unwrap();
 
-        let resolved = resolve_persona_uid(None, temp.path());
-        assert_eq!(resolved.as_deref(), Some("persona-project"));
+        let resolved = resolve_voice_uid(None, temp.path());
+        assert_eq!(resolved.as_deref(), Some("voice-project"));
+    }
+
+    #[test]
+    fn resolve_voice_uid_migrates_legacy_project_binding() {
+        let temp = setup_project();
+        fs::write(temp.path().join(".patina/persona"), "voice-project\n").unwrap();
+
+        let resolved = resolve_voice_uid(None, temp.path());
+        assert_eq!(resolved.as_deref(), Some("voice-project"));
+        assert!(project::voice_path(temp.path()).exists());
+        assert!(!temp.path().join(".patina/persona").exists());
+    }
+
+    #[test]
+    fn launch_explicit_interface_hard_fails_when_detect_missing() {
+        let temp = setup_project();
+
+        with_temp_env(&temp, || {
+            let old_path = std::env::var_os("PATH");
+            unsafe {
+                std::env::set_var("PATH", "/definitely/missing/path");
+            }
+
+            let result = launch(AiLaunchRequest {
+                interface_name: "claude".to_string(),
+                title: None,
+                requested_session: None,
+                voice: None,
+                path: Some(temp.path().display().to_string()),
+                set_default: false,
+                tmux: false,
+                no_tmux: false,
+            });
+
+            assert!(result.is_err());
+            let message = result.unwrap_err().to_string();
+            assert!(message.contains("Interface 'claude' (Claude Code) is not installed"));
+
+            match old_path {
+                Some(value) => unsafe {
+                    std::env::set_var("PATH", value);
+                },
+                None => unsafe {
+                    std::env::remove_var("PATH");
+                },
+            }
+        });
     }
 }

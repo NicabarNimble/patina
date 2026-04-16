@@ -601,7 +601,7 @@ type = "bearer"
             .unwrap()
             .success());
         let _sha = git_commit("init").unwrap();
-        assert!(git_tag_exists("phase4-tag").unwrap() == false);
+        assert!(!git_tag_exists("phase4-tag").unwrap());
         git_create_tag("phase4-tag").unwrap();
         assert!(git_tag_exists("phase4-tag").unwrap());
         let lines = git_log_oneline(5).unwrap();

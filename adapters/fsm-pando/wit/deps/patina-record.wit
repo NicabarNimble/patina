@@ -1,0 +1,16 @@
+package patina:records@0.1.0;
+
+interface types {
+    record file-found {
+        source-path: string,
+        source-hash: string,
+        source-size-bytes: u64,
+        discovered-at: string,
+    }
+}
+
+interface source {
+    use types.{file-found};
+
+    scan: func(folder: string) -> result<list<file-found>, string>;
+}

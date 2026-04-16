@@ -31,9 +31,61 @@ pub use patina::spec::SpecCommands;
 use patina_protocol::{
     BuiltinChild, BuiltinChildAction, BuiltinChildRequest, BuiltinChildResult, SpecDispatchRequest,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub fn execute(command: SpecCommands) -> Result<()> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SpecDispatchEnvelope {
+    command: SpecCommands,
+    #[serde(default)]
+    project: Option<String>,
+    #[serde(default)]
+    origin_project: Option<String>,
+}
+
+pub fn execute(mut command: SpecCommands, project: Option<String>) -> Result<()> {
+    if std::env::var("PATINA_SPEC_DIRECT").as_deref() == Ok("1") {
+        if let Ok(raw) = std::env::var("PATINA_SPEC_DIRECT_COMMAND_JSON") {
+            command = serde_json::from_str(&raw)?;
+        }
+        let payload = execute_value(command)?;
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+        return Ok(());
+    }
+
+    let caller_project = std::env::current_dir()
+        .ok()
+        .map(|cwd| cwd.display().to_string());
+
+    let embedded_create_project = match &command {
+        SpecCommands::Create { project, .. } => project.clone(),
+        _ => None,
+    };
+
+    let effective_project = project
+        .clone()
+        .or_else(|| embedded_create_project.clone())
+        .or_else(|| caller_project.clone());
+
+    let mut origin_project = if project.is_some() || embedded_create_project.is_some() {
+        caller_project.clone()
+    } else {
+        None
+    };
+
+    if let SpecCommands::Create {
+        origin_project: embedded_origin,
+        ..
+    } = &mut command
+    {
+        if embedded_origin.is_none() {
+            *embedded_origin = origin_project.clone();
+        }
+        if embedded_origin.is_some() {
+            origin_project = embedded_origin.clone();
+        }
+    }
+
     if !command.wants_json() {
         match &command {
             SpecCommands::Complete { id, .. } => {
@@ -52,10 +104,16 @@ pub fn execute(command: SpecCommands) -> Result<()> {
         }
     }
 
+    let envelope = SpecDispatchEnvelope {
+        command: command.clone(),
+        project: effective_project,
+        origin_project,
+    };
+
     let protocol_request = BuiltinChildRequest::new(
         BuiltinChild::SpecManager,
         BuiltinChildAction::SpecDispatch(SpecDispatchRequest {
-            command: serde_json::to_value(command.clone())?,
+            command: serde_json::to_value(envelope)?,
         }),
     );
     let client = patina::mother::control_plane_client();
@@ -172,6 +230,30 @@ mod tests {
                 assert_eq!(title.as_deref(), Some("Fix the bug"));
                 assert_eq!(blocked_by, vec!["other-spec"]);
                 assert!(json);
+            }
+            _ => panic!("expected Create"),
+        }
+    }
+
+    #[test]
+    fn create_with_cross_project_flags() {
+        let cmd = parse(&[
+            "create",
+            "feat",
+            "cross-proj-spec",
+            "--project",
+            "/tmp/other-project",
+            "--force-cross-project",
+        ])
+        .unwrap();
+        match cmd {
+            SpecCommands::Create {
+                project,
+                force_cross_project,
+                ..
+            } => {
+                assert_eq!(project.as_deref(), Some("/tmp/other-project"));
+                assert!(force_cross_project);
             }
             _ => panic!("expected Create"),
         }

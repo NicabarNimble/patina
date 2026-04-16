@@ -7,6 +7,21 @@ making claims about how something was designed.
 
 ### Active
 - [child-construction-canon](feat/child-construction-canon/SPEC.md) — registry of reusable children, composition model, SDK extraction (ccc1-ccc2 checked, ccc3-ccc7 pending)
+- [mother-core-worker-topology](feat/mother-core-worker-topology/SPEC.md) — always-on core control plane with profile-gated warmup activation
+- [mother-observability-memory-baseline](feat/mother-observability-memory-baseline/SPEC.md) — request correlation, request logs, memory telemetry, and warmup soft-limit guard
+- [mother-rivet-correlation-join](feat/mother-rivet-correlation-join/SPEC.md) — correlate Rivet execution IDs with Mother typed-call observations + inspector filters
+- [mother-rivet-integration](feat/mother-rivet-integration/SPEC.md) — Rivet-first orchestration integration while keeping Mother/WASI typed execution authority
+- [mother-typed-invocation-driver](feat/mother-typed-invocation-driver/SPEC.md) — invocation driver seam + generic typed operation routing + inspectable call history
+- [mother-wit-dispatcher](feat/mother-wit-dispatcher/SPEC.md) — typed Mother WIT dispatcher for business ingress (`handle` → WIT migration)
+- [pando-delivery-policy](feat/pando-delivery-policy/SPEC.md) — per-edge typed wiring delivery semantics (`required`, `best-effort`, `dead-letter`)
+- [spec-cross-project-dispatch](feat/spec-cross-project-dispatch/SPEC.md) — create specs into another project (`--project`) with session lock + provenance link
+- [watch-null-sink-child](feat/watch-null-sink-child/SPEC.md) — ephemeral typed `patina:watch/events` sink for connection testing
+- [durable-rust-unix-realignment-program](refactor/durable-rust-unix-realignment-program/SPEC.md) — umbrella program for durable-rust/unix realignment (HITL-gated slices)
+- [spec-archive-read-path](fix/spec-archive-read-path/SPEC.md) — restore archived spec show/check from tag-backed source
+- [js-mjs-grammar-claim-alignment](fix/js-mjs-grammar-claim-alignment/SPEC.md) — align JavaScript grammar claims with `.mjs` modules to unblock scrape/oxidize
+- [prepush-impact-lane-tuning](fix/prepush-impact-lane-tuning/SPEC.md) — tune Tier 2 pre-push impact lane to skip cargo on docs-only changes while staying fail-closed
+- [retired-mcp-guard-restoration](fix/retired-mcp-guard-restoration/SPEC.md) — restore explicit retired-MCP marker in main router for Tier 1 invariants
+- [integration-test-domain-split](refactor/integration-test-domain-split/SPEC.md) — split wasm integration + pando parity tests by subject-under-test for failure diagnosis
 
 ### Draft
 - [persona-lake-mvp1](feat/persona-lake-mvp1/SPEC.md) — persona-scoped knowledge lake (blocked by mother-duckdb-ducklake-federation)
@@ -17,8 +32,14 @@ making claims about how something was designed.
 - [cloudflare-worker-child](feat/cloudflare-worker-child/SPEC.md) — Patina child as Cloudflare Worker
 - [patina-durable-backup](feat/patina-durable-backup/SPEC.md) — durable backup system
 - [wit-deps-wasi-alignment](fix/wit-deps-wasi-alignment/SPEC.md) — replace flattened WASI P2 deps with upstream multi-file packages (io done, http/clocks/filesystem pending)
+- [spec-create-transaction-boundary](fix/spec-create-transaction-boundary/SPEC.md) — harden `spec create` fs/git/db failure boundaries with explicit invariants and compensation
 - [engine-consolidate](refactor/engine-consolidate/SPEC.md) — merge PipelineEngine + KnowledgeChildEngine
 - [interface-redesign](refactor/interface-redesign/SPEC.md) — Mother-managed interface registry, ephemeral projection, skill system (16 criteria)
+- [main-command-router-split](refactor/main-command-router-split/SPEC.md) — decompose top-level CLI dispatch into command-family modules
+- [mother-daemon-module-split](refactor/mother-daemon-module-split/SPEC.md) — split mother daemon startup/dispatch/composition/health modules
+- [mother-http-api-module-split](refactor/mother-http-api-module-split/SPEC.md) — split mother HTTP API by endpoint domains
+- [child-typed-conversion-boundary](refactor/child-typed-conversion-boundary/SPEC.md) — extract and lock JSON↔component typed conversion boundary
+- [typed-operation-identity-hardening](refactor/typed-operation-identity-hardening/SPEC.md) — enforce exact typed export identity and fail-closed operation validation
 - [duckdb-durable-execution](explore/duckdb-durable-execution/SPEC.md) — DuckDB + Mother for Absurd-style durable execution (explore)
 - [mother-child-artifact-registry](explore/mother-child-artifact-registry/SPEC.md) — Mother-managed child artifact distribution (explore)
 - [mother-password-unlock](explore/mother-password-unlock/SPEC.md) — password-based vault unlock (explore)

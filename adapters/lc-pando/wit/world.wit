@@ -1,0 +1,7 @@
+package patina:lc-pando@0.1.0;
+
+world lc-pando {
+    import patina:pando/write@0.1.0;
+    import patina:records/catalog@0.1.0;
+    export patina:pando/catalog@0.1.0;
+}

@@ -40,6 +40,7 @@
 //! ```
 
 pub(crate) mod adapters;
+pub(crate) mod audit;
 pub(crate) mod daemon;
 pub(crate) mod federation;
 pub(crate) mod graph;
@@ -59,8 +60,8 @@ use std::process::Command;
 use patina::paths;
 use patina::session::SessionManager;
 
-// Re-export DaemonOptions for use in main.rs
-pub use daemon::DaemonOptions;
+// Re-export daemon option types for use in main.rs
+pub use daemon::{DaemonOptions, DaemonStartupProfile, RivetIntegrationProfile};
 
 /// Mother CLI subcommands
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -77,6 +78,14 @@ pub enum MotherCommands {
         /// TCP port (only used with --host)
         #[arg(long, default_value = "50051")]
         port: u16,
+
+        /// Startup profile: `full` auto-warms children, `core` keeps control-plane only
+        #[arg(long, value_enum, default_value_t = DaemonStartupProfile::Full)]
+        profile: DaemonStartupProfile,
+
+        /// Rivet integration profile (`disabled` preserves current behavior)
+        #[arg(long, value_enum, default_value_t = RivetIntegrationProfile::Disabled)]
+        rivet: RivetIntegrationProfile,
 
         /// Run as MCP server (JSON-RPC over stdio) instead of HTTP
         #[arg(long)]
@@ -225,6 +234,8 @@ pub enum LifecycleCommands {
         /// Child name
         name: String,
     },
+    /// Warm up children explicitly (primarily used with `--profile core`)
+    WarmupChildren,
     /// Write/refresh SHA-256 sidecars for strict integrity mode
     SyncHashes {
         /// Optional pando name (defaults to all installed pandos)
@@ -369,11 +380,22 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("Run 'patina mother --help' for details.");
             Ok(())
         }
-        Some(MotherCommands::Start { host, port, mcp }) => {
+        Some(MotherCommands::Start {
+            host,
+            port,
+            profile,
+            rivet,
+            mcp,
+        }) => {
             if mcp {
                 bail!("MCP server path has been retired; start daemon without --mcp")
             } else {
-                let options = DaemonOptions { host, port };
+                let options = DaemonOptions {
+                    host,
+                    port,
+                    profile,
+                    rivet,
+                };
                 daemon::run_server(options)
             }
         }
@@ -482,6 +504,12 @@ fn execute_lifecycle(command: LifecycleCommands) -> Result<()> {
         LifecycleCommands::ReloadChild { name } => {
             let payload = client
                 .lifecycle_reload_child(mother_crate::protocol::LifecycleNamePayload { name })?;
+            println!("{}", serde_json::to_string_pretty(&payload)?);
+            Ok(())
+        }
+        LifecycleCommands::WarmupChildren => {
+            let payload = client
+                .lifecycle_warmup_children(mother_crate::protocol::LifecycleWarmupPayload {})?;
             println!("{}", serde_json::to_string_pretty(&payload)?);
             Ok(())
         }
@@ -857,6 +885,38 @@ fn show_status() -> Result<()> {
                 }
             );
             println!("   Registered projects: {}", health.registered_projects);
+            if let Some(profile) = &health.startup_profile {
+                println!("   Startup profile: {}", profile);
+            }
+            if let Some(rivet_integration) = &health.rivet_integration {
+                println!("   Rivet integration: {}", rivet_integration);
+            }
+            if let Some(warmup) = &health.child_warmup {
+                if warmup.mode.is_empty() && warmup.state.is_empty() {
+                    println!("   Child warmup: unavailable");
+                } else {
+                    println!(
+                        "   Child warmup: mode={} state={}",
+                        warmup.mode, warmup.state
+                    );
+                    if let Some(error) = &warmup.last_error {
+                        println!("   Child warmup last error: {}", error);
+                    }
+                }
+            }
+            if let Some(memory) = &health.memory {
+                let pressure = memory.pressure.as_deref().unwrap_or("unknown");
+                println!("   Memory pressure: {}", pressure);
+                if let Some(bytes) = memory.rss_bytes {
+                    println!("   Memory RSS bytes: {}", bytes);
+                }
+                if let Some(bytes) = memory.max_rss_bytes {
+                    println!("   Memory max RSS bytes: {}", bytes);
+                }
+                if let Some(bytes) = memory.soft_limit_bytes {
+                    println!("   Memory soft limit bytes: {}", bytes);
+                }
+            }
             println!("   Control plane ready: {}", health.control_plane_ready);
             println!(
                 "   Children readiness: {}/{}",
@@ -967,6 +1027,8 @@ mod tests {
         let start = MotherCommands::Start {
             host: None,
             port: 50051,
+            profile: DaemonStartupProfile::Full,
+            rivet: RivetIntegrationProfile::Disabled,
             mcp: false,
         };
         assert!(matches!(start, MotherCommands::Start { .. }));

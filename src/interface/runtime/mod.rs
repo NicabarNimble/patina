@@ -75,6 +75,7 @@ pub fn get_interface_provider(interface_name: &str) -> Box<dyn InterfaceProvider
         "claude" => Box::new(claude::ClaudeInterface),
         "gemini" => Box::new(gemini::GeminiInterface::new()),
         "opencode" => Box::new(opencode::OpenCodeInterface::new()),
+        "pi" => Box::new(opencode::OpenCodeInterface::new()),
         _ => Box::new(claude::ClaudeInterface),
     }
 }

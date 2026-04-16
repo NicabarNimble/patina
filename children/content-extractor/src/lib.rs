@@ -5,6 +5,7 @@ wit_bindgen::generate!({
 });
 
 use chrono::{DateTime, Utc};
+use patina_sdk::toys;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use uuid::Uuid;
@@ -85,11 +86,7 @@ impl exports::patina::records::extract::Guest for ContentExtractor {
             match build_record(file) {
                 Ok(record) => records.push(record),
                 Err(error) => {
-                    wasi::logging::logging::log(
-                        wasi::logging::logging::Level::Warn,
-                        "content-extractor",
-                        &error,
-                    );
+                    toys::log::warn("content-extractor", &error);
                 }
             }
         }

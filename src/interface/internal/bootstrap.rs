@@ -2,16 +2,25 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::Write;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::{Duration, Instant};
 use walkdir::WalkDir;
 
 use crate::interface::internal::bundle::{interface_bundle, InterfaceBundle, ManagedPathKind};
 use crate::interface::{launch, runtime::templates};
+use crate::paths;
 use crate::project;
 
 const MANAGED_DIR_METADATA_FILE: &str = ".patina-managed.toml";
 const BACKUP_SUBDIR: &str = "interface";
 const SUFFIX_ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const INTERFACE_OPS_LOCK_TIMEOUT: Duration = Duration::from_millis(1000);
 
 #[derive(Debug, Clone)]
 pub struct BootstrapResult {
@@ -82,6 +91,29 @@ struct BackupManifest {
     paths: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct InterfaceOpRecord {
+    ts: String,
+    interface: String,
+    runtime_id: String,
+    op: String,
+    path: String,
+    result: String,
+}
+
+struct InterfaceOpsLock {
+    file: File,
+}
+
+impl Drop for InterfaceOpsLock {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        unsafe {
+            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
+
 pub fn ensure_bundle_bootstrap(bundle_name: &str, project_root: &Path) -> Result<BootstrapResult> {
     let status = bundle_deployment_status(bundle_name, project_root)?;
     if status.current {
@@ -104,16 +136,41 @@ pub fn ensure_bundle_projection(
     mode: ProjectionMode,
 ) -> Result<BootstrapResult> {
     let bundle = interface_bundle(bundle_name)?;
+
+    let before_exists = bundle
+        .managed_paths
+        .iter()
+        .map(|path| {
+            (
+                path.relative_path.clone(),
+                paths::project::managed_surface_path(project_root, &path.relative_path).exists(),
+            )
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+
     let reconciliation = reconcile_interface_surface(bundle, project_root, mode)?;
-    sync_managed_templates(bundle.name, project_root, mode)?;
+    sync_managed_templates(&bundle.name, project_root, mode)?;
     write_managed_directory_metadata(project_root, bundle)?;
     launch::generate_bootstrap(
-        bundle.name,
+        &bundle.name,
         project_root,
         mode == ProjectionMode::ForceRewrite,
     )?;
 
-    bootstrap_result(bundle.name, project_root, reconciliation.backup_snapshot)
+    for managed in &bundle.managed_paths {
+        let relative = managed.relative_path.as_str();
+        let existed_before = before_exists.get(relative).copied().unwrap_or(false);
+        let exists_now = paths::project::managed_surface_path(project_root, relative).exists();
+        let (op, result) = match (existed_before, exists_now) {
+            (false, true) => ("create", "ok"),
+            (true, true) => ("update", "ok"),
+            _ => continue,
+        };
+
+        append_interface_op_log(project_root, &bundle.name, op, relative, result)?;
+    }
+
+    bootstrap_result(&bundle.name, project_root, reconciliation.backup_snapshot)
 }
 
 pub fn ensure_interface_projection(
@@ -134,8 +191,8 @@ pub fn bundle_deployment_status(
     let mut stale_paths = Vec::new();
     let mut observed_version = None;
 
-    for path in bundle.managed_paths {
-        let absolute_path = project_root.join(path.relative_path);
+    for path in &bundle.managed_paths {
+        let absolute_path = paths::project::managed_surface_path(project_root, &path.relative_path);
         if !absolute_path.exists() {
             missing_paths.push(path.relative_path.to_string());
             continue;
@@ -151,7 +208,7 @@ pub fn bundle_deployment_status(
                 Some(metadata) => {
                     let owner_matches = metadata
                         .owner_name()
-                        .map(|owner| owner == bundle.name)
+                        .map(|owner| owner == bundle.name.as_str())
                         .unwrap_or(false);
                     if !owner_matches {
                         unmanaged_paths.push(path.relative_path.to_string());
@@ -169,7 +226,7 @@ pub fn bundle_deployment_status(
     let current = deployed && stale_paths.is_empty();
 
     Ok(BundleDeploymentStatus {
-        bundle_name: bundle.name.to_string(),
+        bundle_name: bundle.name.clone(),
         display_name: bundle.display_name.to_string(),
         deployed,
         current,
@@ -186,7 +243,7 @@ fn sync_managed_templates(
     project_root: &Path,
     mode: ProjectionMode,
 ) -> Result<()> {
-    let iface_dir = project_root.join(format!(".{}", interface_name));
+    let iface_dir = paths::project::managed_interface_dir(project_root, interface_name);
     if mode == ProjectionMode::CreateMissing && iface_dir.exists() {
         return Ok(());
     }
@@ -223,9 +280,18 @@ fn reconcile_interface_surface(
 
     let mut entries = Vec::new();
 
-    for path in bundle.managed_paths {
-        let absolute_path = project_root.join(path.relative_path);
+    for path in &bundle.managed_paths {
+        let absolute_path = paths::project::managed_surface_path(project_root, &path.relative_path);
         if !absolute_path.exists() {
+            if mode == ProjectionMode::ForceRewrite {
+                append_interface_op_log(
+                    project_root,
+                    &bundle.name,
+                    "delete",
+                    &path.relative_path,
+                    "skipped",
+                )?;
+            }
             continue;
         }
 
@@ -238,7 +304,7 @@ fn reconcile_interface_surface(
             let kind = existing_path_kind(&absolute_path)?;
             entries.push(BackupEntry {
                 absolute_path,
-                relative_path: PathBuf::from(path.relative_path),
+                relative_path: PathBuf::from(&path.relative_path),
                 kind,
             });
         }
@@ -249,7 +315,7 @@ fn reconcile_interface_surface(
     } else {
         Some(write_backup_snapshot(
             project_root,
-            bundle.name,
+            &bundle.name,
             mode,
             &entries,
         )?)
@@ -257,6 +323,13 @@ fn reconcile_interface_surface(
 
     for entry in entries {
         remove_existing_path(&entry.absolute_path, entry.kind)?;
+        append_interface_op_log(
+            project_root,
+            &bundle.name,
+            "delete",
+            &normalize_snapshot_path(&entry.relative_path),
+            "ok",
+        )?;
     }
 
     Ok(SurfaceReconciliation { backup_snapshot })
@@ -295,7 +368,7 @@ fn directory_is_patina_managed(path: &Path, bundle: &InterfaceBundle) -> Result<
     };
     Ok(metadata
         .owner_name()
-        .map(|owner| owner == bundle.name)
+        .map(|owner| owner == bundle.name.as_str())
         .unwrap_or(false))
 }
 
@@ -308,12 +381,12 @@ fn write_managed_directory_metadata(project_root: &Path, bundle: &InterfaceBundl
         return Ok(());
     };
 
-    let path = project_root.join(directory.relative_path);
+    let path = paths::project::managed_surface_path(project_root, &directory.relative_path);
     fs::create_dir_all(&path)?;
     let metadata_path = path.join(MANAGED_DIR_METADATA_FILE);
     let metadata = ManagedDirectoryMetadata {
-        interface: Some(bundle.name.to_string()),
-        bundle: Some(bundle.name.to_string()),
+        interface: Some(bundle.name.clone()),
+        bundle: Some(bundle.name.clone()),
         version: bundle.version.to_string(),
         managed_by: "patina ai refresh".to_string(),
     };
@@ -458,6 +531,91 @@ fn projection_mode_name(mode: ProjectionMode) -> &'static str {
         ProjectionMode::RefreshManaged => "refresh-managed",
         ProjectionMode::ForceRewrite => "force-rewrite",
     }
+}
+
+fn append_interface_op_log(
+    project_root: &Path,
+    interface_name: &str,
+    op: &str,
+    relative_path: &str,
+    result: &str,
+) -> Result<()> {
+    let log_path = paths::project::interface_ops_log_path(project_root);
+    if let Some(parent) = log_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    let mut lock = acquire_interface_ops_lock(&log_path)?;
+
+    let record = InterfaceOpRecord {
+        ts: chrono::Utc::now().to_rfc3339(),
+        interface: interface_name.to_string(),
+        runtime_id: std::env::var("PATINA_SESSION_RUNTIME_ID")
+            .unwrap_or_else(|_| "unknown".to_string()),
+        op: op.to_string(),
+        path: relative_path.to_string(),
+        result: result.to_string(),
+    };
+
+    writeln!(lock.file, "{}", serde_json::to_string(&record)?)
+        .with_context(|| format!("Failed writing {}", log_path.display()))?;
+    Ok(())
+}
+
+fn acquire_interface_ops_lock(log_path: &Path) -> Result<InterfaceOpsLock> {
+    if let Some(parent) = log_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .read(true)
+        .open(log_path)
+        .with_context(|| format!("Failed to open {}", log_path.display()))?;
+
+    let start = Instant::now();
+    loop {
+        match try_lock_exclusive(&file) {
+            Ok(true) => return Ok(InterfaceOpsLock { file }),
+            Ok(false) => {
+                if start.elapsed() >= INTERFACE_OPS_LOCK_TIMEOUT {
+                    anyhow::bail!(
+                        "Timed out waiting for interface operation-log lock (1000ms): {}",
+                        log_path.display()
+                    );
+                }
+                thread::sleep(Duration::from_millis(25));
+            }
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("Failed to acquire lock {}", log_path.display()));
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn try_lock_exclusive(file: &File) -> Result<bool> {
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if rc == 0 {
+        return Ok(true);
+    }
+
+    let error = std::io::Error::last_os_error();
+    if let Some(code) = error.raw_os_error() {
+        if code == libc::EWOULDBLOCK || code == libc::EAGAIN {
+            return Ok(false);
+        }
+    }
+
+    Err(error.into())
+}
+
+#[cfg(not(unix))]
+fn try_lock_exclusive(_file: &File) -> Result<bool> {
+    Ok(true)
 }
 
 #[cfg(test)]

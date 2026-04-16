@@ -5,8 +5,9 @@
 //! - Remote mother: TCP with bearer token via reqwest
 
 use anyhow::{Context, Result};
+use mother_crate::bridge::{BridgeRequest, BridgeResponse};
 use mother_crate::protocol::{
-    FederationQueryPayload, LifecycleNamePayload, LifecycleRefreshPayload,
+    FederationQueryPayload, LifecycleNamePayload, LifecycleRefreshPayload, LifecycleWarmupPayload,
 };
 use patina_protocol::{
     BuiltinChildRequest, BuiltinChildResponse, PandoRegistryInit, PandoRegistryState,
@@ -159,6 +160,14 @@ impl Client {
             .map_err(|e| anyhow::anyhow!("Failed to decode typed child response: {}", e))
     }
 
+    pub fn child_call(&self, child: &str, operation_id: &str, args: &Value) -> Result<Value> {
+        let payload = serde_json::json!({
+            "operation_id": operation_id,
+            "args": args,
+        });
+        self.child_action(child, "call", &payload)
+    }
+
     pub fn pando_registry_init(&self, request: &PandoRegistryInit) -> Result<PandoRegistryState> {
         if self.try_uds {
             let body = serde_json::to_vec(request)?;
@@ -223,6 +232,69 @@ impl Client {
         response
             .json::<PandoRegistryState>()
             .with_context(|| "Failed to parse pando list response")
+    }
+
+    pub fn atlas_snapshot(&self) -> Result<Value> {
+        if self.try_uds {
+            if let Some((status, resp_body)) = uds_request("GET", "/api/atlas/snapshot", None) {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse atlas snapshot response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("atlas snapshot failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/atlas/snapshot", self.base_url);
+        let mut req = self.http.get(&url);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req
+            .send()
+            .with_context(|| format!("Failed to request atlas snapshot from {}", self.base_url))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("atlas snapshot failed ({}): {}", status, body);
+        }
+        response
+            .json::<Value>()
+            .with_context(|| "Failed to parse atlas snapshot response")
+    }
+
+    pub fn bridge_translate(&self, request: &BridgeRequest) -> Result<BridgeResponse> {
+        if self.try_uds {
+            let body = serde_json::to_vec(request)?;
+            if let Some((status, resp_body)) =
+                uds_request("POST", "/api/bridge/translate", Some(&body))
+            {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse bridge translate response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("bridge translate failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/bridge/translate", self.base_url);
+        let mut req = self.http.post(&url).json(request);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req.send().with_context(|| {
+            format!("Failed to request bridge translate from {}", self.base_url)
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("bridge translate failed ({}): {}", status, body);
+        }
+        response
+            .json::<BridgeResponse>()
+            .with_context(|| "Failed to parse bridge translate response")
     }
 
     pub fn federation_status(&self) -> Result<Value> {
@@ -441,6 +513,42 @@ impl Client {
         response
             .json::<Value>()
             .with_context(|| "Failed to parse lifecycle reload-child response")
+    }
+
+    pub fn lifecycle_warmup_children(&self, payload: LifecycleWarmupPayload) -> Result<Value> {
+        if self.try_uds {
+            let body = serde_json::to_vec(&payload)?;
+            if let Some((status, resp_body)) =
+                uds_request("POST", "/api/lifecycle/warmup-children", Some(&body))
+            {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse lifecycle warmup-children response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("lifecycle warmup-children failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/lifecycle/warmup-children", self.base_url);
+        let mut req = self.http.post(&url).json(&payload);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req.send().with_context(|| {
+            format!(
+                "Failed to send lifecycle warmup-children request to {}",
+                self.base_url
+            )
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("lifecycle warmup-children failed ({}): {}", status, body);
+        }
+        response
+            .json::<Value>()
+            .with_context(|| "Failed to parse lifecycle warmup-children response")
     }
 }
 

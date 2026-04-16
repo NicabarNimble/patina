@@ -5,6 +5,7 @@ wit_bindgen::generate!({
 });
 
 use chrono::Utc;
+use patina_sdk::toys;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
@@ -83,9 +84,8 @@ impl exports::patina::records::source::Guest for FileSystemMonitor {
             });
         }
 
-        patina::measure::measure::counter("files_discovered", discovered.len() as f64)?;
-        wasi::logging::logging::log(
-            wasi::logging::logging::Level::Info,
+        toys::measure::counter("files_discovered", discovered.len() as f64)?;
+        toys::log::info(
             "file-system-monitor",
             &format!("discovered {} files", discovered.len()),
         );

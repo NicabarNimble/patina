@@ -1,4 +1,4 @@
-//! Child scaffolding — `patina child init <name> --world <world>`.
+//! Child scaffolding — `patina child init <name>`.
 //!
 //! Generates a working child project from embedded templates.
 //! Templates are compiled into the binary via `include_str!` — no
@@ -15,14 +15,32 @@ use super::engine::ChildKind;
 // =========================================================================
 
 mod templates {
-    pub mod child {
+    pub mod typed_child {
         pub const CARGO_TOML: &str =
             include_str!("../../resources/templates/child/child/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
             include_str!("../../resources/templates/child/child/child.toml.tmpl");
         pub const LIB_RS: &str = include_str!("../../resources/templates/child/child/lib.rs.tmpl");
+        pub const WORLD_WIT: &str =
+            include_str!("../../resources/templates/child/child/world.wit.tmpl");
+        pub const DEPS_LOGGING_WIT: &str =
+            include_str!("../../resources/templates/child/child/deps/logging.wit.tmpl");
+        pub const DEPS_PATINA_MEASURE_WIT: &str =
+            include_str!("../../resources/templates/child/child/deps/patina-measure.wit.tmpl");
+        pub const DEPS_PATINA_RECORD_WIT: &str =
+            include_str!("../../resources/templates/child/child/deps/patina-record.wit.tmpl");
     }
-    pub mod pipeline {
+
+    pub mod legacy_child {
+        pub const CARGO_TOML: &str =
+            include_str!("../../resources/templates/child/legacy-child/Cargo.toml.tmpl");
+        pub const MANIFEST_TOML: &str =
+            include_str!("../../resources/templates/child/legacy-child/child.toml.tmpl");
+        pub const LIB_RS: &str =
+            include_str!("../../resources/templates/child/legacy-child/lib.rs.tmpl");
+    }
+
+    pub mod legacy_pipeline {
         pub const CARGO_TOML: &str =
             include_str!("../../resources/templates/child/pipeline/Cargo.toml.tmpl");
         pub const MANIFEST_TOML: &str =
@@ -99,37 +117,83 @@ fn substitute(template: &str, name: &str) -> String {
         .replace("__SDK_VERSION__", SDK_VERSION)
 }
 
-// =========================================================================
-// Scaffold
-// =========================================================================
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScaffoldLane {
+    /// Typed SDK-first lane (default)
+    Typed,
+    /// Legacy handle(action,payload) lane (explicit opt-in)
+    Legacy,
+}
 
-/// Get the template set for a given world.
-fn world_templates(world: &ChildKind) -> (&'static str, &'static str, &'static str) {
+struct TemplateSet {
+    cargo_toml: &'static str,
+    manifest_toml: &'static str,
+    lib_rs: &'static str,
+    world_wit: Option<&'static str>,
+    wit_deps: &'static [(&'static str, &'static str)],
+}
+
+fn typed_templates(world: &ChildKind) -> Result<TemplateSet> {
     match world {
-        ChildKind::Child => (
-            templates::child::CARGO_TOML,
-            templates::child::MANIFEST_TOML,
-            templates::child::LIB_RS,
-        ),
-        ChildKind::Pipeline => (
-            templates::pipeline::CARGO_TOML,
-            templates::pipeline::MANIFEST_TOML,
-            templates::pipeline::LIB_RS,
-        ),
+        ChildKind::Child => Ok(TemplateSet {
+            cargo_toml: templates::typed_child::CARGO_TOML,
+            manifest_toml: templates::typed_child::MANIFEST_TOML,
+            lib_rs: templates::typed_child::LIB_RS,
+            world_wit: Some(templates::typed_child::WORLD_WIT),
+            wit_deps: &[
+                ("logging.wit", templates::typed_child::DEPS_LOGGING_WIT),
+                (
+                    "patina-measure.wit",
+                    templates::typed_child::DEPS_PATINA_MEASURE_WIT,
+                ),
+                (
+                    "patina-record.wit",
+                    templates::typed_child::DEPS_PATINA_RECORD_WIT,
+                ),
+            ],
+        }),
+        ChildKind::Pipeline => {
+            bail!(
+                "typed scaffolding is currently available for --world child only; use --legacy --world pipeline for grammar lane"
+            )
+        }
+    }
+}
+
+fn legacy_templates(world: &ChildKind) -> TemplateSet {
+    match world {
+        ChildKind::Child => TemplateSet {
+            cargo_toml: templates::legacy_child::CARGO_TOML,
+            manifest_toml: templates::legacy_child::MANIFEST_TOML,
+            lib_rs: templates::legacy_child::LIB_RS,
+            world_wit: None,
+            wit_deps: &[],
+        },
+        ChildKind::Pipeline => TemplateSet {
+            cargo_toml: templates::legacy_pipeline::CARGO_TOML,
+            manifest_toml: templates::legacy_pipeline::MANIFEST_TOML,
+            lib_rs: templates::legacy_pipeline::LIB_RS,
+            world_wit: None,
+            wit_deps: &[],
+        },
     }
 }
 
 /// Scaffold a new child project.
 ///
 /// Creates `<name>/` in the given parent directory with:
-/// - `Cargo.toml` (cdylib, correct guest API dep)
-/// - `child.toml` (kind, needs, provides)
-/// - `src/lib.rs` (trait impl, register macro)
-///
-/// Templates use `patina-sdk` version dep — no absolute paths.
+/// - `Cargo.toml`
+/// - `child.toml`
+/// - `src/lib.rs`
+/// - `wit/world.wit` (typed lane only)
 ///
 /// Returns the path to the created project directory.
-pub fn scaffold(parent: &Path, name: &str, world: &ChildKind) -> Result<PathBuf> {
+pub fn scaffold(
+    parent: &Path,
+    name: &str,
+    world: &ChildKind,
+    lane: ScaffoldLane,
+) -> Result<PathBuf> {
     validate_name(name)?;
 
     let project_dir = parent.join(name);
@@ -140,14 +204,34 @@ pub fn scaffold(parent: &Path, name: &str, world: &ChildKind) -> Result<PathBuf>
     let src_dir = project_dir.join("src");
     std::fs::create_dir_all(&src_dir)?;
 
-    let (cargo_tmpl, manifest_tmpl, lib_tmpl) = world_templates(world);
+    let templates = match lane {
+        ScaffoldLane::Typed => typed_templates(world)?,
+        ScaffoldLane::Legacy => legacy_templates(world),
+    };
 
-    std::fs::write(project_dir.join("Cargo.toml"), substitute(cargo_tmpl, name))?;
+    std::fs::write(
+        project_dir.join("Cargo.toml"),
+        substitute(templates.cargo_toml, name),
+    )?;
     std::fs::write(
         project_dir.join("child.toml"),
-        substitute(manifest_tmpl, name),
+        substitute(templates.manifest_toml, name),
     )?;
-    std::fs::write(src_dir.join("lib.rs"), substitute(lib_tmpl, name))?;
+    std::fs::write(src_dir.join("lib.rs"), substitute(templates.lib_rs, name))?;
+
+    if let Some(world_wit) = templates.world_wit {
+        let wit_dir = project_dir.join("wit");
+        std::fs::create_dir_all(&wit_dir)?;
+        std::fs::write(wit_dir.join("world.wit"), substitute(world_wit, name))?;
+
+        if !templates.wit_deps.is_empty() {
+            let deps_dir = wit_dir.join("deps");
+            std::fs::create_dir_all(&deps_dir)?;
+            for (filename, content) in templates.wit_deps {
+                std::fs::write(deps_dir.join(filename), substitute(content, name))?;
+            }
+        }
+    }
 
     Ok(project_dir)
 }
@@ -198,50 +282,95 @@ mod tests {
     }
 
     #[test]
-    fn test_scaffold_creates_files() {
+    fn test_scaffold_typed_child_default() {
         let tmp = tempfile::tempdir().unwrap();
-        let result = scaffold(tmp.path(), "test-plugin", &ChildKind::Child);
-        assert!(result.is_ok());
+        let project = scaffold(
+            tmp.path(),
+            "test-plugin",
+            &ChildKind::Child,
+            ScaffoldLane::Typed,
+        )
+        .unwrap();
 
-        let project = result.unwrap();
         assert!(project.join("Cargo.toml").exists());
         assert!(project.join("child.toml").exists());
         assert!(project.join("src/lib.rs").exists());
-
-        let cargo = std::fs::read_to_string(project.join("Cargo.toml")).unwrap();
-        assert!(cargo.contains("name = \"test-plugin\""));
+        assert!(project.join("wit/world.wit").exists());
+        assert!(project.join("wit/deps/logging.wit").exists());
+        assert!(project.join("wit/deps/patina-measure.wit").exists());
+        assert!(project.join("wit/deps/patina-record.wit").exists());
 
         let lib = std::fs::read_to_string(project.join("src/lib.rs")).unwrap();
-        assert!(cargo.contains("test-plugin"));
-        assert!(lib.contains("TestPlugin"));
+        assert!(lib.contains("wit_bindgen::generate!"));
+        assert!(lib.contains("export!(TestPlugin);"));
+        assert!(!lib.contains("register_child!"));
+
+        let manifest = std::fs::read_to_string(project.join("child.toml")).unwrap();
+        assert!(manifest.contains("kind = \"child\""));
+        assert!(manifest.contains("toys = [\"logging\", \"measure\"]"));
+    }
+
+    #[test]
+    fn test_scaffold_legacy_child_explicit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = scaffold(
+            tmp.path(),
+            "legacy-child",
+            &ChildKind::Child,
+            ScaffoldLane::Legacy,
+        )
+        .unwrap();
+
+        assert!(project.join("Cargo.toml").exists());
+        assert!(project.join("child.toml").exists());
+        assert!(project.join("src/lib.rs").exists());
+        assert!(!project.join("wit/world.wit").exists());
+
+        let lib = std::fs::read_to_string(project.join("src/lib.rs")).unwrap();
         assert!(lib.contains("register_child!"));
+    }
+
+    #[test]
+    fn test_scaffold_typed_pipeline_requires_legacy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = scaffold(
+            tmp.path(),
+            "typed-pipeline",
+            &ChildKind::Pipeline,
+            ScaffoldLane::Typed,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("--legacy --world pipeline"), "got: {err}");
+    }
+
+    #[test]
+    fn test_scaffold_legacy_pipeline_world() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = scaffold(
+            tmp.path(),
+            "legacy-pipeline",
+            &ChildKind::Pipeline,
+            ScaffoldLane::Legacy,
+        )
+        .unwrap();
+
+        let lib = std::fs::read_to_string(project.join("src/lib.rs")).unwrap();
+        assert!(lib.contains("register_pipeline_child!"));
     }
 
     #[test]
     fn test_scaffold_rejects_existing_dir() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir(tmp.path().join("existing")).unwrap();
-        let result = scaffold(tmp.path(), "existing", &ChildKind::Child);
+        let result = scaffold(
+            tmp.path(),
+            "existing",
+            &ChildKind::Child,
+            ScaffoldLane::Typed,
+        );
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
-    }
-
-    #[test]
-    fn test_scaffold_all_worlds() {
-        let tmp = tempfile::tempdir().unwrap();
-        for (world, expected_macro) in [
-            (ChildKind::Child, "register_child!"),
-            (ChildKind::Pipeline, "register_pipeline_child!"),
-        ] {
-            let name = format!("test-{}", world);
-            let project = scaffold(tmp.path(), &name, &world).unwrap();
-            let lib = std::fs::read_to_string(project.join("src/lib.rs")).unwrap();
-            assert!(
-                lib.contains(expected_macro),
-                "world {} should use {}",
-                world,
-                expected_macro
-            );
-        }
     }
 }

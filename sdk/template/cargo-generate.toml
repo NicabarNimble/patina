@@ -9,9 +9,14 @@ default = "my-child"
 [placeholders.description]
 type = "string"
 prompt = "Child description"
-default = "Patina knowledge child"
+default = "Patina push-pure child"
 
 [placeholders.package_name]
 type = "string"
 prompt = "Rust package name"
 default = "patina-ai-child-my-child"
+
+[placeholders.child_kind]
+type = "string"
+prompt = "Child kind"
+default = "transform"

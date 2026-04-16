@@ -1,0 +1,10 @@
+[child]
+name = "legacy-typed-bridge"
+version = "0.1.0"
+description = "Typed bridge child for legacy-to-typed toy normalization"
+kind = "child"
+role = "app"
+patina_min = "0.51.0"
+
+[needs]
+toys = ["logging"]

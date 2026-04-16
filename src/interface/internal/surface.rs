@@ -44,7 +44,7 @@ pub fn supported_ai_interfaces() -> &'static [&'static str] {
         .get_or_init(|| {
             interface_bundle_catalog()
                 .iter()
-                .map(|bundle| bundle.name)
+                .map(|bundle| bundle.name.as_str())
                 .collect()
         })
         .as_slice()
@@ -256,6 +256,7 @@ mod tests {
             .allowed
             .iter()
             .any(|name| name == "gemini"));
+        assert!(config.interfaces.allowed.iter().any(|name| name == "pi"));
     }
 
     #[test]
@@ -272,7 +273,7 @@ mod tests {
         });
 
         assert_eq!(result.default_interface, "claude");
-        assert_eq!(result.prepared.len(), 3);
+        assert_eq!(result.prepared.len(), 4);
         assert!(temp.path().join("AGENTS.md").exists());
         assert!(temp.path().join("CLAUDE.md").exists());
         assert!(temp.path().join("GEMINI.md").exists());
@@ -298,6 +299,7 @@ mod tests {
             .path()
             .join(".gemini/commands/epistemic-beliefs.toml")
             .exists());
+        assert!(temp.path().join(".pi/commands/session-start.md").exists());
     }
 
     #[test]

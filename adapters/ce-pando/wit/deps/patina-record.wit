@@ -1,0 +1,32 @@
+package patina:records@0.1.0;
+
+interface types {
+    record file-found {
+        source-path: string,
+        source-hash: string,
+        source-size-bytes: u64,
+        discovered-at: string,
+    }
+
+    record record-envelope {
+        record-id: string,
+        source-path: string,
+        source-hash: string,
+        source-modified-at: string,
+        source-size-bytes: u64,
+        content: string,
+        content-hash: string,
+        content-type: string,
+        encoding: string,
+        line-count: u64,
+        ingested-at: string,
+        batch-id: string,
+        schema-version: u32,
+    }
+}
+
+interface extract {
+    use types.{file-found, record-envelope};
+
+    extract: func(files: list<file-found>) -> result<list<record-envelope>, string>;
+}

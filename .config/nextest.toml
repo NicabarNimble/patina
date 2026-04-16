@@ -12,10 +12,12 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 
 # WASM integration tests load multiple wasmtime components and
 # process data through child pipelines — give them more headroom.
+# WASM pando parity/execution tests compose wasmtime components and write
+# parquet — record-writer parity takes ~200s in debug mode.
 [[profile.default.overrides]]
-filter = 'binary_id(patina-ai::wasm_integration)'
+filter = 'binary_id(patina-ai::wasm_integration) | binary_id(patina-ai::pando_parity) | binary_id(patina-ai::pando_execution)'
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.ci.overrides]]
-filter = 'binary_id(patina-ai::wasm_integration)'
+filter = 'binary_id(patina-ai::wasm_integration) | binary_id(patina-ai::pando_parity) | binary_id(patina-ai::pando_execution)'
 slow-timeout = { period = "120s", terminate-after = 3 }

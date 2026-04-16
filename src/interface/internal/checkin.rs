@@ -26,7 +26,7 @@ pub struct InterfaceCheckIn {
     pub interface_name: String,
     pub project_root: PathBuf,
     pub project_uid: Option<String>,
-    pub requested_persona: Option<String>,
+    pub requested_voice: Option<String>,
     pub requested_session: Option<String>,
     pub title: Option<String>,
     pub capabilities: InterfaceCapabilities,
@@ -34,7 +34,7 @@ pub struct InterfaceCheckIn {
 
 #[derive(Debug, Clone)]
 pub struct CheckInResult {
-    pub persona_uid: Option<String>,
+    pub voice_uid: Option<String>,
     pub session_runtime_id: String,
     pub session_file_id: String,
     pub artifact_path: PathBuf,
@@ -49,12 +49,12 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
 
     if let Some(selector) = &request.requested_session {
         if let Some(handle) = load_requested_session(&request.project_root, selector)? {
-            if !persona_matches(
-                request.requested_persona.as_deref(),
-                handle.persona_uid.as_deref(),
+            if !voice_matches(
+                request.requested_voice.as_deref(),
+                handle.voice_uid.as_deref(),
             ) {
                 anyhow::bail!(
-                    "Requested session '{}' persona does not match requested persona scope",
+                    "Requested session '{}' voice does not match requested voice scope",
                     selector
                 );
             }
@@ -65,9 +65,9 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
     if let Some(handle) =
         session::load_current_interface_session(&request.project_root, &request.interface_name)?
     {
-        if persona_matches(
-            request.requested_persona.as_deref(),
-            handle.persona_uid.as_deref(),
+        if voice_matches(
+            request.requested_voice.as_deref(),
+            handle.voice_uid.as_deref(),
         ) {
             return Ok(result_from_handle(request, handle, true));
         }
@@ -90,7 +90,7 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
             title,
             interface_name: request.interface_name.clone(),
             interface_kind: request.interface_kind,
-            persona_uid: request.requested_persona.clone(),
+            voice_uid: request.requested_voice.clone(),
             parent_runtime_id: None,
             handoff_from_runtime_id: None,
             participant: Some(SessionParticipant {
@@ -243,7 +243,7 @@ fn result_from_handle(
     attached_existing: bool,
 ) -> CheckInResult {
     CheckInResult {
-        persona_uid: handle.persona_uid.clone(),
+        voice_uid: handle.voice_uid.clone(),
         session_runtime_id: handle.runtime_id,
         session_file_id: handle.file_id,
         artifact_path: handle.artifact_path,
@@ -259,15 +259,15 @@ fn active_interface_sessions(
         .filter(|handle| {
             handle.interface_name == request.interface_name
                 && handle.interface_kind == request.interface_kind
-                && persona_matches(
-                    request.requested_persona.as_deref(),
-                    handle.persona_uid.as_deref(),
+                && voice_matches(
+                    request.requested_voice.as_deref(),
+                    handle.voice_uid.as_deref(),
                 )
         })
         .collect())
 }
 
-fn persona_matches(requested: Option<&str>, candidate: Option<&str>) -> bool {
+fn voice_matches(requested: Option<&str>, candidate: Option<&str>) -> bool {
     match requested {
         Some(expected) => candidate == Some(expected),
         None => true,
@@ -314,7 +314,7 @@ mod tests {
             title: format!("{interface_name} session"),
             interface_name: interface_name.to_string(),
             interface_kind,
-            persona_uid: None,
+            voice_uid: None,
             artifact_path: PathBuf::from(format!("/tmp/{file_id}.md")),
             branch: "patina".to_string(),
             starting_commit: "deadbeef".to_string(),
@@ -371,7 +371,7 @@ mod tests {
                 project_uid: project_uid.clone(),
                 file_id: "20260312-000230-AAAA".to_string(),
                 title: "First OpenCode session".to_string(),
-                persona_uid: None,
+                voice_uid: None,
                 status: MotherSessionStatus::Active,
                 interface_kind: "opencode".to_string(),
                 interface_name: "opencode".to_string(),
@@ -389,7 +389,7 @@ mod tests {
                 project_uid,
                 file_id: "20260312-000231-BBBB".to_string(),
                 title: "Second OpenCode session".to_string(),
-                persona_uid: None,
+                voice_uid: None,
                 status: MotherSessionStatus::Active,
                 interface_kind: "opencode".to_string(),
                 interface_name: "opencode".to_string(),
@@ -425,7 +425,7 @@ mod tests {
                 interface_name: "opencode".to_string(),
                 project_root: temp.path().to_path_buf(),
                 project_uid: None,
-                requested_persona: None,
+                requested_voice: None,
                 requested_session: None,
                 title: None,
                 capabilities: InterfaceCapabilities::default(),
@@ -440,18 +440,18 @@ mod tests {
     }
 
     #[test]
-    fn check_in_persona_scope_ignores_pointer_mismatch_and_reattaches_matching_persona() {
+    fn check_in_voice_scope_ignores_pointer_mismatch_and_reattaches_matching_voice() {
         let temp = tempfile::TempDir::new().unwrap();
         crate::test_support::with_temp_patina_home(|_| {
             let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
             let store = MotherRuntimeStore::default();
 
-            let none_persona = MotherSessionRecord {
-                runtime_id: "runtime-none-persona".to_string(),
+            let none_voice = MotherSessionRecord {
+                runtime_id: "runtime-none-voice".to_string(),
                 project_uid: project_uid.clone(),
                 file_id: "20260312-100000-AAAA".to_string(),
-                title: "OpenCode none persona".to_string(),
-                persona_uid: None,
+                title: "OpenCode none voice".to_string(),
+                voice_uid: None,
                 status: MotherSessionStatus::Active,
                 interface_kind: "opencode".to_string(),
                 interface_name: "opencode".to_string(),
@@ -464,12 +464,12 @@ mod tests {
                 created_at: "2026-03-12T10:00:00Z".to_string(),
                 updated_at: "2026-03-12T10:00:00Z".to_string(),
             };
-            let persona_one = MotherSessionRecord {
-                runtime_id: "runtime-persona-one".to_string(),
+            let voice_one = MotherSessionRecord {
+                runtime_id: "runtime-voice-one".to_string(),
                 project_uid,
                 file_id: "20260312-100001-BBBB".to_string(),
-                title: "OpenCode persona one".to_string(),
-                persona_uid: Some("persona-1".to_string()),
+                title: "OpenCode voice one".to_string(),
+                voice_uid: Some("voice-1".to_string()),
                 status: MotherSessionStatus::Active,
                 interface_kind: "opencode".to_string(),
                 interface_name: "opencode".to_string(),
@@ -483,7 +483,7 @@ mod tests {
                 updated_at: "2026-03-12T10:00:01Z".to_string(),
             };
 
-            for record in [&none_persona, &persona_one] {
+            for record in [&none_voice, &voice_one] {
                 store.create_mother_session(record, &[]).unwrap();
                 let artifact_path = session::durable_session_path(temp.path(), &record.file_id);
                 fs::create_dir_all(artifact_path.parent().unwrap()).unwrap();
@@ -496,7 +496,7 @@ mod tests {
             fs::create_dir_all(pointer_path.parent().unwrap()).unwrap();
             fs::write(
                 &pointer_path,
-                "interface_name = \"opencode\"\nruntime_id = \"runtime-none-persona\"\nfile_id = \"20260312-100000-AAAA\"\n",
+                "interface_name = \"opencode\"\nruntime_id = \"runtime-none-voice\"\nfile_id = \"20260312-100000-AAAA\"\n",
             )
             .unwrap();
 
@@ -505,7 +505,7 @@ mod tests {
                 interface_name: "opencode".to_string(),
                 project_root: temp.path().to_path_buf(),
                 project_uid: None,
-                requested_persona: Some("persona-1".to_string()),
+                requested_voice: Some("voice-1".to_string()),
                 requested_session: None,
                 title: None,
                 capabilities: InterfaceCapabilities::default(),
@@ -513,25 +513,25 @@ mod tests {
             .unwrap();
 
             assert!(result.attached_existing);
-            assert_eq!(result.session_runtime_id, persona_one.runtime_id);
-            assert_eq!(result.session_file_id, persona_one.file_id);
-            assert_eq!(result.persona_uid.as_deref(), Some("persona-1"));
+            assert_eq!(result.session_runtime_id, voice_one.runtime_id);
+            assert_eq!(result.session_file_id, voice_one.file_id);
+            assert_eq!(result.voice_uid.as_deref(), Some("voice-1"));
         });
     }
 
     #[test]
-    fn check_in_rejects_requested_session_when_persona_scope_mismatches() {
+    fn check_in_rejects_requested_session_when_voice_scope_mismatches() {
         let temp = tempfile::TempDir::new().unwrap();
         crate::test_support::with_temp_patina_home(|_| {
             let project_uid = project::create_uid_if_missing(temp.path()).unwrap();
             let store = MotherRuntimeStore::default();
 
             let record = MotherSessionRecord {
-                runtime_id: "runtime-none-persona".to_string(),
+                runtime_id: "runtime-none-voice".to_string(),
                 project_uid,
                 file_id: "20260312-100000-AAAA".to_string(),
-                title: "OpenCode none persona".to_string(),
-                persona_uid: None,
+                title: "OpenCode none voice".to_string(),
+                voice_uid: None,
                 status: MotherSessionStatus::Active,
                 interface_kind: "opencode".to_string(),
                 interface_name: "opencode".to_string(),
@@ -554,7 +554,7 @@ mod tests {
                 interface_name: "opencode".to_string(),
                 project_root: temp.path().to_path_buf(),
                 project_uid: None,
-                requested_persona: Some("persona-1".to_string()),
+                requested_voice: Some("voice-1".to_string()),
                 requested_session: Some(record.runtime_id.clone()),
                 title: None,
                 capabilities: InterfaceCapabilities::default(),
@@ -563,7 +563,7 @@ mod tests {
 
             assert!(error
                 .to_string()
-                .contains("persona does not match requested persona scope"));
+                .contains("voice does not match requested voice scope"));
         });
     }
 }

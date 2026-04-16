@@ -16,10 +16,15 @@ The pre-commit and pre-push hooks use exec-style delegation (see `.git/hooks/pre
 
 - Tier 0 (`resources/git/pre-commit-checks.sh`): `cargo fmt --check` + staged large-file guard (<5s target).
 - Tier 1 (`resources/git/pre-push-checks.sh --structural-only`): structural policy checks only, no cargo (<30s target).
-- Tier 2 (`resources/git/pre-push-targeted-cargo.sh`): changed-package clippy/tests plus path-triggered parity/schema.
+- Tier 2 (`resources/git/pre-push-targeted-cargo.sh`): changed-package clippy/tests plus path-triggered parity/schema; docs-only changes skip cargo lane.
 - Tier 3 (`resources/git/preflight-full.sh`): full local suite equivalent to merge-gate semantics.
 
 `resources/git/pre-push-checks.sh` runs Tier 2 by default; use `--structural-only` (or `PATINA_PRE_PUSH_RUN_TARGETED=0`) to run Tier 1 only.
+
+Tier 2 fail-closed behavior:
+- If no cargo-impacting paths changed (e.g., docs/spec markdown only), cargo clippy/tests are skipped.
+- If a cargo-impacting file cannot be mapped to a package, Tier 2 escalates to full workspace clippy/tests.
+- Path-triggered checks (DuckLake parity, schema consistency) still run even when cargo lane is skipped.
 
 Verify:
 ```bash

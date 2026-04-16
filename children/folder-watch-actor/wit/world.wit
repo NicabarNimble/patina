@@ -1,0 +1,32 @@
+package patina:folder-watch-actor@0.1.0;
+
+world folder-watch-actor {
+    import wasi:http/outgoing-handler@0.2.8;
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    import patina:connect/connect@0.2.0;
+    import wasi:sql/readwrite@0.1.0;
+    import wasi:messaging/producer@0.2.0;
+    import patina:events-stream/events-stream@0.1.0;
+    import patina:measure/measure@0.1.0;
+    import patina:task/task@0.1.0;
+    import patina:peer/peer@0.1.0;
+    import patina:git/git@0.1.0;
+    import patina:child/runtime-types@0.1.0;
+    import patina:watch/events@0.1.0;
+
+    use patina:child/runtime-types@0.1.0.{child-health};
+    use patina:child/runtime-types@0.1.0.{pending-event};
+    use patina:child/runtime-types@0.1.0.{task-intent};
+
+    export init: func();
+    export name: func() -> string;
+    export on-load: func() -> result<_, string>;
+    export on-unload: func();
+    export health: func() -> child-health;
+    export handle: func(action: string, payload: string) -> result<string, string>;
+    export drain: func(limit: u32) -> result<list<pending-event>, string>;
+    export tick: func() -> list<task-intent>;
+
+    export patina:watch/control@0.1.0;
+}

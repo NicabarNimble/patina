@@ -8,6 +8,7 @@ allowed = [
     "claude",
     "opencode",
     "gemini",
+    "pi",
 ]
 default = "claude"
 

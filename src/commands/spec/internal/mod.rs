@@ -37,8 +37,9 @@ pub(crate) use mutations::{
     promote_spec_value, rename_spec_value, reopen_spec_value, resume_spec_value, set_spec_value,
 };
 
-// Create _value() function re-exported pub(crate) by parent for MCP
-pub(crate) use create::create_spec_value;
+#[allow(unused_imports)]
+// Create _value() functions re-exported pub(crate) by parent for MCP
+pub(crate) use create::{create_spec_value, create_spec_value_for_project, CreateSpecRequest};
 
 // Split _value() function re-exported pub(crate) by parent for MCP
 pub(crate) use split::split_spec_value;

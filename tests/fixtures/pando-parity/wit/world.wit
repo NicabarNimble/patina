@@ -1,0 +1,44 @@
+package test:pando-parity@0.1.0;
+
+world schema-runner {
+    import patina:pando/extract@0.1.0;
+    import wasi:logging/logging@0.1.0;
+    import patina:measure/measure@0.1.0;
+    export patina:pando/transform@0.1.0;
+}
+
+world source-runner {
+    import wasi:logging/logging@0.1.0;
+    import patina:measure/measure@0.1.0;
+    import patina:config/config@0.1.0;
+    export patina:pando/source@0.1.0;
+}
+
+world extract-runner {
+    import patina:pando/source@0.1.0;
+    import wasi:logging/logging@0.1.0;
+    export patina:pando/extract@0.1.0;
+}
+
+world dedup-runner {
+    import patina:pando/extract@0.1.0;
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    import patina:measure/measure@0.1.0;
+    export patina:pando/transform@0.1.0;
+}
+
+world write-runner {
+    import patina:pando/transform@0.1.0;
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    import patina:measure/measure@0.1.0;
+    export patina:pando/write@0.1.0;
+}
+
+world catalog-runner {
+    import patina:pando/write@0.1.0;
+    import wasi:logging/logging@0.1.0;
+    import wasi:keyvalue/store@0.2.0;
+    export patina:pando/catalog@0.1.0;
+}

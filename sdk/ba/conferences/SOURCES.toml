@@ -1,0 +1,120 @@
+# Approved conference and standards sources for BA direction intake.
+#
+# Confidence policy:
+# - official_schedule, official_video => preferred evidence
+# - community_post => context only unless confirmed elsewhere
+
+[sources]
+version = 1
+owner = "sdk/ba"
+notes = "Conference-first intake with reality filter. Keep this list tight."
+
+[[events]]
+id = "wasi-component-groups"
+name = "WASI / Component Model Groups"
+tier = 0
+kind = "standards"
+
+# Noise-aware source: useful but must be filtered.
+[[events.sources]]
+label = "WebAssembly meetings repo"
+url = "https://github.com/WebAssembly/meetings.git"
+confidence = "community_post"
+notes = "High-noise aggregate. Use only with explicit filtering and cross-checks."
+
+[[events]]
+id = "wasm-io"
+name = "Wasm I/O"
+tier = 1
+kind = "conference"
+track_dates = true
+
+[[events.sources]]
+label = "official site"
+url = "https://wasm.io/"
+confidence = "official_schedule"
+
+[[events.sources]]
+label = "official video channel/playlist"
+url = "https://www.youtube.com/results?search_query=wasm+io"
+confidence = "community_post"
+notes = "Replace with official playlist URL when confirmed."
+
+[[events]]
+id = "wasmcon"
+name = "WasmCon"
+tier = 1
+kind = "conference"
+track_dates = true
+
+[[events.sources]]
+label = "official site"
+url = "https://events.linuxfoundation.org/wasmcon/"
+confidence = "official_schedule"
+
+[[events.sources]]
+label = "official video channel/playlist"
+url = "https://www.youtube.com/results?search_query=wasmcon"
+confidence = "community_post"
+notes = "Replace with official playlist URL when confirmed."
+
+[[events]]
+id = "webassembly-workshop"
+name = "WebAssembly Workshop"
+tier = 1
+kind = "conference"
+track_dates = true
+
+[[events.sources]]
+label = "official site"
+url = "https://webassembly.org/community/resources/"
+confidence = "community_post"
+notes = "Replace with direct workshop schedule URL when confirmed."
+
+[[events]]
+id = "rustconf"
+name = "RustConf"
+tier = 2
+kind = "implementation"
+track_dates = true
+
+[[events.sources]]
+label = "official site"
+url = "https://rustconf.com/"
+confidence = "official_schedule"
+
+[[events]]
+id = "fosdem"
+name = "FOSDEM"
+tier = 2
+kind = "implementation"
+track_dates = true
+
+[[events.sources]]
+label = "official site"
+url = "https://fosdem.org/"
+confidence = "official_schedule"
+
+[[events]]
+id = "kubecon"
+name = "KubeCon"
+tier = 2
+kind = "cloud-crossover"
+track_dates = true
+
+[[events.sources]]
+label = "official site"
+url = "https://events.linuxfoundation.org/kubecon-cloudnativecon-north-america/"
+confidence = "official_schedule"
+
+[[events]]
+id = "pldi-popl-asplos"
+name = "POPL / PLDI / ASPLOS"
+tier = 3
+kind = "research"
+
+[[events.sources]]
+label = "aggregated research layer"
+url = "https://dblp.org/"
+confidence = "community_post"
+notes = "Research horizon only. Non-decisive for near-term roadmap."

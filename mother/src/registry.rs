@@ -7,17 +7,21 @@
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 use crate::{
-    Child, ChildHealth, ChildRequest, ChildResponse, MotherHost, MotherRuntimeStore, RunStatus,
+    Child, ChildCallRequest, ChildHealth, ChildRequest, ChildResponse, MotherHost,
+    MotherRuntimeStore, RunStatus,
 };
 
 /// Registry of Mother's children.
 pub struct ChildRegistry {
     children: RwLock<Vec<Arc<ChildEntry>>>,
+    typed_call_history: RwLock<VecDeque<TypedCallObservation>>,
 }
 
 struct ChildEntry {
@@ -27,11 +31,50 @@ struct ChildEntry {
     reload_lock: Arc<Mutex<()>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypedCallObservation {
+    pub timestamp: String,
+    pub child: String,
+    pub operation_id: String,
+    pub interface: String,
+    pub function: String,
+    pub outcome: String,
+    pub latency_ms: Option<f64>,
+    pub deny_reason: Option<String>,
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation: Option<crate::CallCorrelation>,
+}
+
+const TYPED_CALL_HISTORY_LIMIT: usize = 512;
+
 #[derive(Debug, Clone)]
 pub struct ChildActivationResult {
     pub name: String,
     pub duration_ms: u64,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChildIngressMode {
+    Handle,
+    Hybrid,
+    WitOnly,
+}
+
+#[derive(Debug, Clone)]
+struct ChildIngressPolicy {
+    mode: ChildIngressMode,
+    allowed_operations: Vec<String>,
+}
+
+impl Default for ChildIngressPolicy {
+    fn default() -> Self {
+        Self {
+            mode: ChildIngressMode::Handle,
+            allowed_operations: vec![],
+        }
+    }
 }
 
 impl Default for ChildRegistry {
@@ -44,6 +87,7 @@ impl ChildRegistry {
     pub fn new() -> Self {
         Self {
             children: RwLock::new(vec![]),
+            typed_call_history: RwLock::new(VecDeque::with_capacity(TYPED_CALL_HISTORY_LIMIT)),
         }
     }
 
@@ -94,25 +138,29 @@ impl ChildRegistry {
         Ok(conn)
     }
 
-    fn emit_mother_metric(
+    fn emit_mother_metric_with_labels(
         child_name: &str,
-        action: &str,
         name: &str,
         kind: &str,
         value: f64,
+        labels: Vec<(&str, String)>,
+        scope: &str,
     ) -> Result<()> {
         let conn = Self::open_registry_events_connection()?;
         let timestamp = Utc::now().to_rfc3339();
+
+        let mut label_pairs = vec![serde_json::json!(["child", child_name])];
+        for (k, v) in labels {
+            label_pairs.push(serde_json::json!([k, v]));
+        }
+
         let data = serde_json::json!({
             "name": name,
             "kind": kind,
             "value": value,
-            "labels": [
-                ["child", child_name],
-                ["action", action],
-            ],
+            "labels": label_pairs,
             "source": "mother",
-            "scope": "child-handle-boundary",
+            "scope": scope,
         })
         .to_string();
 
@@ -130,6 +178,31 @@ impl ChildRegistry {
         )?;
 
         Ok(())
+    }
+
+    fn emit_mother_metric(
+        child_name: &str,
+        action: &str,
+        name: &str,
+        kind: &str,
+        value: f64,
+    ) -> Result<()> {
+        Self::emit_mother_metric_with_labels(
+            child_name,
+            name,
+            kind,
+            value,
+            vec![("action", action.to_string())],
+            "child-handle-boundary",
+        )
+    }
+
+    fn split_operation_id(operation_id: &str) -> (String, String) {
+        if let Some((interface, function)) = operation_id.rsplit_once('.') {
+            (interface.to_string(), function.to_string())
+        } else {
+            (operation_id.to_string(), "unknown".to_string())
+        }
     }
 
     fn observe_handle(child_name: &str, action: &str, started_at: Instant, is_success: bool) {
@@ -176,6 +249,247 @@ impl ChildRegistry {
         );
     }
 
+    fn observe_call(child_name: &str, operation_id: &str, started_at: Instant, is_success: bool) {
+        let (interface, function) = Self::split_operation_id(operation_id);
+        let outcome = if is_success { "success" } else { "error" };
+        let base_labels = vec![
+            ("interface", interface.clone()),
+            ("function", function.clone()),
+            ("outcome", outcome.to_string()),
+        ];
+
+        let latency_ms = started_at.elapsed().as_secs_f64() * 1000.0;
+        let _ = Self::emit_mother_metric_with_labels(
+            child_name,
+            "mother_wit_call_latency_ms",
+            "gauge",
+            latency_ms,
+            base_labels.clone(),
+            "child-wit-call-boundary",
+        )
+        .map_err(|error| {
+            tracing::warn!(
+                child = child_name,
+                operation = operation_id,
+                %error,
+                "failed to emit mother_wit_call_latency_ms"
+            )
+        });
+
+        let _ = Self::emit_mother_metric_with_labels(
+            child_name,
+            "mother_wit_call_throughput",
+            "counter",
+            1.0,
+            base_labels.clone(),
+            "child-wit-call-boundary",
+        )
+        .map_err(|error| {
+            tracing::warn!(
+                child = child_name,
+                operation = operation_id,
+                %error,
+                "failed to emit mother_wit_call_throughput"
+            )
+        });
+
+        let metric_name = if is_success {
+            "mother_wit_call_success"
+        } else {
+            "mother_wit_call_error"
+        };
+        let _ = Self::emit_mother_metric_with_labels(
+            child_name,
+            metric_name,
+            "counter",
+            1.0,
+            base_labels,
+            "child-wit-call-boundary",
+        )
+        .map_err(|error| {
+            tracing::warn!(
+                child = child_name,
+                metric = metric_name,
+                operation = operation_id,
+                %error,
+                "failed to emit mother WIT call metric"
+            )
+        });
+    }
+
+    fn observe_call_denied(child_name: &str, operation_id: &str, deny_reason: &str) {
+        let (interface, function) = Self::split_operation_id(operation_id);
+        let labels = vec![
+            ("interface", interface),
+            ("function", function),
+            ("outcome", "denied".to_string()),
+            ("deny_reason", deny_reason.to_string()),
+        ];
+
+        let _ = Self::emit_mother_metric_with_labels(
+            child_name,
+            "mother_wit_call_denied",
+            "counter",
+            1.0,
+            labels,
+            "child-wit-call-boundary",
+        )
+        .map_err(|error| {
+            tracing::warn!(
+                child = child_name,
+                operation = operation_id,
+                deny_reason,
+                %error,
+                "failed to emit mother_wit_call_denied"
+            )
+        });
+    }
+
+    fn classify_call_policy_deny_reason(error: &anyhow::Error) -> &'static str {
+        let detail = error.to_string();
+        if detail.contains("ingress mode is handle") {
+            return "ingress-handle-mode";
+        }
+        if detail.contains("empty [child.contract].allow") {
+            return "wit-only-empty-allowlist";
+        }
+        if detail.contains("not allowlisted") {
+            return "operation-not-allowlisted";
+        }
+        "policy-denied"
+    }
+
+    fn record_typed_call_observation(&self, observation: TypedCallObservation) {
+        let mut history = self
+            .typed_call_history
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        history.push_back(observation);
+        while history.len() > TYPED_CALL_HISTORY_LIMIT {
+            history.pop_front();
+        }
+    }
+
+    pub fn typed_call_history(&self, limit: usize) -> Vec<TypedCallObservation> {
+        let safe_limit = limit.clamp(1, TYPED_CALL_HISTORY_LIMIT);
+        self.typed_call_history
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .rev()
+            .take(safe_limit)
+            .cloned()
+            .collect()
+    }
+
+    fn parse_ingress_policy(manifest_path: &std::path::Path) -> Result<ChildIngressPolicy> {
+        if manifest_path.as_os_str().is_empty() || !manifest_path.exists() {
+            return Ok(ChildIngressPolicy::default());
+        }
+
+        let content = std::fs::read_to_string(manifest_path)?;
+        let table: toml::Table = content.parse()?;
+        let child = table
+            .get("child")
+            .and_then(|v| v.as_table())
+            .ok_or_else(|| anyhow::anyhow!("missing [child] section"))?;
+
+        let mode = child
+            .get("ingress")
+            .and_then(|v| v.as_table())
+            .and_then(|ingress| ingress.get("mode"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("handle");
+
+        let mode = match mode {
+            "handle" => ChildIngressMode::Handle,
+            "hybrid" => ChildIngressMode::Hybrid,
+            "wit-only" => ChildIngressMode::WitOnly,
+            other => anyhow::bail!("unknown child ingress mode: '{}'", other),
+        };
+
+        let allowed_operations = child
+            .get("contract")
+            .and_then(|v| v.as_table())
+            .and_then(|contract| contract.get("allow"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        Ok(ChildIngressPolicy {
+            mode,
+            allowed_operations,
+        })
+    }
+
+    fn is_lifecycle_action(action: &str) -> bool {
+        matches!(
+            action,
+            "health" | "tick" | "drain" | "on-load" | "on-unload"
+        )
+    }
+
+    fn enforce_handle_policy(
+        child_name: &str,
+        manifest_path: &std::path::Path,
+        request: &ChildRequest,
+    ) -> Result<()> {
+        let policy = Self::parse_ingress_policy(manifest_path)?;
+        if policy.mode == ChildIngressMode::WitOnly && !Self::is_lifecycle_action(&request.action) {
+            anyhow::bail!(
+                "child '{}' is wit-only: action '{}' is denied; use `patina child call {} <operation-id> '<json-args>'`",
+                child_name,
+                request.action,
+                child_name,
+            );
+        }
+        Ok(())
+    }
+
+    fn enforce_call_policy(
+        child_name: &str,
+        manifest_path: &std::path::Path,
+        request: &ChildCallRequest,
+    ) -> Result<()> {
+        let policy = Self::parse_ingress_policy(manifest_path)?;
+
+        match policy.mode {
+            ChildIngressMode::Handle => anyhow::bail!(
+                "child '{}' ingress mode is handle; typed call '{}' denied",
+                child_name,
+                request.operation_id
+            ),
+            ChildIngressMode::Hybrid | ChildIngressMode::WitOnly => {
+                if policy.mode == ChildIngressMode::WitOnly && policy.allowed_operations.is_empty()
+                {
+                    anyhow::bail!(
+                        "child '{}' is wit-only but has empty [child.contract].allow; deny by default",
+                        child_name,
+                    );
+                }
+                if !policy.allowed_operations.is_empty()
+                    && !policy
+                        .allowed_operations
+                        .iter()
+                        .any(|op| op == &request.operation_id)
+                {
+                    anyhow::bail!(
+                        "child '{}' operation '{}' is not allowlisted in [child.contract].allow",
+                        child_name,
+                        request.operation_id
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn invoke_handle_observed(
         child_name: &str,
         child: &dyn Child,
@@ -184,6 +498,22 @@ impl ChildRegistry {
         let started_at = Instant::now();
         let response = child.handle(request);
         Self::observe_handle(child_name, &request.action, started_at, response.is_ok());
+        response
+    }
+
+    fn invoke_call_observed(
+        child_name: &str,
+        child: &dyn Child,
+        request: &ChildCallRequest,
+    ) -> Result<ChildResponse> {
+        let started_at = Instant::now();
+        let response = child.call(request);
+        Self::observe_call(
+            child_name,
+            &request.operation_id,
+            started_at,
+            response.is_ok(),
+        );
         response
     }
 
@@ -374,6 +704,14 @@ impl ChildRegistry {
                         payload: serde_json::from_str(&task.payload_json)
                             .unwrap_or(serde_json::Value::Null),
                     };
+                    if let Err(error) =
+                        Self::enforce_handle_policy(&plugin_name, &entry.manifest_path, &request)
+                    {
+                        runtime.mark_task_failed(&task.id, task.attempts, &error.to_string())?;
+                        executed += 1;
+                        continue;
+                    }
+
                     match Self::invoke_handle_observed(&plugin_name, child.as_ref(), &request) {
                         Ok(_) => runtime.mark_task_succeeded(&task.id)?,
                         Err(error) => {
@@ -420,11 +758,115 @@ impl ChildRegistry {
     /// Route a request to a child by name.
     pub fn handle(&self, child_name: &str, request: &ChildRequest) -> Result<ChildResponse> {
         let children = self.children_snapshot();
-        if let Some(child) = children.iter().find(|entry| {
+        if let Some(entry) = children.iter().find(|entry| {
             entry.child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name
         }) {
-            let child = child.child.read().unwrap_or_else(|e| e.into_inner());
+            Self::enforce_handle_policy(child_name, &entry.manifest_path, request)?;
+            let child = entry.child.read().unwrap_or_else(|e| e.into_inner());
             return Self::invoke_handle_observed(child_name, child.as_ref(), request);
+        }
+
+        Err(anyhow::anyhow!("unknown child: {}", child_name))
+    }
+
+    /// Route a typed business call to a child by name.
+    pub fn call(&self, child_name: &str, request: &ChildCallRequest) -> Result<ChildResponse> {
+        let children = self.children_snapshot();
+        if let Some(entry) = children.iter().find(|entry| {
+            entry.child.read().unwrap_or_else(|e| e.into_inner()).name() == child_name
+        }) {
+            let policy_started_at = Instant::now();
+            if let Err(error) = Self::enforce_call_policy(child_name, &entry.manifest_path, request)
+            {
+                let deny_reason = Self::classify_call_policy_deny_reason(&error).to_string();
+                let policy_ms = policy_started_at.elapsed().as_secs_f64() * 1000.0;
+                let (interface, function) = Self::split_operation_id(&request.operation_id);
+                let _ = Self::emit_mother_metric_with_labels(
+                    child_name,
+                    "mother_wit_call_policy_ms",
+                    "gauge",
+                    policy_ms,
+                    vec![
+                        ("interface", interface.clone()),
+                        ("function", function.clone()),
+                        ("outcome", "denied".to_string()),
+                        ("deny_reason", deny_reason.clone()),
+                    ],
+                    "child-wit-call-boundary",
+                );
+                Self::observe_call_denied(child_name, &request.operation_id, &deny_reason);
+                self.record_typed_call_observation(TypedCallObservation {
+                    timestamp: Utc::now().to_rfc3339(),
+                    child: child_name.to_string(),
+                    operation_id: request.operation_id.clone(),
+                    interface,
+                    function,
+                    outcome: "denied".to_string(),
+                    latency_ms: None,
+                    deny_reason: Some(deny_reason),
+                    error: Some(error.to_string()),
+                    correlation: request.correlation.clone(),
+                });
+                return Err(error);
+            }
+
+            let policy_ms = policy_started_at.elapsed().as_secs_f64() * 1000.0;
+            let (interface, function) = Self::split_operation_id(&request.operation_id);
+            let _ = Self::emit_mother_metric_with_labels(
+                child_name,
+                "mother_wit_call_policy_ms",
+                "gauge",
+                policy_ms,
+                vec![
+                    ("interface", interface.clone()),
+                    ("function", function.clone()),
+                    ("outcome", "allowed".to_string()),
+                ],
+                "child-wit-call-boundary",
+            );
+
+            let child = entry.child.read().unwrap_or_else(|e| e.into_inner());
+            let invoke_started_at = Instant::now();
+            let response = Self::invoke_call_observed(child_name, child.as_ref(), request);
+            let invoke_ms = invoke_started_at.elapsed().as_secs_f64() * 1000.0;
+            let _ = Self::emit_mother_metric_with_labels(
+                child_name,
+                "mother_wit_call_invoke_ms",
+                "gauge",
+                invoke_ms,
+                vec![
+                    ("interface", interface.clone()),
+                    ("function", function.clone()),
+                    (
+                        "outcome",
+                        if response.is_ok() {
+                            "success".to_string()
+                        } else {
+                            "error".to_string()
+                        },
+                    ),
+                ],
+                "child-wit-call-boundary",
+            );
+
+            self.record_typed_call_observation(TypedCallObservation {
+                timestamp: Utc::now().to_rfc3339(),
+                child: child_name.to_string(),
+                operation_id: request.operation_id.clone(),
+                interface,
+                function,
+                outcome: if response.is_ok() {
+                    "success".to_string()
+                } else {
+                    "error".to_string()
+                },
+                latency_ms: Some(invoke_ms),
+                deny_reason: None,
+                error: response.as_ref().err().map(|e| e.to_string()),
+                correlation: request.correlation.clone(),
+            });
+
+            return response;
         }
 
         Err(anyhow::anyhow!("unknown child: {}", child_name))
@@ -454,6 +896,34 @@ impl ChildRegistry {
 mod tests {
     use super::*;
     use serde_json::Value;
+    use std::io::Write;
+
+    fn write_manifest(mode: &str, allow: &[&str]) -> tempfile::NamedTempFile {
+        let mut file = tempfile::NamedTempFile::new().expect("create manifest temp file");
+        let allow_lines = if allow.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "allow = [{}]",
+                allow
+                    .iter()
+                    .map(|op| format!("\"{}\"", op))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+
+        let content = format!(
+            "[child]\nname = \"test-child\"\nkind = \"child\"\n\n[child.ingress]\nmode = \"{}\"\n\n[child.contract]\n{}\n\n[needs]\ntoys = [\"logging\"]\n",
+            mode,
+            allow_lines
+        );
+
+        file.write_all(content.as_bytes())
+            .expect("write manifest content");
+        file.flush().expect("flush manifest content");
+        file
+    }
 
     /// Minimal knowledge child for testing registry logic.
     struct StubChild {
@@ -481,6 +951,48 @@ mod tests {
         fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
             Ok(ChildResponse {
                 payload: serde_json::json!({"stub": true}),
+            })
+        }
+    }
+
+    struct TypedStubChild {
+        child_name: String,
+    }
+
+    impl TypedStubChild {
+        fn boxed(name: &str) -> Box<dyn Child> {
+            Box::new(Self {
+                child_name: name.to_string(),
+            })
+        }
+    }
+
+    impl Child for TypedStubChild {
+        fn name(&self) -> &str {
+            &self.child_name
+        }
+
+        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            Ok(())
+        }
+
+        fn health(&self) -> ChildHealth {
+            ChildHealth::Healthy
+        }
+
+        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::json!({"stub": true}),
+            })
+        }
+
+        fn call(&self, request: &ChildCallRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::json!({
+                    "operation": request.operation_id,
+                    "args": request.args,
+                    "typed": true,
+                }),
             })
         }
     }
@@ -550,6 +1062,59 @@ mod tests {
             }
             if let Some(name) = value.get("name").and_then(|v| v.as_str()) {
                 names.push(name.to_string());
+            }
+        }
+        names
+    }
+
+    fn metric_names_for_wit_call(interface: &str, function: &str, outcome: &str) -> Vec<String> {
+        let conn = ChildRegistry::open_registry_events_connection()
+            .expect("open events db for metric assertion");
+        let mut stmt = conn
+            .prepare("SELECT data FROM eventlog WHERE event_type = 'measure.metric' ORDER BY seq DESC LIMIT 256")
+            .expect("prepare events query");
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query events")
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .expect("collect events");
+
+        let mut names = Vec::new();
+        for raw in rows {
+            let Ok(value) = serde_json::from_str::<Value>(&raw) else {
+                continue;
+            };
+            let labels = value
+                .get("labels")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+
+            let mut interface_match = false;
+            let mut function_match = false;
+            let mut outcome_match = false;
+            for label in labels {
+                let pair = label.as_array().cloned().unwrap_or_default();
+                if pair.len() != 2 {
+                    continue;
+                }
+                let key = pair.first().and_then(|v| v.as_str()).unwrap_or_default();
+                let value = pair.get(1).and_then(|v| v.as_str()).unwrap_or_default();
+                if key == "interface" && value == interface {
+                    interface_match = true;
+                }
+                if key == "function" && value == function {
+                    function_match = true;
+                }
+                if key == "outcome" && value == outcome {
+                    outcome_match = true;
+                }
+            }
+
+            if interface_match && function_match && outcome_match {
+                if let Some(name) = value.get("name").and_then(|v| v.as_str()) {
+                    names.push(name.to_string());
+                }
             }
         }
         names
@@ -630,5 +1195,188 @@ mod tests {
         assert!(names.iter().any(|n| n == "mother_handle_latency_ms"));
         assert!(names.iter().any(|n| n == "mother_handle_throughput"));
         assert!(names.iter().any(|n| n == "mother_handle_error"));
+    }
+
+    #[test]
+    fn observed_typed_call_emits_success_metrics() {
+        let registry = ChildRegistry::new();
+        let manifest = write_manifest("hybrid", &["patina:watch/control.status"]);
+        registry
+            .register_knowledge_with_paths(
+                TypedStubChild::boxed("typed-success"),
+                PathBuf::new(),
+                manifest.path().to_path_buf(),
+            )
+            .unwrap();
+
+        let response = registry
+            .call(
+                "typed-success",
+                &ChildCallRequest {
+                    operation_id: "patina:watch/control.status".to_string(),
+                    args: serde_json::json!([]),
+                    correlation: None,
+                },
+            )
+            .expect("typed call should succeed");
+        assert_eq!(
+            response.payload.get("typed"),
+            Some(&serde_json::json!(true))
+        );
+
+        let names = metric_names_for_wit_call("patina:watch/control", "status", "success");
+        assert!(names.iter().any(|n| n == "mother_wit_call_latency_ms"));
+        assert!(names.iter().any(|n| n == "mother_wit_call_throughput"));
+        assert!(names.iter().any(|n| n == "mother_wit_call_success"));
+
+        let history = registry.typed_call_history(10);
+        assert!(
+            !history.is_empty(),
+            "typed call history should be populated"
+        );
+        let latest = &history[0];
+        assert_eq!(latest.child, "typed-success");
+        assert_eq!(latest.operation_id, "patina:watch/control.status");
+        assert_eq!(latest.outcome, "success");
+        assert!(latest.deny_reason.is_none());
+    }
+
+    #[test]
+    fn observed_typed_call_records_correlation_metadata() {
+        let registry = ChildRegistry::new();
+        let manifest = write_manifest("hybrid", &["patina:watch/control.status"]);
+        registry
+            .register_knowledge_with_paths(
+                TypedStubChild::boxed("typed-correlation"),
+                PathBuf::new(),
+                manifest.path().to_path_buf(),
+            )
+            .unwrap();
+
+        registry
+            .call(
+                "typed-correlation",
+                &ChildCallRequest {
+                    operation_id: "patina:watch/control.status".to_string(),
+                    args: serde_json::json!([]),
+                    correlation: Some(crate::CallCorrelation {
+                        rivet_run_id: Some("run-123".to_string()),
+                        rivet_actor_id: Some("actor-9".to_string()),
+                        rivet_workflow_id: Some("wf-7".to_string()),
+                        rivet_job_id: Some("job-5".to_string()),
+                    }),
+                },
+            )
+            .expect("typed call should succeed");
+
+        let history = registry.typed_call_history(10);
+        let latest = history.first().expect("expected typed call history entry");
+        let correlation = latest
+            .correlation
+            .as_ref()
+            .expect("correlation metadata should be captured");
+        assert_eq!(correlation.rivet_run_id.as_deref(), Some("run-123"));
+        assert_eq!(correlation.rivet_actor_id.as_deref(), Some("actor-9"));
+        assert_eq!(correlation.rivet_workflow_id.as_deref(), Some("wf-7"));
+        assert_eq!(correlation.rivet_job_id.as_deref(), Some("job-5"));
+    }
+
+    #[test]
+    fn observed_typed_call_emits_error_metrics() {
+        let registry = ChildRegistry::new();
+        let manifest = write_manifest("hybrid", &["patina:watch/control.status"]);
+        registry
+            .register_knowledge_with_paths(
+                StubChild::boxed("typed-error"),
+                PathBuf::new(),
+                manifest.path().to_path_buf(),
+            )
+            .unwrap();
+
+        let result = registry.call(
+            "typed-error",
+            &ChildCallRequest {
+                operation_id: "patina:watch/control.status".to_string(),
+                args: serde_json::json!([]),
+                correlation: None,
+            },
+        );
+        assert!(result.is_err());
+
+        let names = metric_names_for_wit_call("patina:watch/control", "status", "error");
+        assert!(names.iter().any(|n| n == "mother_wit_call_latency_ms"));
+        assert!(names.iter().any(|n| n == "mother_wit_call_throughput"));
+        assert!(names.iter().any(|n| n == "mother_wit_call_error"));
+    }
+
+    #[test]
+    fn wit_only_denies_business_handle_calls() {
+        let registry = ChildRegistry::new();
+        let manifest = write_manifest("wit-only", &["patina:watch/control.status"]);
+        registry
+            .register_knowledge_with_paths(
+                StubChild::boxed("wit-only-child"),
+                PathBuf::new(),
+                manifest.path().to_path_buf(),
+            )
+            .unwrap();
+
+        let err = registry
+            .handle(
+                "wit-only-child",
+                &ChildRequest {
+                    action: "status".to_string(),
+                    payload: serde_json::json!({}),
+                },
+            )
+            .unwrap_err();
+
+        assert!(err.to_string().contains("is wit-only"), "got: {}", err);
+    }
+
+    #[test]
+    fn handle_mode_denies_typed_call() {
+        let registry = ChildRegistry::new();
+        let manifest = write_manifest("handle", &["patina:watch/control.status"]);
+        registry
+            .register_knowledge_with_paths(
+                TypedStubChild::boxed("handle-only-child"),
+                PathBuf::new(),
+                manifest.path().to_path_buf(),
+            )
+            .unwrap();
+
+        let err = registry
+            .call(
+                "handle-only-child",
+                &ChildCallRequest {
+                    operation_id: "patina:watch/control.status".to_string(),
+                    args: serde_json::json!([]),
+                    correlation: None,
+                },
+            )
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("ingress mode is handle"),
+            "got: {}",
+            err
+        );
+
+        let denied_names = metric_names_for_wit_call("patina:watch/control", "status", "denied");
+        assert!(
+            denied_names.iter().any(|n| n == "mother_wit_call_denied"),
+            "expected denied metric in {:?}",
+            denied_names
+        );
+
+        let history = registry.typed_call_history(10);
+        assert!(
+            !history.is_empty(),
+            "typed deny should be recorded in history"
+        );
+        let latest = &history[0];
+        assert_eq!(latest.child, "handle-only-child");
+        assert_eq!(latest.outcome, "denied");
+        assert!(latest.deny_reason.is_some());
     }
 }

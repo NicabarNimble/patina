@@ -678,7 +678,16 @@ where
 /// Unlike archive_spec_inner (which uses git rm and strict commit),
 /// this handles the case where the file hasn't actually changed.
 pub(super) fn git_stage_and_commit(file_path: &str, message: &str) -> Result<()> {
-    patina::git::add_paths(&[file_path])?;
+    let output = Command::new("git")
+        .args(["add", "-f", file_path])
+        .output()
+        .context(format!("Failed to run git add -f {}", file_path))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stage {}: {}", file_path, stderr.trim());
+    }
+
     if patina::git::has_staged_changes()? {
         patina::git::commit(message)?;
     }

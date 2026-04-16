@@ -6,6 +6,8 @@ wit_bindgen::generate!({
 
 struct SchemaEnforcer;
 
+use patina_sdk::toys;
+
 fn validate_record(record: &patina::records::types::RecordEnvelope) -> Result<(), String> {
     if record.record_id.trim().is_empty() {
         return Err("missing record_id".to_string());
@@ -54,8 +56,7 @@ impl exports::patina::records::transform::Guest for SchemaEnforcer {
             match validate_record(&record) {
                 Ok(()) => accepted.push(record),
                 Err(reason) => {
-                    wasi::logging::logging::log(
-                        wasi::logging::logging::Level::Warn,
+                    toys::log::warn(
                         "schema-enforcer",
                         &format!(
                             "schema-enforcer rejected {} ({})",
@@ -70,8 +71,8 @@ impl exports::patina::records::transform::Guest for SchemaEnforcer {
             }
         }
 
-        patina::measure::measure::counter("validated_records", accepted.len() as f64)?;
-        patina::measure::measure::counter("rejected_records", rejected.len() as f64)?;
+        toys::measure::counter("validated_records", accepted.len() as f64)?;
+        toys::measure::counter("rejected_records", rejected.len() as f64)?;
 
         let total = accepted.len() + rejected.len();
         let provenance_complete = accepted.iter().filter(|r| r.source_size_bytes > 0).count();
@@ -80,7 +81,7 @@ impl exports::patina::records::transform::Guest for SchemaEnforcer {
         } else {
             (provenance_complete as f64 / total as f64) * 100.0
         };
-        patina::measure::measure::gauge("provenance_completeness_pct", provenance_pct)?;
+        toys::measure::gauge("provenance_completeness_pct", provenance_pct)?;
 
         Ok(patina::records::types::TransformResult { accepted, rejected })
     }
