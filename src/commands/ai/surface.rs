@@ -255,6 +255,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
     let tmux_session_name = Some(interface::derive_interface_session_name(
         &project_path,
         &interface_name,
+        Some(&checkin.session_file_id),
     ));
 
     iface.launch(interface::LaunchRequest {
