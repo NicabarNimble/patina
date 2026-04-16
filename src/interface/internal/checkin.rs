@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde_json::json;
+use std::io::{self, IsTerminal as _, Write as _};
 use std::path::PathBuf;
 
 use crate::project;
@@ -60,6 +61,70 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
             }
             return Ok(result_from_handle(request, handle, true));
         }
+
+        if let Some(takeover) = resolve_takeover_context(&request.project_root, selector)? {
+            if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+                anyhow::bail!(
+                    "Requested session '{}' is not active. Rerun interactively to confirm successor takeover.",
+                    selector
+                );
+            }
+
+            if !prompt_user_verified_successor(selector, &takeover) {
+                anyhow::bail!(
+                    "Successor takeover cancelled for requested session '{}'.",
+                    selector
+                );
+            }
+
+            let title = request
+                .title
+                .clone()
+                .unwrap_or_else(|| format!("{} session", request.interface_name));
+            let start = session::begin_session(
+                &request.project_root,
+                BeginSessionRequest {
+                    title,
+                    interface_name: request.interface_name.clone(),
+                    interface_kind: request.interface_kind,
+                    voice_uid: request.requested_voice.clone(),
+                    work_spec: Some(takeover.work_spec.clone()),
+                    continuity_uid: Some(takeover.continuity_uid.clone()),
+                    takeover_from_runtime: Some(takeover.runtime_id.clone()),
+                    takeover_user_verified: Some(true),
+                    parent_runtime_id: None,
+                    handoff_from_runtime_id: Some(takeover.runtime_id),
+                    participant: Some(SessionParticipant {
+                        participant_id: format!(
+                            "{}-{}",
+                            request.interface_name,
+                            std::process::id()
+                        ),
+                        role: "interface".to_string(),
+                        interface_kind: request.interface_kind,
+                        interface_name: Some(request.interface_name.clone()),
+                        display_name: std::env::var("USER")
+                            .ok()
+                            .or_else(|| std::env::var("LOGNAME").ok())
+                            .or_else(|| Some(request.interface_name.clone())),
+                    }),
+                },
+            )?;
+
+            if let Err(error) = spawn_session_writer(&start.handle) {
+                eprintln!(
+                    "[check-in] warning: failed to spawn session-writer for '{}': {}",
+                    start.handle.runtime_id, error
+                );
+            }
+
+            return Ok(result_from_handle(request, start.handle, false));
+        }
+
+        anyhow::bail!(
+            "Requested session '{}' not found. Use `patina ai list` to inspect active sessions.",
+            selector
+        );
     }
 
     if let Some(handle) =
@@ -231,14 +296,132 @@ fn load_session_writer_knowledge_child() -> Result<Option<Box<dyn crate::mother:
     Ok(None)
 }
 
+#[derive(Debug, Clone)]
+struct TakeoverContext {
+    runtime_id: String,
+    continuity_uid: String,
+    work_spec: String,
+}
+
 fn load_requested_session(
     project_root: &std::path::Path,
     selector: &str,
 ) -> Result<Option<session::LiveSessionHandle>> {
-    if let Some(handle) = session::load_session(project_root, selector)? {
-        return Ok(Some(handle));
+    let handle = if let Some(handle) = session::load_session(project_root, selector)? {
+        Some(handle)
+    } else {
+        session::load_session_by_file_id(project_root, selector)?
+    };
+
+    let Some(handle) = handle else {
+        return Ok(None);
+    };
+
+    let is_active = session::list_active_sessions(project_root)?
+        .iter()
+        .any(|candidate| candidate.runtime_id == handle.runtime_id);
+
+    if is_active {
+        Ok(Some(handle))
+    } else {
+        Ok(None)
     }
-    session::load_session_by_file_id(project_root, selector)
+}
+
+fn resolve_takeover_context(
+    project_root: &std::path::Path,
+    selector: &str,
+) -> Result<Option<TakeoverContext>> {
+    if let Some(handle) = session::load_session(project_root, selector)? {
+        let context = takeover_context_from_artifact(&handle.artifact_path)?;
+        return Ok(Some(context.unwrap_or_else(|| {
+            TakeoverContext {
+                runtime_id: handle.runtime_id.clone(),
+                continuity_uid: handle.runtime_id,
+                work_spec: std::env::var("PATINA_WORK_SPEC")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or_else(|| "unspecified".to_string()),
+            }
+        })));
+    }
+
+    if let Some(handle) = session::load_session_by_file_id(project_root, selector)? {
+        let context = takeover_context_from_artifact(&handle.artifact_path)?;
+        return Ok(Some(context.unwrap_or_else(|| {
+            TakeoverContext {
+                runtime_id: handle.runtime_id.clone(),
+                continuity_uid: handle.runtime_id,
+                work_spec: std::env::var("PATINA_WORK_SPEC")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or_else(|| "unspecified".to_string()),
+            }
+        })));
+    }
+
+    let artifact_path = session::durable_session_path(project_root, selector);
+    if artifact_path.exists() {
+        if let Some(context) = takeover_context_from_artifact(&artifact_path)? {
+            return Ok(Some(context));
+        }
+    }
+
+    Ok(None)
+}
+
+fn takeover_context_from_artifact(path: &std::path::Path) -> Result<Option<TakeoverContext>> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(_) => return Ok(None),
+    };
+
+    let Some(doc) = session::parse_document(&content) else {
+        return Ok(None);
+    };
+
+    let continuity_uid = doc
+        .frontmatter
+        .continuity_uid
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| doc.frontmatter.runtime_id.clone());
+
+    let work_spec = doc
+        .frontmatter
+        .work_spec
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var("PATINA_WORK_SPEC")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or_else(|| "unspecified".to_string());
+
+    Ok(Some(TakeoverContext {
+        runtime_id: doc.frontmatter.runtime_id,
+        continuity_uid,
+        work_spec,
+    }))
+}
+
+fn prompt_user_verified_successor(selector: &str, takeover: &TakeoverContext) -> bool {
+    eprintln!(
+        "Requested session '{}' is not active. Start a verified successor with continuity '{}' and spec '{}' ? [y/N]",
+        selector,
+        takeover.continuity_uid,
+        takeover.work_spec
+    );
+    eprint!("> ");
+    io::stdout().flush().ok();
+
+    let mut input = String::new();
+    if io::stdin().read_line(&mut input).is_err() {
+        return false;
+    }
+
+    matches!(input.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
 fn result_from_handle(
@@ -286,6 +469,32 @@ fn select_reusable_session(
         0 => Ok(None),
         1 => Ok(sessions.pop()),
         _ => {
+            if io::stdin().is_terminal() && io::stdout().is_terminal() {
+                eprintln!(
+                    "Multiple active {} sessions found. Choose one or start new:",
+                    interface_name
+                );
+                for (idx, handle) in sessions.iter().enumerate() {
+                    eprintln!("  {}. {} ({})", idx + 1, handle.file_id, handle.title);
+                }
+                eprintln!("  n. start new session");
+                eprint!("> ");
+                io::stdout().flush().ok();
+
+                let mut input = String::new();
+                if io::stdin().read_line(&mut input).is_ok() {
+                    let choice = input.trim();
+                    if choice.eq_ignore_ascii_case("n") || choice.eq_ignore_ascii_case("new") {
+                        return Ok(None);
+                    }
+                    if let Ok(index) = choice.parse::<usize>() {
+                        if (1..=sessions.len()).contains(&index) {
+                            return Ok(Some(sessions.remove(index - 1)));
+                        }
+                    }
+                }
+            }
+
             let choices = sessions
                 .iter()
                 .map(|handle| format!("{} ({})", handle.file_id, handle.title))

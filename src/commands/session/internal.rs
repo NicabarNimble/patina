@@ -7,7 +7,7 @@ use chrono::{Local, Utc};
 use serde::Serialize;
 use serde_json::json;
 use std::fs;
-use std::io::BufRead;
+use std::io::{BufRead, IsTerminal as _, Write};
 use std::path::{Path, PathBuf};
 
 use patina::git;
@@ -306,6 +306,30 @@ pub(crate) fn resolve_live_session(
         1 => Ok(sessions.remove(0)),
         0 => bail!("No active session found"),
         _ => {
+            if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+                eprintln!("Multiple active sessions match. Choose one:");
+                for (idx, handle) in sessions.iter().enumerate() {
+                    eprintln!(
+                        "  {}. {} [{}] ({})",
+                        idx + 1,
+                        handle.file_id,
+                        handle.interface_name,
+                        handle.title
+                    );
+                }
+                eprint!("> ");
+                std::io::stdout().flush().ok();
+
+                let mut input = String::new();
+                if std::io::stdin().read_line(&mut input).is_ok() {
+                    if let Ok(index) = input.trim().parse::<usize>() {
+                        if (1..=sessions.len()).contains(&index) {
+                            return Ok(sessions.remove(index - 1));
+                        }
+                    }
+                }
+            }
+
             let choices = sessions
                 .iter()
                 .map(|handle| format!("{} ({})", handle.file_id, handle.title))
