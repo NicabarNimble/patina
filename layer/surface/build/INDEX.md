@@ -18,6 +18,7 @@ making claims about how something was designed.
 - [watch-null-sink-child](feat/watch-null-sink-child/SPEC.md) — ephemeral typed `patina:watch/events` sink for connection testing
 - [durable-rust-unix-realignment-program](refactor/durable-rust-unix-realignment-program/SPEC.md) — umbrella program for durable-rust/unix realignment (HITL-gated slices)
 - [spec-archive-read-path](fix/spec-archive-read-path/SPEC.md) — restore archived spec show/check from tag-backed source
+- [js-mjs-grammar-claim-alignment](fix/js-mjs-grammar-claim-alignment/SPEC.md) — align JavaScript grammar claims with `.mjs` modules to unblock scrape/oxidize
 - [integration-test-domain-split](refactor/integration-test-domain-split/SPEC.md) — split wasm integration + pando parity tests by subject-under-test for failure diagnosis
 
 ### Draft
