@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: child-typed-conversion-boundary
-status: ready
+status: active
 created: 2026-04-14
 blocked_by:
 - durable-rust-unix-realignment-program
