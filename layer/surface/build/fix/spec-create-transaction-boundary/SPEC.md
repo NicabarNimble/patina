@@ -1,7 +1,7 @@
 ---
 type: fix
 id: spec-create-transaction-boundary
-status: ready
+status: active
 created: 2026-04-15
 blocked_by:
 - durable-rust-unix-realignment-program
