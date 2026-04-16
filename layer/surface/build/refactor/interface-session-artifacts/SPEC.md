@@ -27,25 +27,25 @@ exit_criteria:
   checked: true
 - id: isa3-session-contained-durable-object
   text: Session is defined as a contained durable object with stable identity, lifecycle, and artifact references.
-  checked: false
+  checked: true
 - id: isa4-interface-owned-artifacts
   text: Each interface must produce and maintain its own durable session artifact representation.
-  checked: false
+  checked: true
 - id: isa5-claude-flow-skills-intact
   text: Claude user flow and skill design remain intact; changes only ensure clean integration with session/tmux infrastructure.
   checked: true
 - id: isa6-pi-artifact-path
   text: PI has first-class session artifact creation and lifecycle updates wired through the same session object contract.
-  checked: false
+  checked: true
 - id: isa7-pointer-lane-determinism
   text: Pointer and transport lane resolution remain deterministic under multiple active sessions for one interface.
   checked: false
 - id: isa8-mixed-seam-register
   text: Mixed-state seam register is maintained in this spec as migration checklist across sessions.
-  checked: false
+  checked: true
 - id: isa9-claude-capture-profile
   text: Claude capture profile is explicitly defined as LLM-authored summarization (no canonical machine transcript), including start/update/end authoring requirements.
-  checked: false
+  checked: true
 - id: isa10-pi-log-distill-profile
   text: PI capture profile is explicitly defined as machine-log distill + optional LLM enrichment, with deterministic mapping from PI JSONL logs to session artifact updates.
   checked: false
@@ -54,19 +54,19 @@ exit_criteria:
   checked: false
 - id: isa12-non-target-interface-boundary
   text: OpenCode and Gemini are explicitly out of active capture-migration scope for this slice.
-  checked: false
+  checked: true
 - id: isa13-structured-yaml-frontmatter
   text: Claude and PI artifacts both use the canonical structured YAML frontmatter schema.
   checked: true
 - id: isa14-tmux-session-state-parity
   text: Claude and PI both integrate with the same tmux session-state infrastructure (lane binding, lookup, teardown semantics).
-  checked: false
+  checked: true
 - id: isa15-programmatic-ingest-frame-lock
   text: 'Session markdown frame is locked for programmatic ingestion: canonical YAML frontmatter keys and canonical section headings/order remain stable across Claude and PI.'
   checked: true
 - id: isa16-one-shot-cutover
   text: Migration mechanics are short-lived for this implementation session only; no long-lived shadow/dual-write migration mode remains after cutover.
-  checked: false
+  checked: true
 - id: isa17-spec-bound-session-contract
   text: Each session is explicitly bound to a work spec id and carries a stable continuity uid across restarts/takeovers.
   checked: true
