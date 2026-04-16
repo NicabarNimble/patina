@@ -33,8 +33,10 @@ making claims about how something was designed.
 - [patina-durable-backup](feat/patina-durable-backup/SPEC.md) — durable backup system
 - [wit-deps-wasi-alignment](fix/wit-deps-wasi-alignment/SPEC.md) — replace flattened WASI P2 deps with upstream multi-file packages (io done, http/clocks/filesystem pending)
 - [spec-create-transaction-boundary](fix/spec-create-transaction-boundary/SPEC.md) — harden `spec create` fs/git/db failure boundaries with explicit invariants and compensation
+- [events-noise-budget](fix/events-noise-budget/SPEC.md) — split durable autobiography replica from high-volume ops telemetry and add export noise controls
 - [engine-consolidate](refactor/engine-consolidate/SPEC.md) — merge PipelineEngine + KnowledgeChildEngine
 - [interface-redesign](refactor/interface-redesign/SPEC.md) — Mother-managed interface registry, ephemeral projection, skill system (16 criteria)
+- [interface-session-artifacts](refactor/interface-session-artifacts/SPEC.md) — sessions as durable contained objects + interface-owned artifacts (Claude/OpenCode UX stable, PI artifact path)
 - [main-command-router-split](refactor/main-command-router-split/SPEC.md) — decompose top-level CLI dispatch into command-family modules
 - [mother-daemon-module-split](refactor/mother-daemon-module-split/SPEC.md) — split mother daemon startup/dispatch/composition/health modules
 - [mother-http-api-module-split](refactor/mother-http-api-module-split/SPEC.md) — split mother HTTP API by endpoint domains
