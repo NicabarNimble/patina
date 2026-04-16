@@ -73,7 +73,7 @@ exit_criteria:
 - id: isa18-user-verified-successor-flow
   text: When a prior session dies, successor session creation requires explicit user verification and records lineage in structured metadata.
   checked: true
-validated_against_commit: b78d1e19
+validated_against_commit: a4d55b81
 last_freshness_check: 2026-04-16
 freshness_scope:
 - src/session/internal/artifact.rs
