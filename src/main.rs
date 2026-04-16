@@ -1239,6 +1239,7 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Serve { host, port, mcp }) => {
+            // MCP server path has been retired; legacy `serve --mcp` is rejected in dispatch.
             main_dispatch::mother::dispatch_serve(host, port, mcp)?;
         }
         Some(Commands::Interface { command }) => commands::interface::execute(command)?,

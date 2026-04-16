@@ -14,10 +14,10 @@ related:
 exit_criteria:
   - id: rmgr1-main-guard-present
     text: "`src/main.rs` explicitly includes the retired MCP guard marker text (`MCP server path has been retired`) so structural invariants remain enforceable after router decomposition."
-    checked: false
+    checked: true
   - id: rmgr2-structural-script-green
     text: "`resources/scripts/check-retired-mcp-surface.sh` passes without invariant errors."
-    checked: false
+    checked: true
 ---
 
 # fix: retired MCP guard restoration
