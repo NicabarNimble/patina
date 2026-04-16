@@ -1,42 +1,42 @@
 ---
 type: refactor
 id: typed-operation-identity-hardening
-status: draft
+status: ready
 created: 2026-04-14
 blocked_by:
-  - durable-rust-unix-realignment-program
-  - child-typed-conversion-boundary
-beliefs:
-  - "[[dependable-rust]]"
-  - "[[spec-driven-design]]"
-  - "[[unix-philosophy]]"
-  - "[[adapter-pattern]]"
+- durable-rust-unix-realignment-program
+- child-typed-conversion-boundary
 related:
-  - src/child/internal/child.rs
-  - src/child/runtime.rs
-  - mother/src/registry.rs
-  - mother/src/http_api.rs
-  - src/commands/mother/daemon.rs
-  - layer/surface/reports/audit/2026-04-14-durable-rust-unix-realignment-audit.md
+- src/child/internal/child.rs
+- src/child/runtime.rs
+- mother/src/registry.rs
+- mother/src/http_api.rs
+- src/commands/mother/daemon.rs
+- layer/surface/reports/audit/2026-04-14-durable-rust-unix-realignment-audit.md
+beliefs:
+- '[[dependable-rust]]'
+- '[[spec-driven-design]]'
+- '[[unix-philosophy]]'
+- '[[adapter-pattern]]'
 exit_criteria:
-  - id: toih1-exact-operation-identity
-    text: "Typed operation lookup uses exact exported interface/function identity; heuristic fallback candidates (`@0.1.0`, underscore↔hyphen swap) are removed from strict path."
-    checked: true
-  - id: toih2-operation-id-validation-hardened
-    text: "Operation identifier validation is tightened to canonical `<package>:<interface>.<function>` shape with deterministic machine errors for malformed identifiers."
-    checked: true
-  - id: toih3-allowlist-vs-export-validation
-    text: "Child contract allowlist entries are validated against discovered typed exports at load/startup (or explicit validation command), failing closed on mismatch."
-    checked: true
-  - id: toih4-driver-compat-boundary
-    text: "Strict typed driver is the canonical production path; compatibility driver modes are explicitly marked transitional and isolated from strict behavior tests."
-    checked: true
-  - id: toih5-errors-structured
-    text: "Typed identity and lookup failures return stable machine error code + structured detail fields; text remains informational."
-    checked: true
-  - id: toih6-tests
-    text: "Deterministic tests cover exact-identity success, malformed id failure, unknown export failure, and allowlist/export mismatch failure."
-    checked: true
+- id: toih1-exact-operation-identity
+  text: Typed operation lookup uses exact exported interface/function identity; heuristic fallback candidates (`@0.1.0`, underscore↔hyphen swap) are removed from strict path.
+  checked: true
+- id: toih2-operation-id-validation-hardened
+  text: Operation identifier validation is tightened to canonical `<package>:<interface>.<function>` shape with deterministic machine errors for malformed identifiers.
+  checked: true
+- id: toih3-allowlist-vs-export-validation
+  text: Child contract allowlist entries are validated against discovered typed exports at load/startup (or explicit validation command), failing closed on mismatch.
+  checked: true
+- id: toih4-driver-compat-boundary
+  text: Strict typed driver is the canonical production path; compatibility driver modes are explicitly marked transitional and isolated from strict behavior tests.
+  checked: true
+- id: toih5-errors-structured
+  text: Typed identity and lookup failures return stable machine error code + structured detail fields; text remains informational.
+  checked: true
+- id: toih6-tests
+  text: Deterministic tests cover exact-identity success, malformed id failure, unknown export failure, and allowlist/export mismatch failure.
+  checked: true
 ---
 
 # refactor: typed operation identity hardening
