@@ -398,10 +398,12 @@ fn update_session_document_value(
         time_str, last_update
     );
 
+    let mut pi_distill = None;
     if interface == "pi" {
-        if let Some(pi_block) = distill_pi_log_activity(project_root, &since_rfc3339)? {
+        pi_distill = distill_pi_log_activity(project_root, &since_rfc3339)?;
+        if let Some(summary) = &pi_distill {
             update_section.push_str("\n");
-            update_section.push_str(&pi_block);
+            update_section.push_str(&summary.block);
             update_section.push('\n');
         }
     }
@@ -446,7 +448,18 @@ fn update_session_document_value(
     update_section.push_str(&format!("- Last commit: {}\n", last_commit_time));
     update_section.push('\n');
 
-    let updated_markdown = append_to_section(&current_markdown, "## Activity Log", &update_section);
+    let mut updated_markdown =
+        append_to_section(&current_markdown, "## Activity Log", &update_section);
+
+    if let Some(summary) = pi_distill {
+        if let Some(mut doc) = session::parse_document(&updated_markdown) {
+            doc.frontmatter.source_log = Some(summary.source_log_path);
+            doc.frontmatter.source_log_span_start = summary.span_start;
+            doc.frontmatter.source_log_span_end = summary.span_end;
+            updated_markdown = doc.render()?;
+        }
+    }
+
     session::validate_canonical_section_frame(
         &session::parse_document(&updated_markdown)
             .map(|doc| doc.body)
@@ -714,7 +727,18 @@ fn append_to_section(markdown: &str, section_heading: &str, content: &str) -> St
     }
 }
 
-fn distill_pi_log_activity(project_root: &Path, since_rfc3339: &str) -> Result<Option<String>> {
+#[derive(Debug, Clone)]
+struct PiDistillSummary {
+    block: String,
+    source_log_path: String,
+    span_start: Option<String>,
+    span_end: Option<String>,
+}
+
+fn distill_pi_log_activity(
+    project_root: &Path,
+    since_rfc3339: &str,
+) -> Result<Option<PiDistillSummary>> {
     let Some(log_path) = resolve_latest_pi_log_path(project_root)? else {
         return Ok(None);
     };
@@ -786,26 +810,39 @@ fn distill_pi_log_activity(project_root: &Path, since_rfc3339: &str) -> Result<O
         }
     }
 
+    let source_log_path = log_path.display().to_string();
     if first_ts.is_none() {
-        return Ok(Some(format!(
-            "**PI Distilled Activity:**\n- Source log: `{}`\n- Span: no new PI log events since {}\n",
-            log_path.display(),
-            since.to_rfc3339()
-        )));
+        return Ok(Some(PiDistillSummary {
+            block: format!(
+                "**PI Distilled Activity:**\n- Source log: `{}`\n- Span: no new PI log events since {}\n",
+                source_log_path,
+                since.to_rfc3339()
+            ),
+            source_log_path,
+            span_start: None,
+            span_end: None,
+        }));
     }
 
+    let span_start = first_ts.map(|ts| ts.to_rfc3339());
+    let span_end = last_ts.map(|ts| ts.to_rfc3339());
     let total_messages = user_messages + assistant_messages;
-    Ok(Some(format!(
-        "**PI Distilled Activity:**\n- Source log: `{}`\n- Span: {} -> {}\n- Messages: {} (user {}, assistant {})\n- Tool calls: {}\n- Errors: {}\n",
-        log_path.display(),
-        first_ts.unwrap().to_rfc3339(),
-        last_ts.unwrap().to_rfc3339(),
-        total_messages,
-        user_messages,
-        assistant_messages,
-        tool_calls,
-        errors
-    )))
+    Ok(Some(PiDistillSummary {
+        block: format!(
+            "**PI Distilled Activity:**\n- Source log: `{}`\n- Span: {} -> {}\n- Messages: {} (user {}, assistant {})\n- Tool calls: {}\n- Errors: {}\n",
+            source_log_path,
+            span_start.clone().unwrap_or_else(|| since.to_rfc3339()),
+            span_end.clone().unwrap_or_else(|| since.to_rfc3339()),
+            total_messages,
+            user_messages,
+            assistant_messages,
+            tool_calls,
+            errors
+        ),
+        source_log_path,
+        span_start,
+        span_end,
+    }))
 }
 
 fn parse_pi_event_timestamp(value: &Value) -> Option<chrono::DateTime<Utc>> {
@@ -1500,9 +1537,11 @@ mod tests {
         let summary = distill_pi_log_activity(&project_root, "2026-04-16T12:00:30Z")
             .unwrap()
             .unwrap();
-        assert!(summary.contains("Messages: 2 (user 1, assistant 1)"));
-        assert!(summary.contains("Tool calls: 1"));
-        assert!(summary.contains("Errors: 1"));
+        assert!(summary.block.contains("Messages: 2 (user 1, assistant 1)"));
+        assert!(summary.block.contains("Tool calls: 1"));
+        assert!(summary.block.contains("Errors: 1"));
+        assert!(summary.span_start.is_some());
+        assert!(summary.span_end.is_some());
 
         match old_home {
             Some(value) => unsafe {

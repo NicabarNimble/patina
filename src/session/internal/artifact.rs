@@ -47,6 +47,12 @@ pub struct SessionFrontmatter {
     pub start_timestamp: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_log: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_log_span_start: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_log_span_end: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub participants: Vec<ArtifactParticipant>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -90,6 +96,9 @@ pub struct NewDocument {
     pub interface_name: String,
     pub interface_kind: InterfaceKind,
     pub voice_uid: Option<String>,
+    pub source_log: Option<String>,
+    pub source_log_span_start: Option<String>,
+    pub source_log_span_end: Option<String>,
     pub project_uid: String,
     pub branch: String,
     pub starting_commit: String,
@@ -140,6 +149,9 @@ pub fn initial_document(request: NewDocument) -> Result<SessionDocument> {
         updated: request.created_at.clone(),
         start_timestamp: request.created_local.timestamp_millis(),
         voice: request.voice_uid,
+        source_log: request.source_log,
+        source_log_span_start: request.source_log_span_start,
+        source_log_span_end: request.source_log_span_end,
         interfaces: vec![request.interface_kind.as_str().to_string()],
         participants,
         parent_session: request.parent_session,
@@ -262,6 +274,9 @@ mod tests {
             interface_name: "opencode".to_string(),
             interface_kind: InterfaceKind::OpenCode,
             voice_uid: None,
+            source_log: None,
+            source_log_span_start: None,
+            source_log_span_end: None,
             project_uid: "proj1234".to_string(),
             branch: "patina".to_string(),
             starting_commit: "abc123".to_string(),
@@ -304,6 +319,9 @@ mod tests {
             interface_name: "claude".to_string(),
             interface_kind: InterfaceKind::Claude,
             voice_uid: None,
+            source_log: None,
+            source_log_span_start: None,
+            source_log_span_end: None,
             project_uid: "proj1234".to_string(),
             branch: "patina".to_string(),
             starting_commit: "abc123".to_string(),
