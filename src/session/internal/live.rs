@@ -56,9 +56,23 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
         .participant
         .clone()
         .unwrap_or_else(|| default_participant(&request.interface_name, request.interface_kind));
+    let continuity_uid = request
+        .continuity_uid
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| Some(runtime_id.clone()));
+    let work_spec = request
+        .work_spec
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(resolve_work_spec_hint)
+        .or_else(|| Some("unspecified".to_string()));
+
     let document = initial_document(NewDocument {
         file_id: file_id.clone(),
         runtime_id: runtime_id.clone(),
+        continuity_uid,
+        work_spec,
         title: request.title.clone(),
         interface_name: request.interface_name.clone(),
         interface_kind: request.interface_kind,
@@ -69,6 +83,8 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
         start_tag: start_tag.clone(),
         parent_session: request.parent_runtime_id.clone(),
         handoff_from: request.handoff_from_runtime_id.clone(),
+        takeover_from_runtime: request.takeover_from_runtime.clone(),
+        takeover_user_verified: request.takeover_user_verified,
         participants: vec![participant.clone()],
         created_at: created_at.clone(),
         created_local,
@@ -350,6 +366,17 @@ fn load_record(runtime_id: &str) -> Result<Option<MotherSessionRecord>> {
     MotherRuntimeStore::default().get_mother_session(runtime_id)
 }
 
+fn resolve_work_spec_hint() -> Option<String> {
+    ["PATINA_WORK_SPEC", "PATINA_SPEC_ID"]
+        .iter()
+        .find_map(|key| {
+            std::env::var(key)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+}
+
 fn default_participant(interface_name: &str, interface_kind: InterfaceKind) -> SessionParticipant {
     let participant_id = format!(
         "{}-{}",
@@ -484,6 +511,10 @@ mod tests {
                     interface_name: "opencode".to_string(),
                     interface_kind: InterfaceKind::OpenCode,
                     voice_uid: None,
+                    work_spec: Some("interface-session-artifacts".to_string()),
+                    continuity_uid: None,
+                    takeover_from_runtime: None,
+                    takeover_user_verified: None,
                     parent_runtime_id: None,
                     handoff_from_runtime_id: None,
                     participant: None,

@@ -91,6 +91,10 @@ pub fn check_in(request: &InterfaceCheckIn) -> Result<CheckInResult> {
             interface_name: request.interface_name.clone(),
             interface_kind: request.interface_kind,
             voice_uid: request.requested_voice.clone(),
+            work_spec: std::env::var("PATINA_WORK_SPEC").ok(),
+            continuity_uid: None,
+            takeover_from_runtime: None,
+            takeover_user_verified: None,
             parent_runtime_id: None,
             handoff_from_runtime_id: None,
             participant: Some(SessionParticipant {

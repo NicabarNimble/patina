@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 
@@ -34,6 +34,10 @@ pub struct SessionFrontmatter {
     pub r#type: String,
     pub id: String,
     pub runtime_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub continuity_uid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_spec: Option<String>,
     pub title: String,
     pub status: String,
     pub llm: String,
@@ -53,8 +57,22 @@ pub struct SessionFrontmatter {
     pub handoff_from: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub handoff_to: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub takeover_from_runtime: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub takeover_user_verified: Option<bool>,
     pub git: SessionGitEnvelope,
 }
+
+pub const CANONICAL_SECTION_HEADINGS: [&str; 7] = [
+    "## Previous Session Context",
+    "## Goals",
+    "## Activity Log",
+    "## Decisions",
+    "## Evidence",
+    "## Handoff",
+    "## Outcome",
+];
 
 #[derive(Debug, Clone)]
 pub struct SessionDocument {
@@ -66,6 +84,8 @@ pub struct SessionDocument {
 pub struct NewDocument {
     pub file_id: String,
     pub runtime_id: String,
+    pub continuity_uid: Option<String>,
+    pub work_spec: Option<String>,
     pub title: String,
     pub interface_name: String,
     pub interface_kind: InterfaceKind,
@@ -76,6 +96,8 @@ pub struct NewDocument {
     pub start_tag: String,
     pub parent_session: Option<String>,
     pub handoff_from: Option<String>,
+    pub takeover_from_runtime: Option<String>,
+    pub takeover_user_verified: Option<bool>,
     pub participants: Vec<SessionParticipant>,
     pub created_at: String,
     pub created_local: DateTime<Local>,
@@ -108,6 +130,8 @@ pub fn initial_document(request: NewDocument) -> Result<SessionDocument> {
         r#type: "session".to_string(),
         id: request.file_id,
         runtime_id: request.runtime_id,
+        continuity_uid: request.continuity_uid,
+        work_spec: request.work_spec,
         title: request.title.clone(),
         status: "active".to_string(),
         llm: request.interface_name.clone(),
@@ -121,6 +145,8 @@ pub fn initial_document(request: NewDocument) -> Result<SessionDocument> {
         parent_session: request.parent_session,
         handoff_from: request.handoff_from,
         handoff_to: Vec::new(),
+        takeover_from_runtime: request.takeover_from_runtime,
+        takeover_user_verified: request.takeover_user_verified,
         git: SessionGitEnvelope {
             project_uid: Some(request.project_uid),
             branch: request.branch.clone(),
@@ -149,6 +175,8 @@ pub fn initial_document(request: NewDocument) -> Result<SessionDocument> {
         start_tag = request.start_tag
     );
 
+    validate_canonical_section_frame(&body)?;
+
     Ok(SessionDocument { frontmatter, body })
 }
 
@@ -159,6 +187,41 @@ pub fn parse_document(content: &str) -> Option<SessionDocument> {
     let body = rest[end + 4..].trim_start_matches('\n').to_string();
     let frontmatter = serde_yaml::from_str::<SessionFrontmatter>(yaml_str).ok()?;
     Some(SessionDocument { frontmatter, body })
+}
+
+/// Validate canonical top-level section frame for programmatic ingestion.
+///
+/// Rules:
+/// - exactly the canonical `##` headings,
+/// - in canonical order,
+/// - no extra top-level `##` headings.
+pub fn validate_canonical_section_frame(body: &str) -> Result<()> {
+    let observed = body
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            trimmed.starts_with("## ").then_some(trimmed.to_string())
+        })
+        .collect::<Vec<_>>();
+
+    if observed.is_empty() {
+        bail!("session body is missing canonical section headings");
+    }
+
+    let expected = CANONICAL_SECTION_HEADINGS
+        .iter()
+        .map(|heading| heading.to_string())
+        .collect::<Vec<_>>();
+
+    if observed != expected {
+        bail!(
+            "session body canonical heading mismatch. expected {:?}, found {:?}",
+            expected,
+            observed
+        );
+    }
+
+    Ok(())
 }
 
 pub fn parse_session_ids(content: &str) -> Option<(String, String)> {
@@ -193,6 +256,8 @@ mod tests {
         let doc = initial_document(NewDocument {
             file_id: "20260311-094500-ABCD".to_string(),
             runtime_id: uuid::Uuid::new_v4().to_string(),
+            continuity_uid: Some("cont-20260311-094500-ABCD".to_string()),
+            work_spec: Some("interface-session-artifacts".to_string()),
             title: "Build session layer".to_string(),
             interface_name: "opencode".to_string(),
             interface_kind: InterfaceKind::OpenCode,
@@ -203,6 +268,8 @@ mod tests {
             start_tag: "session-20260311-094500-ABCD-opencode-start".to_string(),
             parent_session: None,
             handoff_from: None,
+            takeover_from_runtime: None,
+            takeover_user_verified: None,
             participants: Vec::new(),
             created_at: "2026-03-11T13:45:00Z".to_string(),
             created_local,
@@ -223,5 +290,68 @@ mod tests {
             parsed.frontmatter.git.end_tag.as_deref(),
             Some("session-20260311-094500-ABCD-opencode-end")
         );
+    }
+
+    #[test]
+    fn canonical_section_frame_accepts_initial_document_body() {
+        let created_local = Local.with_ymd_and_hms(2026, 3, 11, 9, 45, 0).unwrap();
+        let doc = initial_document(NewDocument {
+            file_id: "20260311-094500-ABCD".to_string(),
+            runtime_id: uuid::Uuid::new_v4().to_string(),
+            continuity_uid: Some("cont-20260311-094500-ABCD".to_string()),
+            work_spec: Some("interface-session-artifacts".to_string()),
+            title: "Build session layer".to_string(),
+            interface_name: "claude".to_string(),
+            interface_kind: InterfaceKind::Claude,
+            voice_uid: None,
+            project_uid: "proj1234".to_string(),
+            branch: "patina".to_string(),
+            starting_commit: "abc123".to_string(),
+            start_tag: "session-20260311-094500-ABCD-claude-start".to_string(),
+            parent_session: None,
+            handoff_from: None,
+            takeover_from_runtime: None,
+            takeover_user_verified: None,
+            participants: Vec::new(),
+            created_at: "2026-03-11T13:45:00Z".to_string(),
+            created_local,
+        })
+        .unwrap();
+
+        assert!(validate_canonical_section_frame(&doc.body).is_ok());
+        assert_eq!(
+            doc.frontmatter.continuity_uid.as_deref(),
+            Some("cont-20260311-094500-ABCD")
+        );
+        assert_eq!(
+            doc.frontmatter.work_spec.as_deref(),
+            Some("interface-session-artifacts")
+        );
+    }
+
+    #[test]
+    fn canonical_section_frame_rejects_extra_top_level_heading() {
+        let body = format!(
+            "{}\n\n## Session Classification\n- Work Type: exploration\n",
+            CANONICAL_SECTION_HEADINGS.join("\n\n")
+        );
+        let err = validate_canonical_section_frame(&body).unwrap_err();
+        assert!(err.to_string().contains("canonical heading mismatch"));
+    }
+
+    #[test]
+    fn canonical_section_frame_rejects_reordered_headings() {
+        let body = [
+            "## Previous Session Context",
+            "## Goals",
+            "## Decisions",
+            "## Activity Log",
+            "## Evidence",
+            "## Handoff",
+            "## Outcome",
+        ]
+        .join("\n\n");
+        let err = validate_canonical_section_frame(&body).unwrap_err();
+        assert!(err.to_string().contains("canonical heading mismatch"));
     }
 }
