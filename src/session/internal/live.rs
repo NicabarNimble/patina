@@ -1,5 +1,6 @@
 use anyhow::{bail, Context, Result};
 use chrono::{Local, Utc};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::git;
@@ -65,7 +66,7 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
         .work_spec
         .clone()
         .filter(|value| !value.trim().is_empty())
-        .or_else(resolve_work_spec_hint)
+        .or_else(|| resolve_work_spec_hint(project_root))
         .or_else(|| Some("unspecified".to_string()));
 
     let document = initial_document(NewDocument {
@@ -366,7 +367,7 @@ fn load_record(runtime_id: &str) -> Result<Option<MotherSessionRecord>> {
     MotherRuntimeStore::default().get_mother_session(runtime_id)
 }
 
-fn resolve_work_spec_hint() -> Option<String> {
+fn resolve_work_spec_hint(project_root: &Path) -> Option<String> {
     ["PATINA_WORK_SPEC", "PATINA_SPEC_ID"]
         .iter()
         .find_map(|key| {
@@ -375,6 +376,49 @@ fn resolve_work_spec_hint() -> Option<String> {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
         })
+        .or_else(|| resolve_single_active_spec_id(project_root))
+}
+
+fn resolve_single_active_spec_id(project_root: &Path) -> Option<String> {
+    let build_root = project_root.join("layer").join("surface").join("build");
+    if !build_root.is_dir() {
+        return None;
+    }
+
+    let mut spec_files = Vec::new();
+    collect_spec_files(&build_root, &mut spec_files).ok()?;
+
+    let mut active_ids = spec_files
+        .into_iter()
+        .filter_map(|path| {
+            let raw = fs::read_to_string(path).ok()?;
+            let frontmatter = raw.strip_prefix("---\n")?.split("\n---\n").next()?;
+            let yaml = serde_yaml::from_str::<serde_yaml::Value>(frontmatter).ok()?;
+            let id = yaml.get("id")?.as_str()?.trim();
+            let status = yaml.get("status")?.as_str()?.trim();
+            (status == "active" && !id.is_empty()).then(|| id.to_string())
+        })
+        .collect::<Vec<_>>();
+
+    active_ids.sort();
+    active_ids.dedup();
+    (active_ids.len() == 1).then(|| active_ids.remove(0))
+}
+
+fn collect_spec_files(root: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_spec_files(&path, out)?;
+            continue;
+        }
+
+        if path.file_name().and_then(|name| name.to_str()) == Some("SPEC.md") {
+            out.push(path);
+        }
+    }
+    Ok(())
 }
 
 fn default_participant(interface_name: &str, interface_kind: InterfaceKind) -> SessionParticipant {
@@ -547,6 +591,55 @@ mod tests {
                 projection::read_native_interface_session(temp.path(), "opencode")
                     .unwrap()
                     .is_none()
+            );
+        });
+    }
+
+    #[test]
+    fn begin_session_uses_single_active_spec_id_as_work_spec_hint() {
+        with_test_env(|temp| {
+            let mut config = ProjectConfig::with_name("patina");
+            config.interfaces.allowed = vec!["opencode".to_string()];
+            config.interfaces.default = "opencode".to_string();
+            project::save(temp.path(), &config).unwrap();
+
+            let spec_dir = temp
+                .path()
+                .join("layer")
+                .join("surface")
+                .join("build")
+                .join("refactor")
+                .join("interface-session-artifacts");
+            std::fs::create_dir_all(&spec_dir).unwrap();
+            std::fs::write(
+                spec_dir.join("SPEC.md"),
+                "---\ntype: refactor\nid: interface-session-artifacts\nstatus: active\ncreated: 2026-04-16\n---\n# spec\n",
+            )
+            .unwrap();
+
+            let started = begin_session(
+                temp.path(),
+                BeginSessionRequest {
+                    title: "spec-bound run".to_string(),
+                    interface_name: "opencode".to_string(),
+                    interface_kind: InterfaceKind::OpenCode,
+                    voice_uid: None,
+                    work_spec: None,
+                    continuity_uid: None,
+                    takeover_from_runtime: None,
+                    takeover_user_verified: None,
+                    parent_runtime_id: None,
+                    handoff_from_runtime_id: None,
+                    participant: None,
+                },
+            )
+            .unwrap();
+
+            let artifact = std::fs::read_to_string(&started.handle.artifact_path).unwrap();
+            let doc = crate::session::parse_document(&artifact).unwrap();
+            assert_eq!(
+                doc.frontmatter.work_spec.as_deref(),
+                Some("interface-session-artifacts")
             );
         });
     }
