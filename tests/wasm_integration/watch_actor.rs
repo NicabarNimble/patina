@@ -20,7 +20,7 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
 
         let status_response = child
             .call(&ChildCallRequest {
-                operation_id: "patina:watch/control.status".to_string(),
+                operation_id: "patina:watch/control@0.1.0.status".to_string(),
                 args: serde_json::json!([]),
                 correlation: None,
             })
@@ -33,7 +33,7 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
 
         let configure_response = child
             .call(&ChildCallRequest {
-                operation_id: "patina:watch/control.configure".to_string(),
+                operation_id: "patina:watch/control@0.1.0.configure".to_string(),
                 args: serde_json::json!([
                     {
                         "watch-path": "/tmp",
@@ -59,7 +59,7 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
 
         let scan_response = child
             .call(&ChildCallRequest {
-                operation_id: "patina:watch/control.scan-now".to_string(),
+                operation_id: "patina:watch/control@0.1.0.scan-now".to_string(),
                 args: serde_json::json!([]),
                 correlation: None,
             })
@@ -76,7 +76,7 @@ fn folder_watch_actor_typed_call_contracts_end_to_end() {
 
         let reset_response = child
             .call(&ChildCallRequest {
-                operation_id: "patina:watch/control.reset".to_string(),
+                operation_id: "patina:watch/control@0.1.0.reset".to_string(),
                 args: serde_json::json!([]),
                 correlation: None,
             })

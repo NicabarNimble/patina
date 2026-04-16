@@ -7,12 +7,12 @@ role = "app"
 mode = "wit-only"
 
 [child.contract]
-default = "patina:watch/control.status"
+default = "patina:watch/control@0.1.0.status"
 allow = [
-  "patina:watch/control.configure",
-  "patina:watch/control.status",
-  "patina:watch/control.scan-now",
-  "patina:watch/control.reset",
+  "patina:watch/control@0.1.0.configure",
+  "patina:watch/control@0.1.0.status",
+  "patina:watch/control@0.1.0.scan-now",
+  "patina:watch/control@0.1.0.reset",
 ]
 
 [needs]

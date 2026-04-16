@@ -547,11 +547,11 @@ impl exports::patina::watch::control::Guest for FolderWatchActor {
 
 fn handle_business_ingress_disabled(action: &str) -> Result<String, String> {
     let op_hint = match action {
-        "configure" => "patina:watch/control.configure",
-        "status" => "patina:watch/control.status",
-        "scan-now" => "patina:watch/control.scan-now",
-        "reset" => "patina:watch/control.reset",
-        _ => "patina:watch/control.status",
+        "configure" => "patina:watch/control@0.1.0.configure",
+        "status" => "patina:watch/control@0.1.0.status",
+        "scan-now" => "patina:watch/control@0.1.0.scan-now",
+        "reset" => "patina:watch/control@0.1.0.reset",
+        _ => "patina:watch/control@0.1.0.status",
     };
     Err(format!(
         "folder-watch-actor: handle business ingress is disabled; call '{}' via typed ingress (e.g. `patina child call folder-watch-actor {} '[]'`)",
