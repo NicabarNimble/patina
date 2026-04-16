@@ -1219,6 +1219,26 @@ mod tests {
     }
 
     #[test]
+    fn start_session_writes_continuity_and_work_spec_fields() {
+        let temp = setup_project();
+        let started = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("Native session", "opencode"),
+            )
+            .unwrap()
+        });
+
+        let artifact = fs::read_to_string(&started.artifact_path).unwrap();
+        let doc = session::parse_document(&artifact).expect("parse session doc");
+        assert_eq!(doc.frontmatter.work_spec.as_deref(), Some("unspecified"));
+        assert_eq!(
+            doc.frontmatter.continuity_uid.as_deref(),
+            Some(started.runtime_id.as_str())
+        );
+    }
+
+    #[test]
     fn session_update_result_json_is_machine_readable() {
         let result = SessionUpdateResult {
             command: "update",
