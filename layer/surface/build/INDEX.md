@@ -19,6 +19,7 @@ making claims about how something was designed.
 - [durable-rust-unix-realignment-program](refactor/durable-rust-unix-realignment-program/SPEC.md) — umbrella program for durable-rust/unix realignment (HITL-gated slices)
 - [spec-archive-read-path](fix/spec-archive-read-path/SPEC.md) — restore archived spec show/check from tag-backed source
 - [js-mjs-grammar-claim-alignment](fix/js-mjs-grammar-claim-alignment/SPEC.md) — align JavaScript grammar claims with `.mjs` modules to unblock scrape/oxidize
+- [prepush-impact-lane-tuning](fix/prepush-impact-lane-tuning/SPEC.md) — tune Tier 2 pre-push impact lane to skip cargo on docs-only changes while staying fail-closed
 - [integration-test-domain-split](refactor/integration-test-domain-split/SPEC.md) — split wasm integration + pando parity tests by subject-under-test for failure diagnosis
 
 ### Draft
