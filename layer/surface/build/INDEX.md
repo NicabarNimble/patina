@@ -20,6 +20,7 @@ making claims about how something was designed.
 - [spec-archive-read-path](fix/spec-archive-read-path/SPEC.md) — restore archived spec show/check from tag-backed source
 - [js-mjs-grammar-claim-alignment](fix/js-mjs-grammar-claim-alignment/SPEC.md) — align JavaScript grammar claims with `.mjs` modules to unblock scrape/oxidize
 - [prepush-impact-lane-tuning](fix/prepush-impact-lane-tuning/SPEC.md) — tune Tier 2 pre-push impact lane to skip cargo on docs-only changes while staying fail-closed
+- [retired-mcp-guard-restoration](fix/retired-mcp-guard-restoration/SPEC.md) — restore explicit retired-MCP marker in main router for Tier 1 invariants
 - [integration-test-domain-split](refactor/integration-test-domain-split/SPEC.md) — split wasm integration + pando parity tests by subject-under-test for failure diagnosis
 
 ### Draft
