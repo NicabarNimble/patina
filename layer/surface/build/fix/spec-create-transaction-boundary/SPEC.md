@@ -1,43 +1,43 @@
 ---
 type: fix
 id: spec-create-transaction-boundary
-status: draft
+status: ready
 created: 2026-04-15
 blocked_by:
-  - durable-rust-unix-realignment-program
-beliefs:
-  - "[[spec-driven-design]]"
-  - "[[dependable-rust]]"
-  - "[[safety-boundaries]]"
-  - "[[unix-philosophy]]"
+- durable-rust-unix-realignment-program
 related:
-  - src/commands/spec/internal/create.rs
-  - src/spec.rs
-  - src/commands/spec/internal/queue.rs
-  - src/commands/spec/internal/mutations.rs
-  - layer/surface/reports/audit/2026-04-14-durable-rust-unix-realignment-audit.md
+- src/commands/spec/internal/create.rs
+- src/spec.rs
+- src/commands/spec/internal/queue.rs
+- src/commands/spec/internal/mutations.rs
+- layer/surface/reports/audit/2026-04-14-durable-rust-unix-realignment-audit.md
+beliefs:
+- '[[spec-driven-design]]'
+- '[[dependable-rust]]'
+- '[[safety-boundaries]]'
+- '[[unix-philosophy]]'
 exit_criteria:
-  - id: sctb1-invariants-explicit
-    text: "Create flow invariants are explicit in spec + code docs before implementation (no implicit transaction assumptions)."
-    checked: true
-  - id: sctb2-fs-git-db-consistency
-    text: "Successful create leaves filesystem, git history, and patterns DB in consistent draft state for the same spec id/path."
-    checked: true
-  - id: sctb3-git-failure-compensation
-    text: "If git stage/commit fails after file materialization, create flow removes newly materialized spec files/directories (best-effort) and returns deterministic error."
-    checked: true
-  - id: sctb4-db-failure-compensation
-    text: "If DB write fails after git commit, create flow returns deterministic repair guidance and records enough context to reconcile without silent drift."
-    checked: true
-  - id: sctb5-no-partial-incidental-side-effects
-    text: "No partial side effects are silently kept: all known failure boundaries are either compensated or surfaced with explicit operator repair steps."
-    checked: true
-  - id: sctb6-failure-path-tests
-    text: "Deterministic tests cover at least: git add/commit failure path and DB write failure path, asserting fail-closed outcomes and repair messaging."
-    checked: true
-  - id: sctb7-command-contract-stable
-    text: "`patina spec create` CLI contract (flags/args/output envelope) remains backward-compatible."
-    checked: true
+- id: sctb1-invariants-explicit
+  text: Create flow invariants are explicit in spec + code docs before implementation (no implicit transaction assumptions).
+  checked: true
+- id: sctb2-fs-git-db-consistency
+  text: Successful create leaves filesystem, git history, and patterns DB in consistent draft state for the same spec id/path.
+  checked: true
+- id: sctb3-git-failure-compensation
+  text: If git stage/commit fails after file materialization, create flow removes newly materialized spec files/directories (best-effort) and returns deterministic error.
+  checked: true
+- id: sctb4-db-failure-compensation
+  text: If DB write fails after git commit, create flow returns deterministic repair guidance and records enough context to reconcile without silent drift.
+  checked: true
+- id: sctb5-no-partial-incidental-side-effects
+  text: 'No partial side effects are silently kept: all known failure boundaries are either compensated or surfaced with explicit operator repair steps.'
+  checked: true
+- id: sctb6-failure-path-tests
+  text: 'Deterministic tests cover at least: git add/commit failure path and DB write failure path, asserting fail-closed outcomes and repair messaging.'
+  checked: true
+- id: sctb7-command-contract-stable
+  text: '`patina spec create` CLI contract (flags/args/output envelope) remains backward-compatible.'
+  checked: true
 ---
 
 # fix: spec create transaction boundary
