@@ -36,7 +36,7 @@ name = "df-pando"
 id = "dedup-transform"
 
 [[children]]
-name = "record-writer"
+name = "parquet-writer"
 id = "rw"
 
 [[children]]

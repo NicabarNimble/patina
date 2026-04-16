@@ -74,7 +74,7 @@ if [[ "$IMAGE" == "$CI_MIRROR_IMAGE" && "$CARGO_ARGS" == *"--workspace"* ]]; the
         cargo build -p patina-ai-child-content-extractor --target wasm32-wasip2 && \
         cargo build -p patina-ai-child-schema-enforcer --target wasm32-wasip2 && \
         cargo build -p patina-ai-child-dedup-filter --target wasm32-wasip2 && \
-        cargo build -p patina-ai-child-record-writer --target wasm32-wasip2 && \
+        cargo build -p patina-ai-child-parquet-writer --target wasm32-wasip2 && \
         cargo build -p patina-ai-child-lakehouse-catalog --target wasm32-wasip2 && \
         echo '' && "
 fi

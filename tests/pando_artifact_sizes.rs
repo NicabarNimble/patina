@@ -66,7 +66,7 @@ fn pando_artifact_size_baseline_post_fix2() {
         },
         ArtifactSpec {
             kind: "child",
-            crate_stem: "record_writer",
+            crate_stem: "parquet_writer",
             max_bytes: 120 * 1024 * 1024,
         },
         ArtifactSpec {

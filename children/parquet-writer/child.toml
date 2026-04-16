@@ -1,5 +1,5 @@
 [child]
-name = "record-writer"
+name = "parquet-writer"
 kind = "child"
 role = "app"
 

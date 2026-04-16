@@ -1,6 +1,6 @@
-package patina:record-writer@0.1.0;
+package patina:parquet-writer@0.1.0;
 
-world record-writer {
+world parquet-writer {
     import wasi:logging/logging@0.1.0;
     import wasi:keyvalue/store@0.2.0;
     import patina:measure/measure@0.1.0;

@@ -1,6 +1,6 @@
 wit_bindgen::generate!({
     path: "wit",
-    world: "record-writer",
+    world: "parquet-writer",
     generate_all,
 });
 
@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-struct RecordWriter;
+struct ParquetWriter;
 
 fn write_records_parquet(
     records: &[patina::records::types::RecordEnvelope],
@@ -164,7 +164,7 @@ fn resolve_output_path() -> Result<PathBuf, String> {
     )))
 }
 
-impl exports::patina::records::write::Guest for RecordWriter {
+impl exports::patina::records::write::Guest for ParquetWriter {
     fn write(
         records: Vec<patina::records::types::RecordEnvelope>,
     ) -> Result<Vec<patina::records::types::FileWritten>, String> {
@@ -172,7 +172,7 @@ impl exports::patina::records::write::Guest for RecordWriter {
 
         let output_path = resolve_output_path()?;
 
-        let bucket = toys::keyvalue::open("patina:record-writer")?;
+        let bucket = toys::keyvalue::open("patina:parquet-writer")?;
         let write_start = Instant::now();
         for record in &accepted {
             let key = format!("record:{}", record.source_hash);
@@ -186,7 +186,7 @@ impl exports::patina::records::write::Guest for RecordWriter {
         toys::measure::gauge("write_latency_ms", write_latency_ms)?;
 
         toys::log::info(
-            "record-writer",
+            "parquet-writer",
             &format!(
                 "wrote {} records to {}",
                 accepted.len(),
@@ -202,4 +202,4 @@ impl exports::patina::records::write::Guest for RecordWriter {
     }
 }
 
-export!(RecordWriter);
+export!(ParquetWriter);

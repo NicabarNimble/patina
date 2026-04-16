@@ -1,5 +1,5 @@
 [package]
-name = "patina-ai-child-record-writer"
+name = "patina-ai-child-parquet-writer"
 version = "0.1.0"
 edition = "2021"
 description = "Write ready records to parquet batches"
@@ -16,8 +16,8 @@ arrow-schema = "55"
 parquet = { version = "55", default-features = false, features = ["arrow"] }
 
 [package.metadata.component]
-package = "patina:record-writer"
+package = "patina:parquet-writer"
 
 [package.metadata.component.target]
 path = "wit"
-world = "record-writer"
+world = "parquet-writer"

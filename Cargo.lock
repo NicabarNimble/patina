@@ -3334,7 +3334,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-ai-child-record-writer"
+name = "patina-ai-child-parquet-writer"
 version = "0.1.0"
 dependencies = [
  "arrow-array 55.2.0",

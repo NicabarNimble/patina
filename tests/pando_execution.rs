@@ -222,7 +222,7 @@ fn compose_folder_text_to_parquet() -> anyhow::Result<Vec<u8>> {
         ("schema-transform", "se-pando"),
         ("df", "dedup-filter"),
         ("dedup-transform", "df-pando"),
-        ("rw", "record-writer"),
+        ("rw", "parquet-writer"),
         ("rw-pando", "rw-pando"),
         ("lc", "lakehouse-catalog"),
         ("lc-pando", "lc-pando"),
