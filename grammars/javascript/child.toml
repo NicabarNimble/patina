@@ -7,4 +7,4 @@ patina_min = "0.22.0"
 
 [provides]
 pipeline_ops = ["parse"]
-languages = ["js", "jsx"]
+languages = ["js", "jsx", "mjs"]

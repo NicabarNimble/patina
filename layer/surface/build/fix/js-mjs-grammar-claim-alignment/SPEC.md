@@ -15,16 +15,16 @@ related:
 exit_criteria:
   - id: jmgca1-javascript-plugin-claims-mjs
     text: "`grammar-javascript` manifest claims `mjs` in addition to `js`/`jsx`, so JS module files route to the JavaScript parser."
-    checked: false
+    checked: true
   - id: jmgca2-language-detection-locked
     text: "Language-extension mapping includes deterministic coverage for `.mjs` -> JavaScript and unknown extension fail-closed behavior."
-    checked: false
+    checked: true
   - id: jmgca3-manifest-conformance-lock
     text: "A conformance test locks JavaScript grammar manifest language claims (`js`, `jsx`, `mjs`)."
-    checked: false
+    checked: true
   - id: jmgca4-oxidize-regression-cleared
     text: "`patina repo update juxt/allium --oxidize` succeeds without `No pipeline plugin for JavaScript` parse skips or dependency zero-edge failure."
-    checked: false
+    checked: true
 ---
 
 # fix: js/mjs grammar claim alignment
