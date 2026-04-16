@@ -5,7 +5,7 @@
 use anyhow::{bail, Result};
 use chrono::{Local, Utc};
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::fs;
 use std::io::{BufRead, IsTerminal as _, Write};
 use std::path::{Path, PathBuf};
@@ -361,6 +361,12 @@ fn update_session_document_value(
     let runtime_id = read_session_field(session_path, "**Runtime ID**: ")?;
     let starting_commit = read_session_field(session_path, "**Starting Commit**: ")?;
     let session_tag = read_session_field(session_path, "**Session Tag**: ").unwrap_or_default();
+    let interface = read_session_field(session_path, "**LLM**: ").unwrap_or_default();
+
+    let current_markdown = fs::read_to_string(session_path)?;
+    let since_rfc3339 = session::parse_document(&current_markdown)
+        .map(|doc| doc.frontmatter.updated)
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
 
     let branch = git::current_branch().unwrap_or_else(|_| "detached".to_string());
     let commits_this_session = git::commits_since_count(&starting_commit).unwrap_or(0);
@@ -391,6 +397,15 @@ fn update_session_document_value(
         "\n### {} - Update (covering since {})\n",
         time_str, last_update
     );
+
+    if interface == "pi" {
+        if let Some(pi_block) = distill_pi_log_activity(project_root, &since_rfc3339)? {
+            update_section.push_str("\n");
+            update_section.push_str(&pi_block);
+            update_section.push('\n');
+        }
+    }
+
     update_section.push_str("\n**Git Activity:**\n");
     update_section.push_str(&format!(
         "- Commits this session: {}{}\n",
@@ -431,7 +446,6 @@ fn update_session_document_value(
     update_section.push_str(&format!("- Last commit: {}\n", last_commit_time));
     update_section.push('\n');
 
-    let current_markdown = fs::read_to_string(session_path)?;
     let updated_markdown = append_to_section(&current_markdown, "## Activity Log", &update_section);
     session::validate_canonical_section_frame(
         &session::parse_document(&updated_markdown)
@@ -698,6 +712,144 @@ fn append_to_section(markdown: &str, section_heading: &str, content: &str) -> St
             insertion = insertion
         ),
     }
+}
+
+fn distill_pi_log_activity(project_root: &Path, since_rfc3339: &str) -> Result<Option<String>> {
+    let Some(log_path) = resolve_latest_pi_log_path(project_root)? else {
+        return Ok(None);
+    };
+
+    let since = chrono::DateTime::parse_from_rfc3339(since_rfc3339)
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now());
+
+    let file = match fs::File::open(&log_path) {
+        Ok(file) => file,
+        Err(_) => return Ok(None),
+    };
+
+    let mut user_messages = 0usize;
+    let mut assistant_messages = 0usize;
+    let mut tool_calls = 0usize;
+    let mut errors = 0usize;
+    let mut first_ts: Option<chrono::DateTime<Utc>> = None;
+    let mut last_ts: Option<chrono::DateTime<Utc>> = None;
+
+    for line in std::io::BufReader::new(file).lines() {
+        let Ok(line) = line else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+
+        let Some(ts) = parse_pi_event_timestamp(&value) else {
+            continue;
+        };
+        if ts <= since {
+            continue;
+        }
+
+        first_ts = Some(first_ts.map_or(ts, |first| first.min(ts)));
+        last_ts = Some(last_ts.map_or(ts, |last| last.max(ts)));
+
+        if value.get("type").and_then(Value::as_str) == Some("error") {
+            errors += 1;
+        }
+
+        if value.get("type").and_then(Value::as_str) == Some("message") {
+            if let Some(role) = value
+                .get("message")
+                .and_then(|message| message.get("role"))
+                .and_then(Value::as_str)
+            {
+                match role {
+                    "user" => user_messages += 1,
+                    "assistant" => assistant_messages += 1,
+                    _ => {}
+                }
+            }
+
+            tool_calls += value
+                .get("message")
+                .and_then(|message| message.get("content"))
+                .and_then(Value::as_array)
+                .map(|chunks| {
+                    chunks
+                        .iter()
+                        .filter(|chunk| {
+                            chunk.get("type").and_then(Value::as_str) == Some("toolCall")
+                        })
+                        .count()
+                })
+                .unwrap_or(0);
+        }
+    }
+
+    if first_ts.is_none() {
+        return Ok(Some(format!(
+            "**PI Distilled Activity:**\n- Source log: `{}`\n- Span: no new PI log events since {}\n",
+            log_path.display(),
+            since.to_rfc3339()
+        )));
+    }
+
+    let total_messages = user_messages + assistant_messages;
+    Ok(Some(format!(
+        "**PI Distilled Activity:**\n- Source log: `{}`\n- Span: {} -> {}\n- Messages: {} (user {}, assistant {})\n- Tool calls: {}\n- Errors: {}\n",
+        log_path.display(),
+        first_ts.unwrap().to_rfc3339(),
+        last_ts.unwrap().to_rfc3339(),
+        total_messages,
+        user_messages,
+        assistant_messages,
+        tool_calls,
+        errors
+    )))
+}
+
+fn parse_pi_event_timestamp(value: &Value) -> Option<chrono::DateTime<Utc>> {
+    let timestamp = value.get("timestamp")?.as_str()?;
+    chrono::DateTime::parse_from_rfc3339(timestamp)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn resolve_latest_pi_log_path(project_root: &Path) -> Result<Option<PathBuf>> {
+    let home = match std::env::var("HOME") {
+        Ok(home) => PathBuf::from(home),
+        Err(_) => return Ok(None),
+    };
+
+    let canonical = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    let normalized = canonical
+        .to_string_lossy()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+
+    let sessions_dir = home
+        .join(".pi")
+        .join("agent")
+        .join("sessions")
+        .join(format!("--{}--", normalized));
+
+    if !sessions_dir.is_dir() {
+        return Ok(None);
+    }
+
+    let mut candidates = fs::read_dir(&sessions_dir)?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
+        .collect::<Vec<_>>();
+
+    candidates.sort();
+    Ok(candidates.pop())
 }
 
 pub(crate) fn note_live_session(
@@ -1281,5 +1433,64 @@ mod tests {
         });
 
         assert!(!pointer_path.exists());
+    }
+
+    #[test]
+    fn distill_pi_log_activity_summarizes_jsonl_span() {
+        let _guard = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("proj");
+        fs::create_dir_all(&project_root).unwrap();
+        let home = temp.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+
+        let old_home = std::env::var_os("HOME");
+        unsafe {
+            std::env::set_var("HOME", &home);
+        }
+
+        let canonical = project_root.canonicalize().unwrap();
+        let normalized = canonical
+            .to_string_lossy()
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string();
+        let sessions_dir = home
+            .join(".pi")
+            .join("agent")
+            .join("sessions")
+            .join(format!("--{}--", normalized));
+        fs::create_dir_all(&sessions_dir).unwrap();
+
+        let log_path = sessions_dir.join("2026-04-16T12-00-00-000Z_test.jsonl");
+        fs::write(
+            &log_path,
+            "{\"type\":\"session\",\"timestamp\":\"2026-04-16T12:00:00Z\"}\n\
+             {\"type\":\"message\",\"timestamp\":\"2026-04-16T12:01:00Z\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}}\n\
+             {\"type\":\"message\",\"timestamp\":\"2026-04-16T12:02:00Z\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"toolCall\",\"name\":\"bash\"}]}}\n\
+             {\"type\":\"error\",\"timestamp\":\"2026-04-16T12:03:00Z\"}\n",
+        )
+        .unwrap();
+
+        let summary = distill_pi_log_activity(&project_root, "2026-04-16T12:00:30Z")
+            .unwrap()
+            .unwrap();
+        assert!(summary.contains("Messages: 2 (user 1, assistant 1)"));
+        assert!(summary.contains("Tool calls: 1"));
+        assert!(summary.contains("Errors: 1"));
+
+        match old_home {
+            Some(value) => unsafe {
+                std::env::set_var("HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("HOME");
+            },
+        }
     }
 }
