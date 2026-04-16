@@ -39,7 +39,7 @@ exit_criteria:
   checked: true
 - id: isa7-pointer-lane-determinism
   text: Pointer and transport lane resolution remain deterministic under multiple active sessions for one interface.
-  checked: false
+  checked: true
 - id: isa8-mixed-seam-register
   text: Mixed-state seam register is maintained in this spec as migration checklist across sessions.
   checked: true
@@ -48,10 +48,10 @@ exit_criteria:
   checked: true
 - id: isa10-pi-log-distill-profile
   text: PI capture profile is explicitly defined as machine-log distill + optional LLM enrichment, with deterministic mapping from PI JSONL logs to session artifact updates.
-  checked: false
+  checked: true
 - id: isa11-claude-pi-artifact-parity
   text: Claude and PI produce near-identical session artifact structure and sections, differing only in evidence acquisition path.
-  checked: false
+  checked: true
 - id: isa12-non-target-interface-boundary
   text: OpenCode and Gemini are explicitly out of active capture-migration scope for this slice.
   checked: true
