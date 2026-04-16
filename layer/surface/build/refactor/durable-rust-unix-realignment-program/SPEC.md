@@ -42,7 +42,7 @@ exit_criteria:
     checked: true
   - id: drup6-typed-identity-spec-reviewed
     text: "`refactor/typed-operation-identity-hardening` spec is reviewed and approved in HITL before implementation."
-    checked: false
+    checked: true
   - id: drup7-spec-create-rewrite-explicitly-deferred
     text: "Spec-create flow rewrite is explicitly deferred to and implemented via dedicated spec `fix/spec-create-transaction-boundary`; no incidental churn lands under this program."
     checked: true

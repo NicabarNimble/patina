@@ -21,22 +21,22 @@ related:
 exit_criteria:
   - id: toih1-exact-operation-identity
     text: "Typed operation lookup uses exact exported interface/function identity; heuristic fallback candidates (`@0.1.0`, underscore↔hyphen swap) are removed from strict path."
-    checked: false
+    checked: true
   - id: toih2-operation-id-validation-hardened
     text: "Operation identifier validation is tightened to canonical `<package>:<interface>.<function>` shape with deterministic machine errors for malformed identifiers."
-    checked: false
+    checked: true
   - id: toih3-allowlist-vs-export-validation
     text: "Child contract allowlist entries are validated against discovered typed exports at load/startup (or explicit validation command), failing closed on mismatch."
-    checked: false
+    checked: true
   - id: toih4-driver-compat-boundary
     text: "Strict typed driver is the canonical production path; compatibility driver modes are explicitly marked transitional and isolated from strict behavior tests."
-    checked: false
+    checked: true
   - id: toih5-errors-structured
     text: "Typed identity and lookup failures return stable machine error code + structured detail fields; text remains informational."
-    checked: false
+    checked: true
   - id: toih6-tests
     text: "Deterministic tests cover exact-identity success, malformed id failure, unknown export failure, and allowlist/export mismatch failure."
-    checked: false
+    checked: true
 ---
 
 # refactor: typed operation identity hardening
