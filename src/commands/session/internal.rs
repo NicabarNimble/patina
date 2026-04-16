@@ -364,9 +364,14 @@ fn update_session_document_value(
     let interface = read_session_field(session_path, "**LLM**: ").unwrap_or_default();
 
     let current_markdown = fs::read_to_string(session_path)?;
-    let since_rfc3339 = session::parse_document(&current_markdown)
-        .map(|doc| doc.frontmatter.updated)
+    let parsed_doc = session::parse_document(&current_markdown);
+    let since_rfc3339 = parsed_doc
+        .as_ref()
+        .map(|doc| doc.frontmatter.updated.clone())
         .unwrap_or_else(|| Utc::now().to_rfc3339());
+    let source_log_hint = parsed_doc
+        .as_ref()
+        .and_then(|doc| doc.frontmatter.source_log.clone());
 
     let branch = git::current_branch().unwrap_or_else(|_| "detached".to_string());
     let commits_this_session = git::commits_since_count(&starting_commit).unwrap_or(0);
@@ -400,7 +405,8 @@ fn update_session_document_value(
 
     let mut pi_distill = None;
     if interface == "pi" {
-        pi_distill = distill_pi_log_activity(project_root, &since_rfc3339)?;
+        pi_distill =
+            distill_pi_log_activity(project_root, &since_rfc3339, source_log_hint.as_deref())?;
         if let Some(summary) = &pi_distill {
             update_section.push_str("\n");
             update_section.push_str(&summary.block);
@@ -738,9 +744,23 @@ struct PiDistillSummary {
 fn distill_pi_log_activity(
     project_root: &Path,
     since_rfc3339: &str,
+    source_log_hint: Option<&str>,
 ) -> Result<Option<PiDistillSummary>> {
-    let Some(log_path) = resolve_latest_pi_log_path(project_root)? else {
-        return Ok(None);
+    let log_path = if let Some(source_log_hint) = source_log_hint {
+        let hinted = PathBuf::from(source_log_hint);
+        if hinted.exists() {
+            hinted
+        } else {
+            match resolve_latest_pi_log_path(project_root)? {
+                Some(path) => path,
+                None => return Ok(None),
+            }
+        }
+    } else {
+        match resolve_latest_pi_log_path(project_root)? {
+            Some(path) => path,
+            None => return Ok(None),
+        }
     };
 
     let since = chrono::DateTime::parse_from_rfc3339(since_rfc3339)
@@ -1534,7 +1554,7 @@ mod tests {
         )
         .unwrap();
 
-        let summary = distill_pi_log_activity(&project_root, "2026-04-16T12:00:30Z")
+        let summary = distill_pi_log_activity(&project_root, "2026-04-16T12:00:30Z", None)
             .unwrap()
             .unwrap();
         assert!(summary.block.contains("Messages: 2 (user 1, assistant 1)"));

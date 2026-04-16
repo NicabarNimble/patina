@@ -57,6 +57,7 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
         .participant
         .clone()
         .unwrap_or_else(|| default_participant(&request.interface_name, request.interface_kind));
+    let source_log = resolve_initial_source_log(&request.interface_name, project_root);
     let continuity_uid = request
         .continuity_uid
         .clone()
@@ -78,7 +79,7 @@ pub fn begin_session(project_root: &Path, request: BeginSessionRequest) -> Resul
         interface_name: request.interface_name.clone(),
         interface_kind: request.interface_kind,
         voice_uid: request.voice_uid.clone(),
-        source_log: None,
+        source_log,
         source_log_span_start: None,
         source_log_span_end: None,
         project_uid: project_uid.clone(),
@@ -368,6 +369,43 @@ fn read_compatibility_ids(project_root: &Path) -> Result<Option<(String, String)
 
 fn load_record(runtime_id: &str) -> Result<Option<MotherSessionRecord>> {
     MotherRuntimeStore::default().get_mother_session(runtime_id)
+}
+
+fn resolve_initial_source_log(interface_name: &str, project_root: &Path) -> Option<String> {
+    if interface_name != "pi" {
+        return None;
+    }
+
+    let home = std::env::var("HOME").ok()?;
+    let canonical = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    let normalized = canonical
+        .to_string_lossy()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+
+    let sessions_dir = PathBuf::from(home)
+        .join(".pi")
+        .join("agent")
+        .join("sessions")
+        .join(format!("--{}--", normalized));
+    if !sessions_dir.is_dir() {
+        return None;
+    }
+
+    let mut candidates = fs::read_dir(&sessions_dir)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
+        .collect::<Vec<_>>();
+
+    candidates.sort();
+    candidates.pop().map(|path| path.display().to_string())
 }
 
 fn resolve_work_spec_hint(project_root: &Path) -> Option<String> {
