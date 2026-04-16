@@ -93,7 +93,7 @@ impl Default for CreateDeps {
     fn default() -> Self {
         Self {
             git_stage_and_commit: git_stage_and_commit_at,
-            upsert_patterns_row: upsert_patterns_row,
+            upsert_patterns_row,
         }
     }
 }

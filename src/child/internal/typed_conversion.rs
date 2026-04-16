@@ -419,7 +419,7 @@ fn lower_json_with_shape(value: &Value, shape: &ConversionShape, path: &str) -> 
                     return Err(err(
                         ConversionErrorCode::InvalidArgsShape,
                         format!("unknown record field '{}'", key),
-                        &child_path(path, key),
+                        child_path(path, key),
                     ));
                 }
             }
@@ -466,14 +466,14 @@ fn lower_json_with_shape(value: &Value, shape: &ConversionShape, path: &str) -> 
                 err(
                     ConversionErrorCode::InvalidArgsShape,
                     "variant requires string field 'case'",
-                    &child_path(path, "case"),
+                    child_path(path, "case"),
                 )
             })?;
             let Some(case_meta) = cases.iter().find(|item| item.name == case) else {
                 return Err(err(
                     ConversionErrorCode::InvalidArgsShape,
                     format!("unknown variant case '{}'", case),
-                    &child_path(path, "case"),
+                    child_path(path, "case"),
                 ));
             };
 
@@ -482,7 +482,7 @@ fn lower_json_with_shape(value: &Value, shape: &ConversionShape, path: &str) -> 
                     return Err(err(
                         ConversionErrorCode::InvalidArgsShape,
                         format!("unknown variant field '{}'", key),
-                        &child_path(path, key),
+                        child_path(path, key),
                     ));
                 }
             }
@@ -493,7 +493,7 @@ fn lower_json_with_shape(value: &Value, shape: &ConversionShape, path: &str) -> 
                         err(
                             ConversionErrorCode::InvalidArgsShape,
                             format!("variant case '{}' requires 'value'", case),
-                            &child_path(path, "value"),
+                            child_path(path, "value"),
                         )
                     })?;
                     Some(Box::new(lower_json_with_shape(
@@ -508,7 +508,7 @@ fn lower_json_with_shape(value: &Value, shape: &ConversionShape, path: &str) -> 
                             return Err(err(
                                 ConversionErrorCode::InvalidArgsShape,
                                 format!("variant case '{}' does not accept a payload value", case),
-                                &child_path(path, "value"),
+                                child_path(path, "value"),
                             ));
                         }
                     }
@@ -578,7 +578,7 @@ fn lower_json_with_shape(value: &Value, shape: &ConversionShape, path: &str) -> 
                             return Err(err(
                                 ConversionErrorCode::InvalidArgsShape,
                                 "result 'ok' payload not allowed for this signature",
-                                &child_path(path, "ok"),
+                                child_path(path, "ok"),
                             ));
                         }
                         None
@@ -603,7 +603,7 @@ fn lower_json_with_shape(value: &Value, shape: &ConversionShape, path: &str) -> 
                             return Err(err(
                                 ConversionErrorCode::InvalidArgsShape,
                                 "result 'err' payload not allowed for this signature",
-                                &child_path(path, "err"),
+                                child_path(path, "err"),
                             ));
                         }
                         None
