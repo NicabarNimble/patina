@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use serde_json::Value;
 use std::env;
 use std::fs;
-use std::io::{self, Read as _, Write};
+use std::io::{self, IsTerminal as _, Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -56,13 +56,16 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     } else {
         let project_config = project::load_with_migration(&project_path)?;
-        interface_name = explicit_interface.unwrap_or_else(|| {
-            if !project_config.interfaces.default.is_empty() {
-                project_config.interfaces.default.clone()
-            } else {
-                interfaces::default_interface_name().unwrap_or_else(|_| "claude".to_string())
-            }
-        });
+
+        interface_name = if let Some(explicit) = explicit_interface {
+            explicit
+        } else if io::stdin().is_terminal() && io::stdout().is_terminal() {
+            prompt_existing_project_interface(&project_config.interfaces.default)?
+        } else if !project_config.interfaces.default.is_empty() {
+            project_config.interfaces.default.clone()
+        } else {
+            interfaces::default_interface_name().unwrap_or_else(|_| "claude".to_string())
+        };
 
         let iface_info = interfaces::get(&interface_name)?;
         if !iface_info.detected {
@@ -251,7 +254,7 @@ pub(crate) fn prompt_are_you_lost(
     }
 
     println!();
-    print!("Initialize as patina project? [y/N]: ");
+    print!("Initialize this directory as a Patina project? [y/N]: ");
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -279,6 +282,66 @@ pub(crate) fn prompt_are_you_lost(
     } else {
         Ok(None)
     }
+}
+
+fn prompt_existing_project_interface(project_default: &str) -> Result<String> {
+    let all_interfaces = interfaces::list()?;
+    let available: Vec<_> = all_interfaces.into_iter().filter(|a| a.detected).collect();
+
+    if available.is_empty() {
+        bail!(
+            "No AI interfaces detected on this system. Install one of: {}",
+            interfaces::list()?
+                .iter()
+                .map(|iface| iface.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
+    let preference = if !project_default.trim().is_empty() {
+        Some(project_default.trim().to_string())
+    } else {
+        interfaces::default_interface_name().ok()
+    };
+
+    let default_idx = preference
+        .as_deref()
+        .and_then(|pref| available.iter().position(|a| a.name == pref))
+        .map(|idx| idx + 1)
+        .unwrap_or(1);
+
+    println!("\n📱 Available HITL interfaces:");
+    for (idx, interface) in available.iter().enumerate() {
+        let number = idx + 1;
+        let marker = if number == default_idx {
+            " (default)"
+        } else {
+            ""
+        };
+        println!("  [{}] {}{}", number, interface.display, marker);
+    }
+
+    print!("\nSelect interface [{}]: ", default_idx);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    let choice = input.trim();
+    let selected_idx = if choice.is_empty() {
+        default_idx
+    } else {
+        choice.parse::<usize>().unwrap_or(default_idx)
+    };
+
+    let safe_idx = if (1..=available.len()).contains(&selected_idx) {
+        selected_idx
+    } else {
+        default_idx
+    };
+
+    Ok(available[safe_idx - 1].name.clone())
 }
 
 /// Format remote URL for display (strip git@/https://, .git suffix)
