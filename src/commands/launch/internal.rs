@@ -41,6 +41,12 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
 
     if !is_patina_project {
         if options.auto_init {
+            if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+                bail!(
+                    "Not a patina project (expected .patina/config.toml and layer/).\n\
+                     Run `patina init .` first, or launch from an interactive TTY for guided setup."
+                );
+            }
             match prompt_are_you_lost(&project_path, explicit_interface.as_deref())? {
                 Some(selected) => {
                     interface_name = selected;
