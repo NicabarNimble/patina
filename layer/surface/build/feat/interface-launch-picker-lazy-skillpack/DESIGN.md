@@ -101,7 +101,7 @@ Emit at most one event per logical launch/setup action with correlation fields:
 - `decision_path` (`picker`, `direct`, `init`)
 - `bundle_version_before` / `bundle_version_after`
 - `tool_version_observed`
-- `action` (`noop`, `prepare`, `refresh`, `launch`)
+- `action` (`noop`, `prepare`, `refresh`, `unknown`)
 
 Do not emit noisy duplicates for the same decision branch.
 

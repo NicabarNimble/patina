@@ -681,6 +681,8 @@ mod tests {
 
     #[test]
     fn launch_non_project_requires_tty_for_guided_init() {
+        // This assertion intentionally validates non-interactive behavior used in CI/automation.
+        // In a real interactive TTY run, `patina` should show the guided init prompt instead.
         let _lock = patina::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
@@ -745,7 +747,7 @@ mod tests {
     }
 
     #[test]
-    fn initialize_project_prepares_unified_ai_surface_and_default() {
+    fn initialize_project_prepares_selected_interface_bundle_and_default() {
         let _lock = patina::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());

@@ -1,7 +1,7 @@
 ---
 type: feat
 id: interface-launch-picker-lazy-skillpack
-status: draft
+status: active
 created: 2026-04-16
 sessions:
   origin: 20260416-133521-394965000
@@ -20,40 +20,40 @@ beliefs:
 exit_criteria:
   - id: ils1-patina-picker-tty
     text: "Running `patina` with no subcommand in an existing Patina project and interactive TTY shows interface picker every time, with `(default)` marker." 
-    checked: false
+    checked: true
   - id: ils2-picker-default-resolution
     text: "Picker default resolves to project last-used interface (runtime/local state), with fallback to project `interfaces.default` from `.patina/config.toml` when no last-used value exists."
-    checked: false
+    checked: true
   - id: ils3-auto-init-selected-only
     text: "`Are you lost?` -> init -> interface selection path prepares only the selected interface bundle before launch (no all-interface prewarm)."
-    checked: false
+    checked: true
   - id: ils4-ai-direct-launch-lazy-ensure
     text: "`patina ai <interface>` remains direct launch and lazily ensures selected interface readiness (missing/stale bundle projected before launch)."
-    checked: false
+    checked: true
   - id: ils5-setup-semantics
     text: "`patina ai setup` semantics are explicit: selected/default interface setup + skillpack freshness check by default; all-interface prewarm requires explicit opt-in (`--all` or equivalent)."
-    checked: false
+    checked: true
   - id: ils6-session-envelope-stable
     text: "Session lifecycle behavior remains unchanged (`check_in`/artifact/tag/archive/update/end semantics unchanged except launch/setup entry routing)."
-    checked: false
+    checked: true
   - id: ils7-skillpack-freshness
     text: "Selected interface launch path checks Patina-managed bundle metadata/version and refreshes stale managed projections before session start; external tool version detection/logging remains independent."
-    checked: false
+    checked: true
   - id: ils8-voice-out-of-scope
     text: "No voice behavior changes are introduced by this spec (project voice binding and `--voice` handling remain untouched)."
-    checked: false
+    checked: true
   - id: ils9-proof
     text: "`cargo check --workspace -q` passes, targeted launch/setup tests cover picker default and selected-only setup path, and manual smoke runs verify `patina` + `patina ai <interface>` parity."
-    checked: false
+    checked: true
   - id: ils10-init-prompt-wording
     text: "Non-project init prompt wording is unambiguous: `Initialize this directory as a Patina project? [y/N]` where default/no exits and yes enters interface selection."
-    checked: false
+    checked: true
   - id: ils11-launch-observability-contract
     text: "Launch/setup emits stable, minimal events with correlation fields (`project_uid`, `interface`, `session_id` when created, bundle/tool versions, decision path) and avoids duplicate/noisy emissions."
-    checked: false
+    checked: true
   - id: ils12-old-project-self-heal
     text: "Revisiting old projects self-heals to new behavior on first launch (selected-interface path, stale bundle refresh), without requiring manual cleanup before normal use."
-    checked: false
+    checked: true
 ---
 # feat: Interface launch picker + lazy skillpack ensure
 
