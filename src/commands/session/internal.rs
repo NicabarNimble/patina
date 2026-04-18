@@ -408,7 +408,7 @@ fn update_session_document_value(
         pi_distill =
             distill_pi_log_activity(project_root, &since_rfc3339, source_log_hint.as_deref())?;
         if let Some(summary) = &pi_distill {
-            update_section.push_str("\n");
+            update_section.push('\n');
             update_section.push_str(&summary.block);
             update_section.push('\n');
         }
