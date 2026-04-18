@@ -192,6 +192,7 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             set_default: launch.default,
             tmux: launch.tmux,
             no_tmux: launch.no_tmux,
+            decision_path: Some("direct".to_string()),
         }),
         Some(AiCommands::OpenCode { launch }) => surface::launch(surface::AiLaunchRequest {
             interface_name: "opencode".to_string(),
@@ -202,6 +203,7 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             set_default: launch.default,
             tmux: launch.tmux,
             no_tmux: launch.no_tmux,
+            decision_path: Some("direct".to_string()),
         }),
         Some(AiCommands::Gemini { launch }) => surface::launch(surface::AiLaunchRequest {
             interface_name: "gemini".to_string(),
@@ -212,6 +214,7 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             set_default: launch.default,
             tmux: launch.tmux,
             no_tmux: launch.no_tmux,
+            decision_path: Some("direct".to_string()),
         }),
         Some(AiCommands::Pi { launch }) => surface::launch(surface::AiLaunchRequest {
             interface_name: "pi".to_string(),
@@ -222,6 +225,7 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             set_default: launch.default,
             tmux: launch.tmux,
             no_tmux: launch.no_tmux,
+            decision_path: Some("direct".to_string()),
         }),
         Some(AiCommands::List { json }) => internal::list(json),
         Some(AiCommands::End {
@@ -309,6 +313,24 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn setup_command_accepts_all_flag() {
+        let parsed = AiCli::try_parse_from(["patina", "setup", "--all"]).unwrap();
+        match parsed.command {
+            AiCommands::Setup { all, interface, .. } => {
+                assert!(all);
+                assert!(interface.is_none());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn setup_command_rejects_all_with_interface() {
+        let parsed = AiCli::try_parse_from(["patina", "setup", "gemini", "--all"]);
+        assert!(parsed.is_err());
     }
 
     #[test]

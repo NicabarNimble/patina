@@ -38,6 +38,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
 
     let is_patina_project = project::is_patina_project(&project_path);
     let interface_name: String;
+    let decision_path: String;
 
     if !is_patina_project {
         if options.auto_init {
@@ -50,6 +51,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
             match prompt_are_you_lost(&project_path, explicit_interface.as_deref())? {
                 Some(selected) => {
                     interface_name = selected;
+                    decision_path = "init".to_string();
                 }
                 None => {
                     return Ok(());
@@ -65,12 +67,16 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         let project_config = project::load_with_migration(&project_path)?;
 
         interface_name = if let Some(explicit) = explicit_interface {
+            decision_path = "direct".to_string();
             explicit
         } else if io::stdin().is_terminal() && io::stdout().is_terminal() {
+            decision_path = "picker".to_string();
             prompt_existing_project_interface(&project_path, &project_config.interfaces.default)?
         } else if !project_config.interfaces.default.is_empty() {
+            decision_path = "direct".to_string();
             project_config.interfaces.default.clone()
         } else {
+            decision_path = "direct".to_string();
             interfaces::default_interface_name().unwrap_or_else(|_| "claude".to_string())
         };
 
@@ -100,6 +106,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         set_default: false,
         tmux: false,
         no_tmux: false,
+        decision_path: Some(decision_path),
     })
 }
 
@@ -561,6 +568,7 @@ fn try_get_claude_token() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use patina::mother::MotherRuntimeStore;
     use std::fs;
     use std::process::Command;
     use tempfile::TempDir;
@@ -672,6 +680,71 @@ mod tests {
     }
 
     #[test]
+    fn launch_non_project_requires_tty_for_guided_init() {
+        let _lock = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = TempDir::new().unwrap();
+
+        let result = launch(LaunchOptions {
+            path: Some(temp.path().display().to_string()),
+            interface: None,
+            auto_start_mother: true,
+            auto_init: true,
+        });
+
+        assert!(result.is_err());
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("interactive TTY for guided setup"));
+    }
+
+    #[test]
+    fn read_project_last_interface_returns_none_without_uid() {
+        let temp = TempDir::new().unwrap();
+        assert!(read_project_last_interface(temp.path()).is_none());
+    }
+
+    #[test]
+    fn read_project_last_interface_returns_stored_value() {
+        let _lock = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = TempDir::new().unwrap();
+
+        let patina_home = temp.path().join("patina-home");
+        fs::create_dir_all(&patina_home).unwrap();
+
+        let old_patina_home = env::var_os("PATINA_HOME");
+        unsafe {
+            env::set_var("PATINA_HOME", &patina_home);
+        }
+
+        let uid = project::create_uid_if_missing(temp.path()).unwrap();
+        let runtime = MotherRuntimeStore::default();
+        runtime
+            .put_state(
+                "interface-launch",
+                &format!("project:{}:last_interface", uid),
+                "pi",
+            )
+            .unwrap();
+
+        assert_eq!(
+            read_project_last_interface(temp.path()).as_deref(),
+            Some("pi")
+        );
+
+        match old_patina_home {
+            Some(value) => unsafe {
+                env::set_var("PATINA_HOME", value);
+            },
+            None => unsafe {
+                env::remove_var("PATINA_HOME");
+            },
+        }
+    }
+
+    #[test]
     fn initialize_project_prepares_unified_ai_surface_and_default() {
         let _lock = patina::test_support::env_test_mutex()
             .lock()
@@ -749,16 +822,7 @@ mod tests {
             .iter()
             .any(|name| name == "gemini"));
         assert!(temp.path().join("AGENTS.md").exists());
-        assert!(temp.path().join("CLAUDE.md").exists());
         assert!(temp.path().join("GEMINI.md").exists());
-        assert!(temp
-            .path()
-            .join(".claude/commands/session-start.md")
-            .exists());
-        assert!(temp
-            .path()
-            .join(".opencode/commands/session-start.md")
-            .exists());
         assert!(temp
             .path()
             .join(".gemini/commands/session-start.toml")

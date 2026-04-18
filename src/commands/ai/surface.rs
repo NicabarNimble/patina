@@ -31,6 +31,7 @@ pub struct AiLaunchRequest {
     pub set_default: bool,
     pub tmux: bool,
     pub no_tmux: bool,
+    pub decision_path: Option<String>,
 }
 
 pub fn launch_default() -> Result<()> {
@@ -45,6 +46,7 @@ pub fn launch_default() -> Result<()> {
         set_default: false,
         tmux: false,
         no_tmux: false,
+        decision_path: Some("direct".to_string()),
     })
 }
 
@@ -199,8 +201,13 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         },
     )?;
 
+    let bundle_before = interface::bundle_deployment_status(&interface_name, &project_path).ok();
+    let tool_version_observed = interface::launch::detect_version(&interface_name);
+
     let (iface, bootstrap) =
         crate::commands::interface::ensure_ready(&interface_name, &project_path, false)?;
+
+    let bundle_after = interface::bundle_deployment_status(&interface_name, &project_path).ok();
 
     if request.set_default || config_result.default_interface.is_empty() {
         interface::set_project_default_interface(&project_path, &interface_name)?;
@@ -226,9 +233,34 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         }
     }
 
-    if let Err(error) = remember_project_last_interface(&project_path, &interface_name) {
+    let decision_path = request
+        .decision_path
+        .as_deref()
+        .unwrap_or("direct")
+        .to_string();
+
+    if let Err(error) =
+        remember_project_last_interface(&project_path, &interface_name, &decision_path)
+    {
         eprintln!(
             "[ai] warning: failed to persist last interface '{}' for project '{}': {}",
+            interface_name,
+            project_path.display(),
+            error
+        );
+    }
+
+    if let Err(error) = record_interface_launch_decision(
+        &project_path,
+        &interface_name,
+        &checkin,
+        &decision_path,
+        bundle_before.as_ref(),
+        bundle_after.as_ref(),
+        tool_version_observed.as_deref(),
+    ) {
+        eprintln!(
+            "[ai] warning: failed to write interface launch event for '{}' in '{}': {}",
             interface_name,
             project_path.display(),
             error
@@ -337,6 +369,7 @@ fn record_ai_session_started(
 fn remember_project_last_interface(
     project_root: &std::path::Path,
     interface_name: &str,
+    launch_mode: &str,
 ) -> Result<()> {
     let project_uid = project::create_uid_if_missing(project_root)?;
     let key_prefix = format!("project:{}", project_uid);
@@ -351,6 +384,76 @@ fn remember_project_last_interface(
         "interface-launch",
         &format!("{}:last_launch_at", key_prefix),
         &chrono::Utc::now().to_rfc3339(),
+    )?;
+    runtime.put_state(
+        "interface-launch",
+        &format!("{}:last_launch_mode", key_prefix),
+        launch_mode,
+    )?;
+
+    Ok(())
+}
+
+fn derive_bundle_action(
+    before: Option<&interface::BundleDeploymentStatus>,
+    after: Option<&interface::BundleDeploymentStatus>,
+) -> &'static str {
+    let Some(after) = after else {
+        return "unknown";
+    };
+
+    let Some(before) = before else {
+        return if after.current { "prepare" } else { "unknown" };
+    };
+
+    if before.current && after.current {
+        return "noop";
+    }
+
+    if !before.current && after.current {
+        if !before.stale_paths.is_empty() {
+            return "refresh";
+        }
+        return "prepare";
+    }
+
+    "unknown"
+}
+
+fn record_interface_launch_decision(
+    project_root: &std::path::Path,
+    interface_name: &str,
+    checkin: &interface::CheckInResult,
+    decision_path: &str,
+    bundle_before: Option<&interface::BundleDeploymentStatus>,
+    bundle_after: Option<&interface::BundleDeploymentStatus>,
+    tool_version_observed: Option<&str>,
+) -> Result<()> {
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    let payload = serde_json::json!({
+        "project_uid": project::get_uid(project_root),
+        "interface": interface_name,
+        "session_id": checkin.session_file_id,
+        "runtime_id": checkin.session_runtime_id,
+        "decision_path": decision_path,
+        "bundle_version_before": bundle_before.map(|status| status.expected_version.as_str()),
+        "bundle_version_after": bundle_after.map(|status| status.expected_version.as_str()),
+        "bundle_current_before": bundle_before.map(|status| status.current),
+        "bundle_current_after": bundle_after.map(|status| status.current),
+        "tool_version_observed": tool_version_observed,
+        "action": derive_bundle_action(bundle_before, bundle_after),
+        "attached_existing": checkin.attached_existing,
+        "artifact": checkin.artifact_path,
+    });
+
+    patina::eventlog::insert_event(
+        &conn,
+        "interface.launch",
+        &timestamp,
+        &checkin.session_file_id,
+        Some(&checkin.artifact_path.display().to_string()),
+        &payload.to_string(),
     )?;
 
     Ok(())
@@ -484,6 +587,48 @@ mod tests {
     }
 
     #[test]
+    fn setup_defaults_to_project_default_interface_only() {
+        let temp = setup_project();
+        let mut config = project::load_with_migration(temp.path()).unwrap();
+        config.interfaces.default = "gemini".to_string();
+        project::save(temp.path(), &config).unwrap();
+
+        with_temp_env(&temp, || {
+            setup(AiSetupRequest {
+                interface: None,
+                path: Some(temp.path().display().to_string()),
+                force: false,
+                all: false,
+            })
+            .unwrap();
+        });
+
+        assert!(temp.path().join(".gemini").exists());
+        assert!(!temp.path().join(".claude").exists());
+        assert!(!temp.path().join(".opencode").exists());
+    }
+
+    #[test]
+    fn setup_all_prewarms_all_interfaces() {
+        let temp = setup_project();
+
+        with_temp_env(&temp, || {
+            setup(AiSetupRequest {
+                interface: None,
+                path: Some(temp.path().display().to_string()),
+                force: false,
+                all: true,
+            })
+            .unwrap();
+        });
+
+        assert!(temp.path().join(".claude").exists());
+        assert!(temp.path().join(".opencode").exists());
+        assert!(temp.path().join(".gemini").exists());
+        assert!(temp.path().join(".pi").exists());
+    }
+
+    #[test]
     fn refresh_can_target_single_bundle_without_changing_default() {
         let temp = setup_project();
 
@@ -561,6 +706,7 @@ mod tests {
                 set_default: false,
                 tmux: false,
                 no_tmux: false,
+                decision_path: Some("direct".to_string()),
             });
 
             assert!(result.is_err());
