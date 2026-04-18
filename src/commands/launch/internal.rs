@@ -14,6 +14,7 @@ use std::time::Duration;
 
 use patina::git;
 use patina::interface::launch as interfaces;
+use patina::mother::MotherRuntimeStore;
 use patina::paths;
 use patina::project;
 
@@ -60,7 +61,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         interface_name = if let Some(explicit) = explicit_interface {
             explicit
         } else if io::stdin().is_terminal() && io::stdout().is_terminal() {
-            prompt_existing_project_interface(&project_config.interfaces.default)?
+            prompt_existing_project_interface(&project_path, &project_config.interfaces.default)?
         } else if !project_config.interfaces.default.is_empty() {
             project_config.interfaces.default.clone()
         } else {
@@ -284,7 +285,7 @@ pub(crate) fn prompt_are_you_lost(
     }
 }
 
-fn prompt_existing_project_interface(project_default: &str) -> Result<String> {
+fn prompt_existing_project_interface(project_path: &Path, project_default: &str) -> Result<String> {
     let all_interfaces = interfaces::list()?;
     let available: Vec<_> = all_interfaces.into_iter().filter(|a| a.detected).collect();
 
@@ -299,11 +300,15 @@ fn prompt_existing_project_interface(project_default: &str) -> Result<String> {
         );
     }
 
-    let preference = if !project_default.trim().is_empty() {
-        Some(project_default.trim().to_string())
-    } else {
-        interfaces::default_interface_name().ok()
-    };
+    let preference = read_project_last_interface(project_path)
+        .or_else(|| {
+            if project_default.trim().is_empty() {
+                None
+            } else {
+                Some(project_default.trim().to_string())
+            }
+        })
+        .or_else(|| interfaces::default_interface_name().ok());
 
     let default_idx = preference
         .as_deref()
@@ -342,6 +347,18 @@ fn prompt_existing_project_interface(project_default: &str) -> Result<String> {
     };
 
     Ok(available[safe_idx - 1].name.clone())
+}
+
+fn read_project_last_interface(project_path: &Path) -> Option<String> {
+    let project_uid = project::get_uid(project_path)?;
+    let key = format!("project:{}:last_interface", project_uid);
+    let runtime = MotherRuntimeStore::default();
+    runtime
+        .get_state("interface-launch", &key)
+        .ok()
+        .flatten()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 /// Format remote URL for display (strip git@/https://, .git suffix)

@@ -49,17 +49,29 @@ pub fn launch_default() -> Result<()> {
 
 pub fn setup(request: AiSetupRequest) -> Result<()> {
     let project_path = launch_internal::resolve_project_path(request.path.as_deref())?;
-    let result = interface::ensure_ai_surface(interface::AiSurfaceRequest {
-        project_root: &project_path,
-        force: request.force,
-        default_interface: request.interface.as_deref(),
-    })?;
+
+    let (default_interface, prepared) = if let Some(interface_name) = request.interface.as_deref() {
+        let config = interface::ensure_ai_project_config(&project_path, Some(interface_name))?;
+        let prepared = vec![interface::prepare_ai_bundle(
+            &project_path,
+            interface_name,
+            request.force,
+        )?];
+        (config.default_interface, prepared)
+    } else {
+        let result = interface::ensure_ai_surface(interface::AiSurfaceRequest {
+            project_root: &project_path,
+            force: request.force,
+            default_interface: None,
+        })?;
+        (result.default_interface, result.prepared)
+    };
 
     println!(
         "Patina AI bundles deployed. Default interface: {}",
-        result.default_interface
+        default_interface
     );
-    for prepared in result.prepared {
+    for prepared in prepared {
         println!("  {}:", prepared.display_name);
         println!("    Context: {}", prepared.bootstrap.context_path.display());
         println!(
@@ -205,6 +217,15 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         }
     }
 
+    if let Err(error) = remember_project_last_interface(&project_path, &interface_name) {
+        eprintln!(
+            "[ai] warning: failed to persist last interface '{}' for project '{}': {}",
+            interface_name,
+            project_path.display(),
+            error
+        );
+    }
+
     println!(
         "Patina AI {} {}",
         if checkin.attached_existing {
@@ -301,6 +322,28 @@ fn record_ai_session_started(
         Some(&checkin.artifact_path.display().to_string()),
         &payload.to_string(),
     )?;
+    Ok(())
+}
+
+fn remember_project_last_interface(
+    project_root: &std::path::Path,
+    interface_name: &str,
+) -> Result<()> {
+    let project_uid = project::create_uid_if_missing(project_root)?;
+    let key_prefix = format!("project:{}", project_uid);
+    let runtime = patina::mother::MotherRuntimeStore::default();
+
+    runtime.put_state(
+        "interface-launch",
+        &format!("{}:last_interface", key_prefix),
+        interface_name,
+    )?;
+    runtime.put_state(
+        "interface-launch",
+        &format!("{}:last_launch_at", key_prefix),
+        &chrono::Utc::now().to_rfc3339(),
+    )?;
+
     Ok(())
 }
 
