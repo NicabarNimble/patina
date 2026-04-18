@@ -510,6 +510,7 @@ fn initialize_project(project_path: &Path, interface_name: &str) -> Result<bool>
             interface: Some(interface_name.to_string()),
             path: Some(project_path.display().to_string()),
             force: false,
+            all: false,
         });
 
     if let Err(e) = setup_result {

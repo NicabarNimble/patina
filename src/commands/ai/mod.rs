@@ -81,7 +81,7 @@ pub struct AiLaunchArgs {
 pub enum AiCommands {
     /// Deploy the Patina AI bundles for this project
     Setup {
-        #[arg(value_name = "interface", hide = true)]
+        #[arg(value_name = "interface", hide = true, conflicts_with = "all")]
         interface: Option<String>,
 
         #[arg(long)]
@@ -89,6 +89,10 @@ pub enum AiCommands {
 
         #[arg(long)]
         force: bool,
+
+        /// Prewarm all interface bundles (default prepares selected/default only)
+        #[arg(long, default_value_t = false)]
+        all: bool,
     },
 
     /// Refresh one bundle or all Patina AI bundles for this project
@@ -163,10 +167,12 @@ pub fn execute(command: Option<AiCommands>) -> Result<()> {
             interface,
             path,
             force,
+            all,
         }) => surface::setup(surface::AiSetupRequest {
             interface,
             path,
             force,
+            all,
         }),
         Some(AiCommands::Refresh {
             interface,

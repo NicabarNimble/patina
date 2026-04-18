@@ -11,6 +11,7 @@ pub struct AiSetupRequest {
     pub interface: Option<String>,
     pub path: Option<String>,
     pub force: bool,
+    pub all: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -50,7 +51,14 @@ pub fn launch_default() -> Result<()> {
 pub fn setup(request: AiSetupRequest) -> Result<()> {
     let project_path = launch_internal::resolve_project_path(request.path.as_deref())?;
 
-    let (default_interface, prepared) = if let Some(interface_name) = request.interface.as_deref() {
+    let (default_interface, prepared) = if request.all {
+        let result = interface::ensure_ai_surface(interface::AiSurfaceRequest {
+            project_root: &project_path,
+            force: request.force,
+            default_interface: request.interface.as_deref(),
+        })?;
+        (result.default_interface, result.prepared)
+    } else if let Some(interface_name) = request.interface.as_deref() {
         let config = interface::ensure_ai_project_config(&project_path, Some(interface_name))?;
         let prepared = vec![interface::prepare_ai_bundle(
             &project_path,
@@ -59,12 +67,13 @@ pub fn setup(request: AiSetupRequest) -> Result<()> {
         )?];
         (config.default_interface, prepared)
     } else {
-        let result = interface::ensure_ai_surface(interface::AiSurfaceRequest {
-            project_root: &project_path,
-            force: request.force,
-            default_interface: None,
-        })?;
-        (result.default_interface, result.prepared)
+        let config = interface::ensure_ai_project_config(&project_path, None)?;
+        let prepared = vec![interface::prepare_ai_bundle(
+            &project_path,
+            &config.default_interface,
+            request.force,
+        )?];
+        (config.default_interface, prepared)
     };
 
     println!(
@@ -464,14 +473,13 @@ mod tests {
                 interface: Some("gemini".to_string()),
                 path: Some(temp.path().display().to_string()),
                 force: false,
+                all: false,
             })
             .unwrap();
         });
 
         let config = project::load_with_migration(temp.path()).unwrap();
         assert_eq!(config.interfaces.default, "gemini");
-        assert!(temp.path().join(".claude").exists());
-        assert!(temp.path().join(".opencode").exists());
         assert!(temp.path().join(".gemini").exists());
     }
 
@@ -484,6 +492,7 @@ mod tests {
                 interface: Some("claude".to_string()),
                 path: Some(temp.path().display().to_string()),
                 force: false,
+                all: false,
             })
             .unwrap();
         });
