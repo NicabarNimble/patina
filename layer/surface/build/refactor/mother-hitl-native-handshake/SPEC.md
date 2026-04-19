@@ -58,6 +58,7 @@ validated_against_commit: 65a8423d
 last_freshness_check: 2026-04-19
 freshness_scope:
 - src/commands/launch/internal.rs
+- src/commands/ai/surface.rs
 ---
 # refactor: Mother-native HITL handshake + envelope control
 
