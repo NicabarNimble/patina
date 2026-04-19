@@ -1,0 +1,99 @@
+package patina:interface-control@0.1.0;
+
+interface types {
+    enum interface-kind {
+        hitl,
+    }
+
+    enum launch-intent {
+        attach-or-create,
+        attach-only,
+        create-only,
+    }
+
+    enum tmux-mode {
+        auto,
+        required,
+        disabled,
+    }
+
+    record correlation {
+        project-uid: string,
+        interface-name: string,
+        launch-id: string,
+    }
+
+    record operation-envelope {
+        operation-id: string,
+        args-json: string,
+        correlation: option<correlation>,
+    }
+
+    record handshake-args {
+        protocol-version: string,
+        cli-version: string,
+        project-uid: string,
+        project-root: string,
+        interface-name: string,
+        interface-kind: interface-kind,
+        launch-intent: launch-intent,
+        requested-session: option<string>,
+        tmux-mode: option<tmux-mode>,
+        tty: bool,
+    }
+
+    record handshake-result {
+        handshake-id: string,
+        mother-version: string,
+        project-uid: string,
+        control-plane-ready: bool,
+        expires-at: string,
+    }
+
+    record resolve-args {
+        handshake-id: string,
+        title: option<string>,
+    }
+
+    record envelope-identity {
+        envelope-id: string,
+        session-runtime-id: string,
+        session-file-id: string,
+        tmux-lane: string,
+        interface-name: string,
+        project-uid: string,
+    }
+
+    variant resolve-result {
+        attach(envelope-identity),
+        create(envelope-identity),
+        choose(list<envelope-identity>),
+        reject(string),
+    }
+
+    record heartbeat-args {
+        envelope-id: string,
+        pid: u32,
+        tmux-lane: string,
+        observed-at: string,
+    }
+
+    record end-args {
+        envelope-id: string,
+        reason: string,
+    }
+
+    record ack-result {
+        ok: bool,
+        detail: option<string>,
+    }
+}
+
+interface operations {
+    use types.{ack-result, end-args, handshake-args, handshake-result, heartbeat-args, resolve-args, resolve-result};
+
+    handshake-v1: func(args: handshake-args) -> result<handshake-result, string>;
+    envelope-resolve-v1: func(args: resolve-args) -> result<resolve-result, string>;
+    envelope-heartbeat-v1: func(args: heartbeat-args) -> result<ack-result, string>;
+    envelope-end-v1: func(args: end-args) -> result<ack-result, string>;
+}
