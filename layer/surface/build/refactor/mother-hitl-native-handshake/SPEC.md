@@ -63,6 +63,7 @@ freshness_scope:
 - src/interface/internal/launcher.rs
 - src/commands/mother/daemon/startup.rs
 - src/commands/mother/daemon/dispatch.rs
+- mother/src/http_api.rs
 ---
 # refactor: Mother-native HITL handshake + envelope control
 
