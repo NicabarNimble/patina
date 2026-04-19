@@ -3,19 +3,14 @@
 //! Handles the launch flow: workspace check → mother → project check → bootstrap → launch
 
 use anyhow::{bail, Context, Result};
-use serde_json::Value;
 use std::env;
 use std::fs;
-use std::io::{self, IsTerminal as _, Read as _, Write};
+use std::io::{self, IsTerminal as _, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::thread;
-use std::time::Duration;
 
 use patina::git;
 use patina::interface::launch as interfaces;
 use patina::mother::MotherRuntimeStore;
-use patina::paths;
 use patina::project;
 
 use super::LaunchOptions;
@@ -122,108 +117,6 @@ pub(crate) fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
         .with_context(|| format!("Project path does not exist: {}", path.display()))?;
 
     Ok(canonical)
-}
-
-fn mother_uptime_secs() -> Option<u64> {
-    let sock_path = paths::serve::socket_path();
-    let mut stream = match std::os::unix::net::UnixStream::connect(&sock_path) {
-        Ok(s) => s,
-        Err(_) => return None,
-    };
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
-
-    let request = "GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n";
-    if stream.write_all(request.as_bytes()).is_err() {
-        return None;
-    }
-
-    let mut buf = vec![0u8; 1024];
-    match stream.read(&mut buf) {
-        Ok(n) if n > 0 => {
-            let response = &buf[..n];
-            let body_start = response
-                .windows(4)
-                .position(|window| window == b"\r\n\r\n")?
-                + 4;
-            let body = &response[body_start..];
-            let payload: Value = serde_json::from_slice(body).ok()?;
-            payload.get("uptime_secs")?.as_u64()
-        }
-        _ => None,
-    }
-}
-
-fn mother_pid() -> Option<u32> {
-    fs::read_to_string(paths::serve::pid_path())
-        .ok()?
-        .trim()
-        .parse()
-        .ok()
-}
-
-fn format_uptime_secs(total_secs: u64) -> String {
-    let days = total_secs / 86_400;
-    let hours = (total_secs % 86_400) / 3_600;
-    let minutes = (total_secs % 3_600) / 60;
-
-    if days > 0 {
-        format!("{}d{}h", days, hours)
-    } else if hours > 0 {
-        format!("{}h{}m", hours, minutes)
-    } else {
-        format!("{}m", minutes)
-    }
-}
-
-/// Ensure mother is running, start if needed
-pub(crate) fn ensure_mother_running() -> Result<()> {
-    if let Some(uptime_secs) = mother_uptime_secs() {
-        let pid = mother_pid()
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-        println!(
-            "  ✓ Mother running (PID {}, uptime {})",
-            pid,
-            format_uptime_secs(uptime_secs)
-        );
-        return Ok(());
-    }
-
-    println!("  ⏳ Starting mother...");
-    start_mother_daemon()?;
-
-    // Wait for it to come up
-    for _ in 0..10 {
-        thread::sleep(Duration::from_millis(500));
-        if let Some(uptime_secs) = mother_uptime_secs() {
-            let pid = mother_pid()
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            println!(
-                "  ✓ Mother started (PID {}, uptime {})",
-                pid,
-                format_uptime_secs(uptime_secs)
-            );
-            return Ok(());
-        }
-    }
-
-    bail!("Failed to start mother daemon")
-}
-
-/// Start mother as background daemon
-pub fn start_mother_daemon() -> Result<()> {
-    let patina_bin = env::current_exe().context("getting current executable path")?;
-
-    Command::new(&patina_bin)
-        .args(["mother", "start"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .context("spawning mother daemon")?;
-
-    Ok(())
 }
 
 /// "Are you lost?" prompt - show git context and offer to initialize.

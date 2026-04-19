@@ -1,6 +1,7 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
+use std::io::IsTerminal as _;
 
-use patina::interface::{self, check_in, InterfaceCheckIn};
+use patina::interface::{self};
 use patina::project;
 use patina::workspace;
 
@@ -162,13 +163,6 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         );
     }
 
-    if let Err(error) = launch_internal::ensure_mother_running() {
-        eprintln!(
-            "Warning: Mother daemon unavailable ({}). Continuing with local Mother runtime check-in.",
-            error
-        );
-    }
-
     if !project::is_patina_project(&project_path) {
         match launch_internal::prompt_are_you_lost(&project_path, Some(&interface_name))? {
             Some(_) => {
@@ -214,17 +208,15 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
     }
 
     let resolved_voice_uid = resolve_voice_uid(request.voice.as_deref(), &project_path);
+    let requested_session = request.requested_session.clone();
+    let requested_title = request.title.clone();
 
-    let checkin = check_in(&InterfaceCheckIn {
-        interface_kind: iface.interface_kind(),
-        interface_name: interface_name.clone(),
-        project_root: project_path.clone(),
-        project_uid: project::get_uid(&project_path),
-        requested_voice: resolved_voice_uid.clone(),
-        requested_session: request.requested_session,
-        title: request.title,
-        capabilities: iface.capabilities(),
-    })?;
+    let (checkin, envelope_id, tmux_lane) = resolve_checkin_via_mother(
+        &project_path,
+        &interface_name,
+        requested_title,
+        requested_session,
+    )?;
 
     if !checkin.attached_existing {
         record_ai_session_started(&project_path, &interface_name, &checkin)?;
@@ -299,9 +291,11 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
             checkin.artifact_path.display().to_string(),
         ),
     ];
-    if let Some(voice_uid) = checkin.voice_uid.as_ref() {
+    if let Some(voice_uid) = checkin.voice_uid.as_ref().or(resolved_voice_uid.as_ref()) {
         env.push(("PATINA_VOICE_UID".to_string(), voice_uid.clone()));
     }
+    env.push(("PATINA_ENVELOPE_ID".to_string(), envelope_id));
+    env.push(("PATINA_TMUX_LANE".to_string(), tmux_lane));
 
     let bundle = interface::interface_bundle(&interface_name)?;
 
@@ -326,6 +320,171 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         tmux_mode,
         tmux_session_name,
     })
+}
+
+fn resolve_checkin_via_mother(
+    project_root: &std::path::Path,
+    interface_name: &str,
+    title: Option<String>,
+    requested_session: Option<String>,
+) -> Result<(interface::CheckInResult, String, String)> {
+    let client = patina::mother::control_plane_client();
+    client.ready().map_err(|error| {
+        anyhow!(
+            "Mother daemon required for HITL launch (ready probe failed). Start with `patina mother start` and retry: {}",
+            error
+        )
+    })?;
+
+    let project_uid = project::create_uid_if_missing(project_root)?;
+    let launch_id = uuid::Uuid::new_v4().to_string();
+    let correlation = serde_json::json!({
+        "project_uid": project_uid,
+        "interface": interface_name,
+        "launch_id": launch_id,
+    });
+
+    let protocol = format!(
+        "{}.{}",
+        patina_protocol::CURRENT_PROTOCOL_VERSION.major,
+        patina_protocol::CURRENT_PROTOCOL_VERSION.minor
+    );
+    let launch_intent = if requested_session.is_some() {
+        "attach-only"
+    } else {
+        "attach-or-create"
+    };
+
+    let handshake = client.interface_control_call(
+        "patina:interface/handshake.v1",
+        serde_json::json!({
+            "protocol_version": protocol,
+            "cli_version": env!("CARGO_PKG_VERSION"),
+            "project_uid": project_uid,
+            "project_root": project_root.display().to_string(),
+            "interface_name": interface_name,
+            "interface_kind": "hitl",
+            "launch_intent": launch_intent,
+            "requested_session": requested_session,
+            "tty": std::io::stdin().is_terminal() && std::io::stdout().is_terminal(),
+        }),
+        Some(correlation.clone()),
+    )?;
+
+    let handshake_id = handshake
+        .get("result")
+        .and_then(|result| result.get("handshake_id"))
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| anyhow!("Mother handshake response missing result.handshake_id"))?
+        .to_string();
+
+    let resolve = client.interface_control_call(
+        "patina:interface/envelope.resolve.v1",
+        serde_json::json!({
+            "handshake_id": handshake_id,
+            "title": title,
+        }),
+        Some(correlation),
+    )?;
+
+    let result = resolve
+        .get("result")
+        .ok_or_else(|| anyhow!("Mother resolve response missing result payload"))?;
+
+    let decision = result
+        .get("decision")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| anyhow!("Mother resolve response missing result.decision"))?;
+
+    match decision {
+        "attach" | "create" => {
+            let identity = result
+                .get("identity")
+                .ok_or_else(|| anyhow!("Mother resolve response missing result.identity"))?;
+            let envelope_id = identity
+                .get("envelope_id")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| anyhow!("Mother resolve response missing identity.envelope_id"))?
+                .to_string();
+            let runtime_id = identity
+                .get("session_runtime_id")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| {
+                    anyhow!("Mother resolve response missing identity.session_runtime_id")
+                })?
+                .to_string();
+            let file_id = identity
+                .get("session_file_id")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| anyhow!("Mother resolve response missing identity.session_file_id"))?
+                .to_string();
+            let tmux_lane = identity
+                .get("tmux_lane")
+                .and_then(|value| value.as_str())
+                .unwrap_or(interface_name)
+                .to_string();
+
+            let handle = match patina::session::load_session(project_root, &runtime_id)? {
+                Some(handle) => Some(handle),
+                None => patina::session::load_session_by_file_id(project_root, &file_id)?,
+            }
+            .ok_or_else(|| {
+                anyhow!(
+                    "Mother resolved session '{}', but no local session artifact was found",
+                    runtime_id
+                )
+            })?;
+
+            let checkin = interface::CheckInResult {
+                voice_uid: handle.voice_uid,
+                session_runtime_id: runtime_id,
+                session_file_id: file_id,
+                artifact_path: handle.artifact_path,
+                attached_existing: decision == "attach",
+            };
+
+            Ok((checkin, envelope_id, tmux_lane))
+        }
+        "choose" => {
+            let choices = result
+                .get("choices")
+                .and_then(|value| value.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let formatted = choices
+                .iter()
+                .filter_map(|entry| {
+                    let file_id = entry
+                        .get("session_file_id")
+                        .and_then(|value| value.as_str())?;
+                    let runtime_id = entry
+                        .get("session_runtime_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("unknown");
+                    Some(format!("{} ({})", file_id, runtime_id))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            bail!(
+                "Multiple active {} sessions exist. Use `patina ai list` and retry with `--session <id>`.\nChoices: {}",
+                interface_name,
+                formatted
+            );
+        }
+        "reject" => {
+            let reason = result
+                .get("reason")
+                .and_then(|value| value.as_str())
+                .unwrap_or("unknown rejection");
+            bail!("Mother rejected HITL envelope resolution: {}", reason);
+        }
+        other => {
+            bail!(
+                "Mother resolve returned unsupported decision '{}'. Expected attach|create|choose|reject.",
+                other
+            );
+        }
+    }
 }
 
 fn ensure_workspace_ready() -> Result<()> {
