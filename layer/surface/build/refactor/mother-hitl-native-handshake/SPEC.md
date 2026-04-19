@@ -19,40 +19,55 @@ related:
 - wit/pando/pando.wit
 exit_criteria:
 - id: mhnh1-mother-required-hitl
-  text: HITL launch path fails closed when Mother is unavailable; no best-effort local fallback in default policy.
+  text: "HITL launch path fails closed when Mother is unavailable; no best-effort local fallback in default policy."
   checked: false
 - id: mhnh2-fast-ready-probe
-  text: Launch preflight uses a bounded fast readiness probe (status-line based) and avoids multi-second blocking loops.
+  text: "Launch preflight uses a bounded fast readiness probe (status-line based) and avoids multi-second blocking loops."
   checked: false
 - id: mhnh3-native-hitl-api-surface
-  text: Mother exposes native HITL control operations (`handshake`, `resolve-envelope`, `heartbeat`, `end-envelope`) through a dedicated interface control route.
+  text: "Mother exposes native HITL control operations (`handshake`, `resolve-envelope`, `heartbeat`, `end-envelope`) through a dedicated interface control route."
   checked: false
 - id: mhnh4-wit-contract-source-of-truth
-  text: HITL control request/response types are defined in WIT and used as the canonical contract source.
+  text: "HITL control request/response types are defined in WIT and used as the canonical contract source."
   checked: false
 - id: mhnh5-rivet-shape-native-core
-  text: Native HITL route adopts Rivet-style operation envelope semantics (`operation_id`, `args`, `correlation`) without requiring Rivet integration mode.
+  text: "Native HITL route adopts Rivet-style operation envelope semantics (`operation_id`, `args`, `correlation`) without requiring Rivet integration mode."
   checked: false
 - id: mhnh6-rivet-optional-adapter
-  text: Existing `/api/rivet/dispatch` remains an optional ingress adapter and can invoke the same internal typed operations when enabled.
+  text: "Existing `/api/rivet/dispatch` remains an optional ingress adapter and can invoke the same internal typed operations when enabled."
   checked: false
 - id: mhnh7-envelope-authority-in-mother
-  text: Mother is authoritative for `(project, interface)` envelope resolution (`attach|create|choose|reject`) and returns deterministic session/lane metadata.
+  text: "Mother is authoritative for `(project, interface)` envelope resolution (`attach|create|choose|reject`) and returns deterministic session/lane metadata."
   checked: false
 - id: mhnh8-identity-handshake-fields
-  text: Handshake contract includes protocol version, CLI version, project uid, project root, interface identity, and launch intent.
+  text: "Handshake contract includes protocol version, CLI version, project uid, project root, interface identity, and launch intent."
   checked: false
 - id: mhnh9-tmux-lane-contract
-  text: Launcher uses Mother-returned envelope/session lane identity for tmux launch/reattach behavior.
+  text: "Launcher uses Mother-returned envelope/session lane identity for tmux launch/reattach behavior."
   checked: false
 - id: mhnh10-observability
-  text: Typed launch operations emit stable events with correlation and decision fields for audit/debugging.
+  text: "Typed launch operations emit stable events with correlation and decision fields for audit/debugging."
   checked: false
 - id: mhnh11-no-regression-existing-hitl
-  text: Existing HITL UX goals remain intact (picker behavior, selected/default setup behavior, direct `patina ai <interface>` path).
+  text: "Existing HITL UX goals remain intact (picker behavior, selected/default setup behavior, direct `patina ai <interface>` path)."
   checked: false
 - id: mhnh12-proof
-  text: '`cargo check --workspace -q` passes and targeted tests cover readiness fast-path, Mother-required failure mode, handshake/resolve decision outcomes, and Rivet-adapter parity.'
+  text: "`cargo check --workspace -q` passes and targeted tests cover readiness fast-path, Mother-required failure mode, handshake/resolve decision outcomes, and Rivet-adapter parity."
+  checked: false
+- id: mhnh13-single-authority
+  text: "Envelope attach/create/choose/reject decision logic has a single authority in Mother; launcher no longer performs parallel decision logic for HITL envelope resolution."
+  checked: false
+- id: mhnh14-legacy-hitl-fallback-removed
+  text: "Legacy HITL fallback path (warn-and-continue without Mother authority) is removed from default path; any override mode is explicit and non-default."
+  checked: false
+- id: mhnh15-typed-decision-model
+  text: "Decision outcomes and errors are represented with typed enums/variants in code paths, avoiding stringly-typed branching for core control flow."
+  checked: false
+- id: mhnh16-state-machine-tests
+  text: "State-machine tests cover launch transitions (`ready`, `handshake`, `resolve`, `launch`, `heartbeat`, `end`) including failure edges and ambiguous session selection behavior."
+  checked: false
+- id: mhnh17-audit-readiness
+  text: "Spec end state satisfies Rust systems rigor audit posture: explicit invariants, fail-closed defaults, bounded IO, and delete-after-cutover of superseded paths."
   checked: false
 validated_against_commit: 65a8423d
 last_freshness_check: 2026-04-19
@@ -89,10 +104,11 @@ This causes noisy UX, false negatives, and ambiguous ownership boundaries.
 3. Move HITL envelope decisions to Mother as typed operations.
 4. Use WIT as contract source of truth.
 5. Reuse Rivet envelope shape semantics without coupling HITL core to Rivet profile flags.
+6. Deliver a clean cutover (not dual-path accretion) with explicit removal of superseded default behaviors.
 
 ## Status
 
-Draft and implementation-ready.
+Active and implementation-ready.
 
 ## Non-Goals
 
@@ -115,6 +131,14 @@ Draft and implementation-ready.
 - Launcher executes runtime with Mother-issued identity metadata and fails closed when required preconditions fail.
 - Native HITL route is always available in Mother control plane (independent of Rivet profile).
 - Rivet ingress can call same typed operations when enabled.
+
+## No-Frankenstein Gates
+
+- **Single authority:** Mother owns envelope decision logic; launcher executes decisions.
+- **Single default path:** one HITL control flow in default runtime (`ready -> handshake -> resolve -> launch`).
+- **Delete-on-cutover:** superseded fallback/default paths are removed once parity is proven.
+- **Typed core state:** control-flow outcomes are modeled as enums/variants, not free-form strings.
+- **Bounded IO:** readiness/handshake probes are hard-bounded and fail closed.
 
 ## Solution
 
@@ -164,6 +188,8 @@ Retain `/api/rivet/dispatch` for actor/workflow ingress. Map Rivet dispatch to s
 - WIT defines contract types; native Mother route is runtime control-plane.
 - Rivet contract shape is adopted; Rivet route is optional adapter.
 - Envelope authority remains in Mother.
+- Clean cutover is mandatory: no long-lived dual default paths.
+- Audit posture (Rust systems rigor) is explicit: fail-closed defaults, explicit invariants, bounded IO, typed decisions.
 
 ## Verification
 
@@ -173,7 +199,9 @@ Retain `/api/rivet/dispatch` for actor/workflow ingress. Map Rivet dispatch to s
   - Mother-required failure mode,
   - handshake validation cases,
   - envelope resolve attach/create/ambiguous/reject,
-  - Rivet adapter parity to native internal operations.
+  - Rivet adapter parity to native internal operations,
+  - single-authority enforcement (no dual decision source),
+  - state-machine transition coverage for success/failure edges.
 - smoke:
   - existing project `patina` in TTY,
   - direct `patina ai <interface>`,
