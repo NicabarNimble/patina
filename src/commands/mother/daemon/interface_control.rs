@@ -415,6 +415,18 @@ fn create_session(
         },
     )?;
 
+    let _ = patina::interface::session_writer_action(
+        &start.handle,
+        "init-session",
+        serde_json::json!({
+            "session_runtime_id": start.handle.runtime_id,
+            "session_file_id": start.handle.file_id,
+            "artifact_path": start.handle.artifact_path,
+            "branch": start.handle.branch,
+            "start_tag": start.handle.start_tag,
+        }),
+    );
+
     Ok(start.handle)
 }
 
