@@ -233,6 +233,7 @@ mod composed_bindings {
 mod composition;
 mod dispatch;
 mod health;
+mod interface_control;
 mod startup;
 mod transport;
 

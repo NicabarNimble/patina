@@ -7,6 +7,7 @@ type RouteHandler = Arc<dyn Fn(&HttpRequest) -> HttpResponse + Send + Sync>;
 
 pub struct RouteTable {
     pub get_health: RouteHandler,
+    pub get_ready: RouteHandler,
     pub get_version: RouteHandler,
     pub get_atlas_dashboard: RouteHandler,
     pub get_atlas_snapshot: RouteHandler,
@@ -24,6 +25,7 @@ pub struct RouteTable {
     pub post_lifecycle_refresh: RouteHandler,
     pub post_lifecycle_reload_child: RouteHandler,
     pub post_lifecycle_warmup_children: RouteHandler,
+    pub post_interface_call: RouteHandler,
     pub post_rivet_dispatch: RouteHandler,
     pub post_inspector_typed_calls: RouteHandler,
     pub child_request: RouteHandler,
@@ -47,6 +49,7 @@ impl Router {
     pub fn route(&self, request: &HttpRequest) -> HttpResponse {
         let response = match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/health") => (self.routes.get_health)(request),
+            ("GET", "/ready") => (self.routes.get_ready)(request),
             ("GET", "/version") => (self.routes.get_version)(request),
             ("GET", "/atlas") | ("GET", "/atlas/index.html") => {
                 if self.require_auth && !self.check_auth(request) {
@@ -160,6 +163,13 @@ impl Router {
                     (self.routes.post_lifecycle_warmup_children)(request)
                 }
             }
+            ("POST", "/api/interface/call") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_interface_call)(request)
+                }
+            }
             ("POST", "/api/rivet/dispatch") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -207,6 +217,7 @@ mod tests {
     fn test_routes() -> RouteTable {
         RouteTable {
             get_health: Arc::new(|_| ok_json()),
+            get_ready: Arc::new(|_| ok_json()),
             get_version: Arc::new(|_| ok_json()),
             get_atlas_dashboard: Arc::new(|_| HttpResponse {
                 status: 200,
@@ -228,6 +239,7 @@ mod tests {
             post_lifecycle_refresh: Arc::new(|_| ok_json()),
             post_lifecycle_reload_child: Arc::new(|_| ok_json()),
             post_lifecycle_warmup_children: Arc::new(|_| ok_json()),
+            post_interface_call: Arc::new(|_| ok_json()),
             post_rivet_dispatch: Arc::new(|_| ok_json()),
             post_inspector_typed_calls: Arc::new(|_| ok_json()),
             child_request: Arc::new(|_| ok_json()),
@@ -272,6 +284,20 @@ mod tests {
     fn lifecycle_warmup_route_is_wired() {
         let router = Router::new(false, "token-123".to_string(), test_routes());
         let response = router.route(&request("POST", "/api/lifecycle/warmup-children", None));
+        assert_eq!(response.status, 200);
+    }
+
+    #[test]
+    fn ready_route_is_wired() {
+        let router = Router::new(false, "token-123".to_string(), test_routes());
+        let response = router.route(&request("GET", "/ready", None));
+        assert_eq!(response.status, 200);
+    }
+
+    #[test]
+    fn interface_call_route_is_wired() {
+        let router = Router::new(false, "token-123".to_string(), test_routes());
+        let response = router.route(&request("POST", "/api/interface/call", None));
         assert_eq!(response.status, 200);
     }
 

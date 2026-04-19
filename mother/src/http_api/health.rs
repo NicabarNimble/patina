@@ -169,6 +169,24 @@ pub fn handle_health(runtime: &(impl HealthApi + ?Sized)) -> HttpResponse {
     )
 }
 
+pub fn handle_ready(runtime: &(impl HealthApi + ?Sized)) -> HttpResponse {
+    match runtime.ready_status() {
+        Ok(true) => HttpResponse {
+            status: 204,
+            headers: vec![],
+            body: vec![],
+        },
+        Ok(false) => {
+            super::lifecycle::lifecycle_error(503, "not_ready", "mother control plane not ready")
+        }
+        Err(error) => super::lifecycle::lifecycle_error(
+            503,
+            "not_ready",
+            &format!("mother readiness unavailable: {}", error),
+        ),
+    }
+}
+
 pub fn handle_version(runtime: &(impl HealthApi + ?Sized)) -> HttpResponse {
     HttpResponse::json(
         200,

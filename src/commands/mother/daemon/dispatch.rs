@@ -10,6 +10,10 @@ impl ApiRuntime for ServerState {
         self.uptime_secs()
     }
 
+    fn ready_status(&self) -> anyhow::Result<bool> {
+        Ok(self.query_readiness().control_plane_ready)
+    }
+
     fn health_all(&self) -> Vec<(String, patina::mother::ChildHealth)> {
         self.services.health.child_health_all(&self.registry)
     }
@@ -209,6 +213,13 @@ impl ApiRuntime for ServerState {
 
     fn lifecycle_warmup_children(&self) -> anyhow::Result<mother_crate::ChildWarmupResult> {
         self.warmup_children_now()
+    }
+
+    fn interface_control_call(
+        &self,
+        request: mother_crate::http_api::InterfaceControlCallRequest,
+    ) -> anyhow::Result<serde_json::Value> {
+        super::interface_control::dispatch_interface_control_call(request)
     }
 
     fn rivet_dispatch(
