@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mother-hitl-native-handshake
-status: ready
+status: active
 created: 2026-04-19
 sessions:
   origin: 20260417-221509-436744000
