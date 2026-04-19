@@ -883,3 +883,41 @@ fn typed_wiring_success_emits_grant_audit_event() {
             .contains("wired via interface"));
     });
 }
+
+#[test]
+fn interface_control_http_route_rejects_unknown_operation_end_to_end() {
+    with_temp_project(|project_root| {
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry: ChildRegistry::new(),
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let request = mother_crate::http_daemon::HttpRequest {
+            method: "POST".to_string(),
+            path: "/api/interface/call".to_string(),
+            headers: vec![],
+            body: serde_json::to_vec(&serde_json::json!({
+                "operation_id": "patina:interface/unknown.v1",
+                "args": []
+            }))
+            .unwrap(),
+        };
+
+        let response = mother_crate::http_api::handle_interface_control_call(&request, &state);
+        assert_eq!(response.status, 400);
+        let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+        assert_eq!(
+            payload.get("error").and_then(|v| v.as_str()),
+            Some("invalid_request")
+        );
+    });
+}

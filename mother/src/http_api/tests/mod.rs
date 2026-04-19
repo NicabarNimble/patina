@@ -347,6 +347,76 @@ fn ready_route_returns_204_when_runtime_is_ready() {
 }
 
 #[test]
+fn ready_route_returns_503_when_runtime_not_ready() {
+    struct NotReady;
+
+    impl HealthApi for NotReady {
+        fn version(&self) -> String {
+            "0.0.0-test".to_string()
+        }
+
+        fn uptime_secs(&self) -> u64 {
+            0
+        }
+
+        fn ready_status(&self) -> Result<bool> {
+            Ok(false)
+        }
+
+        fn health_all(&self) -> Vec<(String, crate::ChildHealth)> {
+            vec![]
+        }
+
+        fn health_details(&self) -> Result<HealthDetails> {
+            Err(anyhow::anyhow!("unused"))
+        }
+    }
+
+    let response = handle_ready(&NotReady);
+    assert_eq!(response.status, 503);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload.get("error").and_then(|v| v.as_str()),
+        Some("not_ready")
+    );
+}
+
+#[test]
+fn ready_route_returns_503_when_runtime_errors() {
+    struct ReadyUnavailable;
+
+    impl HealthApi for ReadyUnavailable {
+        fn version(&self) -> String {
+            "0.0.0-test".to_string()
+        }
+
+        fn uptime_secs(&self) -> u64 {
+            0
+        }
+
+        fn ready_status(&self) -> Result<bool> {
+            Err(anyhow::anyhow!("probe failed"))
+        }
+
+        fn health_all(&self) -> Vec<(String, crate::ChildHealth)> {
+            vec![]
+        }
+
+        fn health_details(&self) -> Result<HealthDetails> {
+            Err(anyhow::anyhow!("unused"))
+        }
+    }
+
+    let response = handle_ready(&ReadyUnavailable);
+    assert_eq!(response.status, 503);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload.get("error").and_then(|v| v.as_str()),
+        Some("not_ready")
+    );
+}
+
+#[test]
 fn interface_control_route_translates_to_native_typed_call_shape() {
     let request = HttpRequest {
         method: "POST".to_string(),
