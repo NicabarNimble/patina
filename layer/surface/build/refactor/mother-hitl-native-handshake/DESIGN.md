@@ -31,6 +31,41 @@ Principles:
 - Rivet route is adapter, not dependency.
 - tmux/session identity comes from Mother resolution result.
 
+## Cutover Checklist (No-Frankenstein Gates)
+
+This checklist is mandatory before declaring implementation complete.
+
+1. **Single authority (mhnh13)**
+   - Envelope decisions (`attach|create|choose|reject`) happen in Mother handlers only.
+   - Launcher consumes decision output and does not duplicate decision logic.
+
+2. **Legacy fallback removal (mhnh14)**
+   - Default HITL path no longer warns-and-continues when Mother checks fail.
+   - Any bypass mode is explicit, opt-in, and outside normal operator defaults.
+
+3. **Typed decision model (mhnh15)**
+   - Core control outcomes and errors use typed enums/variants.
+   - No stringly-typed branching for primary launch-state transitions.
+
+4. **State-machine proof (mhnh16)**
+   - Tests cover transitions: `ready -> handshake -> resolve -> launch -> heartbeat -> end`.
+   - Failure edges include timeout, identity rejection, ambiguous selection, stale handshake, and unknown envelope.
+
+5. **Audit readiness (mhnh17)**
+   - Invariants documented and enforced in code.
+   - IO remains bounded in launch preflight.
+   - Fail-closed defaults validated.
+   - Superseded default path code removed after parity confirmation.
+
+## Rust Systems Rigor Audit Lens
+
+If a Rust systems auditor reviewed this end state, it should satisfy:
+- **Explicit invariants** over implicit runtime assumptions.
+- **Small, bounded IO** in critical launch path.
+- **Typed state transitions** rather than ad-hoc string matching.
+- **Single source of truth** for envelope resolution.
+- **Delete-after-cutover discipline** to prevent long-lived dual-path drift.
+
 ## Contract Shape
 
 ### WIT package
