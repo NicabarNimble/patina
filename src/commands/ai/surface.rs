@@ -322,6 +322,31 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
     })
 }
 
+trait MotherControlClient {
+    fn ready(&self) -> Result<()>;
+    fn interface_control_call(
+        &self,
+        operation_id: &str,
+        args: serde_json::Value,
+        correlation: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value>;
+}
+
+impl MotherControlClient for patina::mother::Client {
+    fn ready(&self) -> Result<()> {
+        patina::mother::Client::ready(self)
+    }
+
+    fn interface_control_call(
+        &self,
+        operation_id: &str,
+        args: serde_json::Value,
+        correlation: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value> {
+        patina::mother::Client::interface_control_call(self, operation_id, args, correlation)
+    }
+}
+
 fn resolve_checkin_via_mother(
     project_root: &std::path::Path,
     interface_name: &str,
@@ -329,6 +354,22 @@ fn resolve_checkin_via_mother(
     requested_session: Option<String>,
 ) -> Result<(interface::CheckInResult, String, String)> {
     let client = patina::mother::control_plane_client();
+    resolve_checkin_via_mother_with_client(
+        project_root,
+        interface_name,
+        title,
+        requested_session,
+        &client,
+    )
+}
+
+fn resolve_checkin_via_mother_with_client(
+    project_root: &std::path::Path,
+    interface_name: &str,
+    title: Option<String>,
+    requested_session: Option<String>,
+    client: &dyn MotherControlClient,
+) -> Result<(interface::CheckInResult, String, String)> {
     client.ready().map_err(|error| {
         anyhow!(
             "Mother daemon required for HITL launch (ready probe failed). Start with `patina mother start` and retry: {}",
@@ -683,6 +724,7 @@ fn resolve_voice_uid(explicit: Option<&str>, project_root: &std::path::Path) -> 
 mod tests {
     use super::*;
     use patina::project::{self, ProjectConfig};
+    use std::cell::RefCell;
     use std::fs;
     use tempfile::TempDir;
 
@@ -844,6 +886,206 @@ mod tests {
         assert_eq!(resolved.as_deref(), Some("voice-project"));
         assert!(project::voice_path(temp.path()).exists());
         assert!(!temp.path().join(".patina/persona").exists());
+    }
+
+    struct MockMotherControlClient {
+        ready_result: Result<()>,
+        responses: RefCell<Vec<serde_json::Value>>,
+    }
+
+    impl MotherControlClient for MockMotherControlClient {
+        fn ready(&self) -> Result<()> {
+            self.ready_result
+                .as_ref()
+                .map(|_| ())
+                .map_err(|error| anyhow::anyhow!(error.to_string()))
+        }
+
+        fn interface_control_call(
+            &self,
+            _operation_id: &str,
+            _args: serde_json::Value,
+            _correlation: Option<serde_json::Value>,
+        ) -> Result<serde_json::Value> {
+            Ok(self.responses.borrow_mut().remove(0))
+        }
+    }
+
+    fn create_live_session(
+        temp: &TempDir,
+        interface_name: &str,
+    ) -> patina::session::LiveSessionHandle {
+        patina::session::begin_session(
+            temp.path(),
+            patina::session::BeginSessionRequest {
+                title: format!("{} session", interface_name),
+                interface_name: interface_name.to_string(),
+                interface_kind: patina::session::InterfaceKind::from_interface_name(interface_name),
+                voice_uid: None,
+                work_spec: None,
+                continuity_uid: None,
+                takeover_from_runtime: None,
+                takeover_user_verified: None,
+                parent_runtime_id: None,
+                handoff_from_runtime_id: None,
+                participant: None,
+            },
+        )
+        .expect("create live session")
+        .handle
+    }
+
+    #[test]
+    fn resolve_checkin_via_mother_ready_failure_is_actionable() {
+        let temp = setup_project();
+        with_temp_env(&temp, || {
+            let client = MockMotherControlClient {
+                ready_result: Err(anyhow::anyhow!("not ready")),
+                responses: RefCell::new(vec![]),
+            };
+            let error =
+                resolve_checkin_via_mother_with_client(temp.path(), "pi", None, None, &client)
+                    .unwrap_err();
+
+            assert!(error
+                .to_string()
+                .contains("Mother daemon required for HITL launch"));
+        });
+    }
+
+    #[test]
+    fn resolve_checkin_via_mother_attach_branch_returns_existing_handle() {
+        let temp = setup_project();
+        with_temp_env(&temp, || {
+            let live = create_live_session(&temp, "pi");
+            let client = MockMotherControlClient {
+                ready_result: Ok(()),
+                responses: RefCell::new(vec![
+                    serde_json::json!({
+                        "result": { "handshake_id": "hs-1" }
+                    }),
+                    serde_json::json!({
+                        "result": {
+                            "decision": "attach",
+                            "identity": {
+                                "envelope_id": "env-1",
+                                "session_runtime_id": live.runtime_id,
+                                "session_file_id": live.file_id,
+                                "tmux_lane": "pi",
+                                "interface_name": "pi",
+                                "project_uid": project::create_uid_if_missing(temp.path()).unwrap(),
+                            }
+                        }
+                    }),
+                ]),
+            };
+
+            let (checkin, envelope, lane) =
+                resolve_checkin_via_mother_with_client(temp.path(), "pi", None, None, &client)
+                    .expect("attach branch");
+
+            assert!(checkin.attached_existing);
+            assert_eq!(envelope, "env-1");
+            assert_eq!(lane, "pi");
+        });
+    }
+
+    #[test]
+    fn resolve_checkin_via_mother_create_branch_sets_attached_false() {
+        let temp = setup_project();
+        with_temp_env(&temp, || {
+            let live = create_live_session(&temp, "pi");
+            let client = MockMotherControlClient {
+                ready_result: Ok(()),
+                responses: RefCell::new(vec![
+                    serde_json::json!({
+                        "result": { "handshake_id": "hs-2" }
+                    }),
+                    serde_json::json!({
+                        "result": {
+                            "decision": "create",
+                            "identity": {
+                                "envelope_id": "env-2",
+                                "session_runtime_id": live.runtime_id,
+                                "session_file_id": live.file_id,
+                                "tmux_lane": "pi",
+                                "interface_name": "pi",
+                                "project_uid": project::create_uid_if_missing(temp.path()).unwrap(),
+                            }
+                        }
+                    }),
+                ]),
+            };
+
+            let (checkin, _, _) =
+                resolve_checkin_via_mother_with_client(temp.path(), "pi", None, None, &client)
+                    .expect("create branch");
+
+            assert!(!checkin.attached_existing);
+        });
+    }
+
+    #[test]
+    fn resolve_checkin_via_mother_choose_branch_errors_with_choices() {
+        let temp = setup_project();
+        with_temp_env(&temp, || {
+            let client = MockMotherControlClient {
+                ready_result: Ok(()),
+                responses: RefCell::new(vec![
+                    serde_json::json!({
+                        "result": { "handshake_id": "hs-3" }
+                    }),
+                    serde_json::json!({
+                        "result": {
+                            "decision": "choose",
+                            "choices": [
+                                {
+                                    "session_file_id": "20260416-1",
+                                    "session_runtime_id": "runtime-1"
+                                }
+                            ]
+                        }
+                    }),
+                ]),
+            };
+
+            let error =
+                resolve_checkin_via_mother_with_client(temp.path(), "pi", None, None, &client)
+                    .unwrap_err();
+
+            assert!(error
+                .to_string()
+                .contains("Multiple active pi sessions exist"));
+        });
+    }
+
+    #[test]
+    fn resolve_checkin_via_mother_reject_branch_surfaces_reason() {
+        let temp = setup_project();
+        with_temp_env(&temp, || {
+            let client = MockMotherControlClient {
+                ready_result: Ok(()),
+                responses: RefCell::new(vec![
+                    serde_json::json!({
+                        "result": { "handshake_id": "hs-4" }
+                    }),
+                    serde_json::json!({
+                        "result": {
+                            "decision": "reject",
+                            "reason": "policy denied"
+                        }
+                    }),
+                ]),
+            };
+
+            let error =
+                resolve_checkin_via_mother_with_client(temp.path(), "pi", None, None, &client)
+                    .unwrap_err();
+
+            assert!(error
+                .to_string()
+                .contains("Mother rejected HITL envelope resolution: policy denied"));
+        });
     }
 
     #[test]
