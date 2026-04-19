@@ -54,6 +54,7 @@ exit_criteria:
 - id: mhnh12-proof
   text: '`cargo check --workspace -q` passes and targeted tests cover readiness fast-path, Mother-required failure mode, handshake/resolve decision outcomes, and Rivet-adapter parity.'
   checked: false
+validated_against_commit: 65a8423d
 ---
 # refactor: Mother-native HITL handshake + envelope control
 
