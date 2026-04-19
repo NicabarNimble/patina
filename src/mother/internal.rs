@@ -86,6 +86,42 @@ impl Client {
             .with_context(|| "Failed to parse health response")
     }
 
+    /// Fast readiness check for launcher preflight.
+    pub fn ready(&self) -> Result<()> {
+        if self.try_uds {
+            if let Some((status, body)) = uds_request("GET", "/ready", None) {
+                if status == 204 {
+                    return Ok(());
+                }
+                let message = String::from_utf8_lossy(&body).trim().to_string();
+                if message.is_empty() {
+                    anyhow::bail!("Mother ready probe failed ({})", status);
+                }
+                anyhow::bail!("Mother ready probe failed ({}): {}", status, message);
+            }
+        }
+
+        let url = format!("{}/ready", self.base_url);
+        let mut req = self.http.get(&url);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req
+            .send()
+            .with_context(|| format!("Failed to connect to mother at {}", self.base_url))?;
+
+        if response.status().as_u16() == 204 {
+            return Ok(());
+        }
+
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        if body.trim().is_empty() {
+            anyhow::bail!("Mother ready probe failed ({})", status);
+        }
+        anyhow::bail!("Mother ready probe failed ({}): {}", status, body);
+    }
+
     /// Execute a scry query against the mother
     pub fn scry(&self, request: ScryRequest) -> Result<ScryResponse> {
         // Try UDS first for local mother
@@ -166,6 +202,52 @@ impl Client {
             "args": args,
         });
         self.child_action(child, "call", &payload)
+    }
+
+    pub fn interface_control_call(
+        &self,
+        operation_id: &str,
+        args: Value,
+        correlation: Option<Value>,
+    ) -> Result<Value> {
+        let payload = serde_json::json!({
+            "operation_id": operation_id,
+            "args": args,
+            "correlation": correlation,
+        });
+
+        if self.try_uds {
+            let body = serde_json::to_vec(&payload)?;
+            if let Some((status, resp_body)) =
+                uds_request("POST", "/api/interface/call", Some(&body))
+            {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body)
+                        .context("Failed to parse interface control response from UDS");
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("interface control call failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}/api/interface/call", self.base_url);
+        let mut req = self.http.post(&url).json(&payload);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req.send().with_context(|| {
+            format!(
+                "Failed to send interface control call request to {}",
+                self.base_url
+            )
+        })?;
+
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("interface control call failed ({}): {}", status, body);
+        }
+        serde_json::from_str(&body).with_context(|| "Failed to parse interface control response")
     }
 
     pub fn pando_registry_init(&self, request: &PandoRegistryInit) -> Result<PandoRegistryState> {
