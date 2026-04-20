@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: session-new-command-flow
-status: ready
+status: active
 created: 2026-04-20
 sessions:
   origin: 20260419-160913-422415000
@@ -42,6 +42,14 @@ exit_criteria:
 - id: sncf6-git-tag-continuity
   text: Start/end tag behavior remains unchanged (`session-<file_id>-<interface>-start/end`) and is linked in session outputs.
   checked: false
+validated_against_commit: '974705e6'
+last_freshness_check: 2026-04-20
+freshness_scope:
+- src/commands/ai/mod.rs
+- src/commands/ai/internal.rs
+- src/commands/session/internal.rs
+- src/session/internal/live.rs
+- src/interface/runtime/templates.rs
 ---
 # refactor: Rename /session-start to /session-new and align auto-session naming
 
