@@ -4,6 +4,8 @@ class Patina < Formula
   version "0.62.1"
   license "MIT"
 
+  depends_on macos: :sonoma
+
   on_macos do
     url "https://github.com/NicabarNimble/patina/releases/download/v#{version}/patina-aarch64-apple-darwin.tar.gz"
     sha256 "REPLACE_WITH_MACOS_ARM64_SHA256"
@@ -16,7 +18,7 @@ class Patina < Formula
 
   def install
     if OS.mac? && Hardware::CPU.intel?
-      odie "Patina Homebrew distribution currently supports Apple Silicon macOS only"
+      odie "Patina requires macOS 14+ on Apple Silicon"
     end
 
     bin.install "patina"

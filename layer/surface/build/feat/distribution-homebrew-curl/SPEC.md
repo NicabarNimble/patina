@@ -15,7 +15,7 @@ related:
 - layer/surface/build/feat/distribution-homebrew-curl/BREW_CORE_CHECKLIST.md
 exit_criteria:
 - id: dhc1-release-artifact-matrix
-  text: Release workflow builds tagged binaries for macOS (arm64 Apple Silicon) and Linux (x86_64), packages `patina-<target>.tar.gz`, and uploads checksums.
+  text: Release workflow builds tagged binaries for macOS 14+ (arm64 Apple Silicon) and Linux (x86_64), packages `patina-<target>.tar.gz`, and uploads checksums.
   checked: false
 - id: dhc2-curl-installer-stable-first
   text: Root `install.sh` installs Patina from GitHub Releases with checksum verification and supports explicit channel selection (stable/beta/nightly) plus version pinning.

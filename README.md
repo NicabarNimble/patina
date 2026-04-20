@@ -18,8 +18,10 @@ Patina is designed around a simple idea: project knowledge should compound inste
 
 ### Install options
 
+Supported targets: macOS 14+ (Apple Silicon) and Linux x86_64.
+
 ```bash
-# Homebrew (recommended for macOS Apple Silicon)
+# Homebrew (macOS 14+ Apple Silicon)
 brew tap NicabarNimble/tap
 brew install patina
 

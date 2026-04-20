@@ -42,6 +42,12 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
 }
 
+ensure_supported_macos() {
+  local major
+  major="$(sw_vers -productVersion | awk -F. '{print $1}')"
+  [ "${major}" -ge 14 ] || fail "Patina requires macOS 14+ on Apple Silicon"
+}
+
 resolve_target() {
   local os arch
   os="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -49,10 +55,11 @@ resolve_target() {
 
   case "${os}:${arch}" in
     darwin:arm64|darwin:aarch64)
+      ensure_supported_macos
       echo "aarch64-apple-darwin"
       ;;
     darwin:x86_64)
-      fail "unsupported platform darwin/x86_64; macOS distribution currently targets Apple Silicon only"
+      fail "Patina requires macOS 14+ on Apple Silicon"
       ;;
     linux:x86_64)
       echo "x86_64-unknown-linux-gnu"
