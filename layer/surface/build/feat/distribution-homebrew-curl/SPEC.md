@@ -19,16 +19,16 @@ exit_criteria:
   checked: false
 - id: dhc2-curl-installer-stable-first
   text: Root `install.sh` installs Patina from GitHub Releases with checksum verification and supports explicit channel selection (stable/beta/nightly) plus version pinning.
-  checked: false
+  checked: true
 - id: dhc3-homebrew-formula-template
   text: Repository contains a Homebrew formula template for `patina` with launchd service stanza using `patina mother start`.
-  checked: false
+  checked: true
 - id: dhc4-core-readiness-checklist
   text: Brew/core readiness checklist exists and is actionable as an internal release gate.
-  checked: false
+  checked: true
 - id: dhc5-docs-operator-flow
   text: README documents stable distribution flow (tap install, brew services, curl install) and update semantics.
-  checked: false
+  checked: true
 validated_against_commit: c2c73c42
 last_freshness_check: 2026-04-20
 freshness_scope:
