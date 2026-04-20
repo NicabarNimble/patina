@@ -13,7 +13,9 @@ use crate::session::{
     ArchiveSessionRequest, BeginSessionRequest, InterfaceKind, SessionParticipant, SessionStart,
 };
 
-use super::artifact::{initial_document, parse_session_ids, rewrite_document_status, NewDocument};
+use super::artifact::{
+    initial_document, parse_document, parse_session_ids, rewrite_document_status, NewDocument,
+};
 use super::ids::{generate_file_id, generate_runtime_id};
 use super::projection;
 
@@ -162,7 +164,20 @@ pub fn sync_session_document(
     let artifact_path =
         projection::write_durable_artifact(project_root, &record.file_id, &refreshed)?;
     let store = MotherRuntimeStore::default();
-    store.touch_mother_session(runtime_id, &updated_at)?;
+
+    let maybe_title = parse_document(&refreshed)
+        .map(|doc| doc.frontmatter.title.trim().to_string())
+        .filter(|title| !title.is_empty());
+    if let Some(title) = maybe_title {
+        if title != record.title {
+            store.update_mother_session_title(runtime_id, &title, &updated_at)?;
+        } else {
+            store.touch_mother_session(runtime_id, &updated_at)?;
+        }
+    } else {
+        store.touch_mother_session(runtime_id, &updated_at)?;
+    }
+
     let Some(updated) = store.get_mother_session(runtime_id)? else {
         bail!("live session {} disappeared during sync", runtime_id);
     };
@@ -190,6 +205,16 @@ pub fn archive_session(
     let artifact_path =
         projection::write_durable_artifact(project_root, &record.file_id, &archived)?;
     let store = MotherRuntimeStore::default();
+
+    let maybe_title = parse_document(&archived)
+        .map(|doc| doc.frontmatter.title.trim().to_string())
+        .filter(|title| !title.is_empty());
+    if let Some(title) = maybe_title {
+        if title != record.title {
+            store.update_mother_session_title(&request.runtime_id, &title, &updated_at)?;
+        }
+    }
+
     store.finish_mother_session(
         &request.runtime_id,
         MotherSessionStatus::Archived,
@@ -682,6 +707,99 @@ mod tests {
                 doc.frontmatter.work_spec.as_deref(),
                 Some("interface-session-artifacts")
             );
+        });
+    }
+
+    #[test]
+    fn sync_session_document_updates_mother_title_from_artifact_frontmatter() {
+        with_test_env(|temp| {
+            let mut config = ProjectConfig::with_name("patina");
+            config.interfaces.allowed = vec!["opencode".to_string()];
+            config.interfaces.default = "opencode".to_string();
+            project::save(temp.path(), &config).unwrap();
+
+            let started = begin_session(
+                temp.path(),
+                BeginSessionRequest {
+                    title: "opencode session".to_string(),
+                    interface_name: "opencode".to_string(),
+                    interface_kind: InterfaceKind::OpenCode,
+                    voice_uid: None,
+                    work_spec: Some("interface-session-artifacts".to_string()),
+                    continuity_uid: None,
+                    takeover_from_runtime: None,
+                    takeover_user_verified: None,
+                    parent_runtime_id: None,
+                    handoff_from_runtime_id: None,
+                    participant: None,
+                },
+            )
+            .unwrap();
+
+            let artifact = std::fs::read_to_string(&started.handle.artifact_path).unwrap();
+            let mut doc = crate::session::parse_document(&artifact).unwrap();
+            doc.frontmatter.title = "Refine update title".to_string();
+            let renamed = doc.render().unwrap();
+
+            let synced = sync_session_document(temp.path(), &started.handle.runtime_id, &renamed)
+                .expect("sync with renamed title");
+            assert_eq!(synced.title, "Refine update title");
+
+            let stored = MotherRuntimeStore::default()
+                .get_mother_session(&started.handle.runtime_id)
+                .unwrap()
+                .expect("mother session record");
+            assert_eq!(stored.title, "Refine update title");
+        });
+    }
+
+    #[test]
+    fn archive_session_updates_mother_title_from_artifact_frontmatter() {
+        with_test_env(|temp| {
+            let mut config = ProjectConfig::with_name("patina");
+            config.interfaces.allowed = vec!["opencode".to_string()];
+            config.interfaces.default = "opencode".to_string();
+            project::save(temp.path(), &config).unwrap();
+
+            let started = begin_session(
+                temp.path(),
+                BeginSessionRequest {
+                    title: "opencode session".to_string(),
+                    interface_name: "opencode".to_string(),
+                    interface_kind: InterfaceKind::OpenCode,
+                    voice_uid: None,
+                    work_spec: Some("interface-session-artifacts".to_string()),
+                    continuity_uid: None,
+                    takeover_from_runtime: None,
+                    takeover_user_verified: None,
+                    parent_runtime_id: None,
+                    handoff_from_runtime_id: None,
+                    participant: None,
+                },
+            )
+            .unwrap();
+
+            let artifact = std::fs::read_to_string(&started.handle.artifact_path).unwrap();
+            let mut doc = crate::session::parse_document(&artifact).unwrap();
+            doc.frontmatter.title = "Archive with renamed title".to_string();
+            let renamed = doc.render().unwrap();
+
+            let archived = archive_session(
+                temp.path(),
+                ArchiveSessionRequest {
+                    runtime_id: started.handle.runtime_id.clone(),
+                    markdown: renamed,
+                    end_tag: Some("end-tag".to_string()),
+                },
+            )
+            .expect("archive with renamed title");
+            assert_eq!(archived.title, "Archive with renamed title");
+
+            let stored = MotherRuntimeStore::default()
+                .get_mother_session(&started.handle.runtime_id)
+                .unwrap()
+                .expect("mother session record");
+            assert_eq!(stored.title, "Archive with renamed title");
         });
     }
 }

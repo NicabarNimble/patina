@@ -9,7 +9,12 @@ Update the current Patina session with Git-aware progress tracking:
 
 2. Using the returned artifact content, find the new update section. Note the time period to document.
 
-3. Fill in the update section with what happened during that time period:
+3. **First-update naming hook (auto-session enrichment)**:
+   - If this update is the first substantive update in the session (period indicates session start) and the title is still a default interface title (for example: `claude session`, `opencode session`, `gemini session`, `pi session`), propose a concise task-specific title from actual work completed.
+   - Ask for confirmation: "Rename this session to '<proposed title>'?"
+   - If approved, update the session artifact frontmatter `title:` before continuing.
+
+4. Fill in the update section with what happened during that time period:
    - **Work completed**: Code written, files modified, problems solved
    - **Discussion context**: Key questions asked, reasoning frameworks used, why we chose this approach
    - **Key decisions**: Design choices, trade-offs, reasoning behind changes
@@ -24,7 +29,7 @@ Update the current Patina session with Git-aware progress tracking:
    - Source files: backtick paths (e.g., `src/mcp/server.rs`)
    Unlinked plain-text mentions are invisible to the knowledge graph.
 
-4. **Check for beliefs to capture**: Review the update and ask yourself:
+5. **Check for beliefs to capture**: Review the update and ask yourself:
    - Any design decisions made? ("We chose X because Y")
    - Any repeated patterns? (Said 3+ times)
    - Any strong principles? ("Never do X", "Always Y")
@@ -32,4 +37,6 @@ Update the current Patina session with Git-aware progress tracking:
 
    If yes, suggest to user: "This sounds like a belief worth capturing: '{statement}'. Should I create it?"
 
-5. If the update shows a large or risky change set (30+ minutes of work or 100+ lines changed), suggest a checkpoint commit before continuing.
+6. Include current git-range context in the update narrative using the start tag from JSON (`<start_tag>..HEAD`) so tag boundaries stay visible.
+
+7. If the update shows a large or risky change set (30+ minutes of work or 100+ lines changed), suggest a checkpoint commit before continuing.
