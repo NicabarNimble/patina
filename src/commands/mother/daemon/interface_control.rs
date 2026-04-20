@@ -1,6 +1,7 @@
 use anyhow::Result;
 use chrono::{Duration, Utc};
 use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -144,6 +145,7 @@ impl EnvelopeStatus {
 struct EnvelopeRecord {
     envelope_id: String,
     project_uid: String,
+    project_root: PathBuf,
     interface_name: String,
     session_runtime_id: String,
     session_file_id: String,
@@ -171,6 +173,59 @@ fn invalid_request(message: impl Into<String>) -> anyhow::Error {
     ))
 }
 
+fn format_launch_intent(intent: LaunchIntent) -> &'static str {
+    match intent {
+        LaunchIntent::AttachOrCreate => "attach-or-create",
+        LaunchIntent::AttachOnly => "attach-only",
+        LaunchIntent::CreateOnly => "create-only",
+    }
+}
+
+fn correlation_json(
+    correlation: Option<&mother_crate::http_api::InterfaceControlCorrelation>,
+) -> Value {
+    correlation
+        .and_then(|value| serde_json::to_value(value).ok())
+        .unwrap_or(Value::Null)
+}
+
+fn emit_interface_event(
+    project_root: &Path,
+    event_type: &str,
+    source_id: &str,
+    source_file: Option<&str>,
+    payload: Value,
+) -> Result<()> {
+    let conn = patina::eventlog::open_events_db_at(project_root)?;
+    let timestamp = Utc::now().to_rfc3339();
+    patina::eventlog::insert_event(
+        &conn,
+        event_type,
+        &timestamp,
+        source_id,
+        source_file,
+        &payload.to_string(),
+    )?;
+    Ok(())
+}
+
+fn emit_interface_event_best_effort(
+    project_root: &Path,
+    event_type: &str,
+    source_id: &str,
+    source_file: Option<&str>,
+    payload: Value,
+) {
+    if let Err(error) =
+        emit_interface_event(project_root, event_type, source_id, source_file, payload)
+    {
+        eprintln!(
+            "[mother-hitl] warning: failed to emit '{}' event for '{}': {}",
+            event_type, source_id, error
+        );
+    }
+}
+
 fn ok_response(
     operation: InterfaceControlOperation,
     result: serde_json::Value,
@@ -193,17 +248,28 @@ pub(super) fn dispatch_interface_control_call(
         ))
     })?;
 
+    let correlation = request.correlation;
+
     match operation {
-        InterfaceControlOperation::HandshakeV1 => handle_handshake(operation, request.args),
-        InterfaceControlOperation::EnvelopeResolveV1 => handle_resolve(operation, request.args),
-        InterfaceControlOperation::EnvelopeHeartbeatV1 => handle_heartbeat(operation, request.args),
-        InterfaceControlOperation::EnvelopeEndV1 => handle_end(operation, request.args),
+        InterfaceControlOperation::HandshakeV1 => {
+            handle_handshake(operation, request.args, correlation.as_ref())
+        }
+        InterfaceControlOperation::EnvelopeResolveV1 => {
+            handle_resolve(operation, request.args, correlation.as_ref())
+        }
+        InterfaceControlOperation::EnvelopeHeartbeatV1 => {
+            handle_heartbeat(operation, request.args, correlation.as_ref())
+        }
+        InterfaceControlOperation::EnvelopeEndV1 => {
+            handle_end(operation, request.args, correlation.as_ref())
+        }
     }
 }
 
 fn handle_handshake(
     operation: InterfaceControlOperation,
     args: serde_json::Value,
+    correlation: Option<&mother_crate::http_api::InterfaceControlCorrelation>,
 ) -> Result<serde_json::Value> {
     prune_handshakes();
     prune_envelopes();
@@ -254,7 +320,7 @@ fn handle_handshake(
         handshake_id.clone(),
         HandshakeRecord {
             project_uid: normalized_uid.clone(),
-            project_root,
+            project_root: project_root.clone(),
             interface_name,
             launch_intent: args.launch_intent,
             requested_session: args
@@ -267,21 +333,37 @@ fn handle_handshake(
         },
     );
 
-    Ok(ok_response(
-        operation,
+    let result = serde_json::json!({
+        "handshake_id": handshake_id.clone(),
+        "mother_version": env!("CARGO_PKG_VERSION"),
+        "project_uid": normalized_uid,
+        "control_plane_ready": true,
+        "expires_at": expires_at.to_rfc3339(),
+    });
+
+    emit_interface_event_best_effort(
+        &project_root,
+        "interface.handshake",
+        handshake_id.as_str(),
+        None,
         serde_json::json!({
-            "handshake_id": handshake_id,
-            "mother_version": env!("CARGO_PKG_VERSION"),
-            "project_uid": normalized_uid,
-            "control_plane_ready": true,
-            "expires_at": expires_at.to_rfc3339(),
+            "operation_id": operation.as_str(),
+            "project_uid": args.project_uid,
+            "interface": args.interface_name,
+            "launch_intent": format_launch_intent(args.launch_intent),
+            "tty": args.tty,
+            "result": result.clone(),
+            "correlation": correlation_json(correlation),
         }),
-    ))
+    );
+
+    Ok(ok_response(operation, result))
 }
 
 fn handle_resolve(
     operation: InterfaceControlOperation,
     args: serde_json::Value,
+    correlation: Option<&mother_crate::http_api::InterfaceControlCorrelation>,
 ) -> Result<serde_json::Value> {
     prune_handshakes();
     prune_envelopes();
@@ -359,12 +441,49 @@ fn handle_resolve(
         }),
     };
 
+    let decision_name = result
+        .get("decision")
+        .and_then(|value| value.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let source_id = result
+        .get("identity")
+        .and_then(|identity| identity.get("session_file_id"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("resolve");
+    let source_file_owned = result
+        .get("identity")
+        .and_then(|identity| identity.get("session_file_id"))
+        .and_then(|value| value.as_str())
+        .map(|file_id| {
+            patina::session::durable_session_path(&handshake.project_root, file_id)
+                .display()
+                .to_string()
+        });
+
+    emit_interface_event_best_effort(
+        &handshake.project_root,
+        "interface.envelope.resolve",
+        source_id,
+        source_file_owned.as_deref(),
+        serde_json::json!({
+            "operation_id": operation.as_str(),
+            "project_uid": handshake.project_uid,
+            "interface": handshake.interface_name,
+            "decision": decision_name,
+            "result": result.clone(),
+            "correlation": correlation_json(correlation),
+        }),
+    );
+
     Ok(ok_response(operation, result))
 }
 
 fn handle_heartbeat(
     operation: InterfaceControlOperation,
     args: serde_json::Value,
+    correlation: Option<&mother_crate::http_api::InterfaceControlCorrelation>,
 ) -> Result<serde_json::Value> {
     prune_envelopes();
 
@@ -382,7 +501,7 @@ fn handle_heartbeat(
         .map_err(|error| invalid_request(format!("invalid observed_at timestamp: {}", error)))?
         .with_timezone(&Utc);
 
-    let (session_runtime_id, session_file_id, tmux_lane) = {
+    let (project_root, interface_name, session_runtime_id, session_file_id, tmux_lane) = {
         let mut store = envelope_store()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -405,30 +524,49 @@ fn handle_heartbeat(
         record.updated_at = Utc::now();
 
         (
+            record.project_root.clone(),
+            record.interface_name.clone(),
             record.session_runtime_id.clone(),
             record.session_file_id.clone(),
             record.tmux_lane.clone(),
         )
     };
 
-    Ok(ok_response(
-        operation,
+    let result = serde_json::json!({
+        "ok": true,
+        "detail": "heartbeat acknowledged",
+        "envelope_id": envelope_id,
+        "session_runtime_id": session_runtime_id,
+        "session_file_id": session_file_id,
+        "pid": args.pid,
+        "tmux_lane": tmux_lane,
+        "observed_at": observed_at.to_rfc3339(),
+    });
+
+    let source_file = patina::session::durable_session_path(&project_root, &session_file_id)
+        .display()
+        .to_string();
+    emit_interface_event_best_effort(
+        &project_root,
+        "interface.envelope.heartbeat",
+        &session_file_id,
+        Some(source_file.as_str()),
         serde_json::json!({
-            "ok": true,
-            "detail": "heartbeat acknowledged",
+            "operation_id": operation.as_str(),
             "envelope_id": envelope_id,
-            "session_runtime_id": session_runtime_id,
-            "session_file_id": session_file_id,
-            "pid": args.pid,
-            "tmux_lane": tmux_lane,
-            "observed_at": observed_at.to_rfc3339(),
+            "interface": interface_name,
+            "result": result.clone(),
+            "correlation": correlation_json(correlation),
         }),
-    ))
+    );
+
+    Ok(ok_response(operation, result))
 }
 
 fn handle_end(
     operation: InterfaceControlOperation,
     args: serde_json::Value,
+    correlation: Option<&mother_crate::http_api::InterfaceControlCorrelation>,
 ) -> Result<serde_json::Value> {
     prune_envelopes();
 
@@ -440,7 +578,7 @@ fn handle_end(
     }
 
     let now = Utc::now();
-    let (session_runtime_id, session_file_id, detail, ended_at) = {
+    let (project_root, interface_name, session_runtime_id, session_file_id, detail, ended_at) = {
         let mut store = envelope_store()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -459,6 +597,8 @@ fn handle_end(
                 };
                 record.updated_at = now;
                 (
+                    record.project_root.clone(),
+                    record.interface_name.clone(),
                     record.session_runtime_id.clone(),
                     record.session_file_id.clone(),
                     "envelope ended".to_string(),
@@ -469,6 +609,8 @@ fn handle_end(
                 reason: existing_reason,
                 ended_at,
             } => (
+                record.project_root.clone(),
+                record.interface_name.clone(),
                 record.session_runtime_id.clone(),
                 record.session_file_id.clone(),
                 format!("envelope already ended: {}", existing_reason),
@@ -477,18 +619,34 @@ fn handle_end(
         }
     };
 
-    Ok(ok_response(
-        operation,
+    let result = serde_json::json!({
+        "ok": true,
+        "detail": detail,
+        "envelope_id": envelope_id,
+        "session_runtime_id": session_runtime_id,
+        "session_file_id": session_file_id,
+        "reason": args.reason,
+        "ended_at": ended_at,
+    });
+
+    let source_file = patina::session::durable_session_path(&project_root, &session_file_id)
+        .display()
+        .to_string();
+    emit_interface_event_best_effort(
+        &project_root,
+        "interface.envelope.end",
+        &session_file_id,
+        Some(source_file.as_str()),
         serde_json::json!({
-            "ok": true,
-            "detail": detail,
+            "operation_id": operation.as_str(),
             "envelope_id": envelope_id,
-            "session_runtime_id": session_runtime_id,
-            "session_file_id": session_file_id,
-            "reason": args.reason,
-            "ended_at": ended_at,
+            "interface": interface_name,
+            "result": result.clone(),
+            "correlation": correlation_json(correlation),
         }),
-    ))
+    );
+
+    Ok(ok_response(operation, result))
 }
 
 fn active_interface_sessions(
@@ -636,6 +794,7 @@ fn get_or_create_active_envelope_for_session(
     let record = EnvelopeRecord {
         envelope_id: envelope_id.clone(),
         project_uid: handshake.project_uid.clone(),
+        project_root: handshake.project_root.clone(),
         interface_name: handshake.interface_name.clone(),
         session_runtime_id: handle.runtime_id.clone(),
         session_file_id: handle.file_id.clone(),
@@ -1141,6 +1300,32 @@ mod tests {
                     .and_then(|value| value.as_bool()),
                 Some(true)
             );
+
+            let conn = patina::eventlog::open_events_db_at(&project_root).expect("open events db");
+            let resolve_events: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
+                    ["interface.envelope.resolve"],
+                    |row| row.get(0),
+                )
+                .expect("count resolve events");
+            let heartbeat_events: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
+                    ["interface.envelope.heartbeat"],
+                    |row| row.get(0),
+                )
+                .expect("count heartbeat events");
+            let end_events: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
+                    ["interface.envelope.end"],
+                    |row| row.get(0),
+                )
+                .expect("count end events");
+            assert!(resolve_events >= 1);
+            assert!(heartbeat_events >= 1);
+            assert!(end_events >= 1);
 
             let heartbeat_after_end = dispatch_interface_control_call(
                 mother_crate::http_api::InterfaceControlCallRequest {
