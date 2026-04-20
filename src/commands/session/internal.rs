@@ -5,9 +5,9 @@
 use anyhow::{bail, Result};
 use chrono::{Local, Utc};
 use serde::Serialize;
-use serde_json::json;
-use std::fs::{self, OpenOptions};
-use std::io::{BufRead, Write};
+use serde_json::{json, Value};
+use std::fs;
+use std::io::{BufRead, IsTerminal as _, Write};
 use std::path::{Path, PathBuf};
 
 use patina::git;
@@ -168,6 +168,10 @@ pub(crate) fn start_session_value(
             interface_name: interface.clone(),
             interface_kind: mode.interface_kind(),
             voice_uid: None,
+            work_spec: std::env::var("PATINA_WORK_SPEC").ok(),
+            continuity_uid: None,
+            takeover_from_runtime: None,
+            takeover_user_verified: None,
             parent_runtime_id: None,
             handoff_from_runtime_id: None,
             participant: Some(SessionParticipant {
@@ -302,6 +306,30 @@ pub(crate) fn resolve_live_session(
         1 => Ok(sessions.remove(0)),
         0 => bail!("No active session found"),
         _ => {
+            if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+                eprintln!("Multiple active sessions match. Choose one:");
+                for (idx, handle) in sessions.iter().enumerate() {
+                    eprintln!(
+                        "  {}. {} [{}] ({})",
+                        idx + 1,
+                        handle.file_id,
+                        handle.interface_name,
+                        handle.title
+                    );
+                }
+                eprint!("> ");
+                std::io::stdout().flush().ok();
+
+                let mut input = String::new();
+                if std::io::stdin().read_line(&mut input).is_ok() {
+                    if let Ok(index) = input.trim().parse::<usize>() {
+                        if (1..=sessions.len()).contains(&index) {
+                            return Ok(sessions.remove(index - 1));
+                        }
+                    }
+                }
+            }
+
             let choices = sessions
                 .iter()
                 .map(|handle| format!("{} ({})", handle.file_id, handle.title))
@@ -333,6 +361,17 @@ fn update_session_document_value(
     let runtime_id = read_session_field(session_path, "**Runtime ID**: ")?;
     let starting_commit = read_session_field(session_path, "**Starting Commit**: ")?;
     let session_tag = read_session_field(session_path, "**Session Tag**: ").unwrap_or_default();
+    let interface = read_session_field(session_path, "**LLM**: ").unwrap_or_default();
+
+    let current_markdown = fs::read_to_string(session_path)?;
+    let parsed_doc = session::parse_document(&current_markdown);
+    let since_rfc3339 = parsed_doc
+        .as_ref()
+        .map(|doc| doc.frontmatter.updated.clone())
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
+    let source_log_hint = parsed_doc
+        .as_ref()
+        .and_then(|doc| doc.frontmatter.source_log.clone());
 
     let branch = git::current_branch().unwrap_or_else(|_| "detached".to_string());
     let commits_this_session = git::commits_since_count(&starting_commit).unwrap_or(0);
@@ -363,6 +402,18 @@ fn update_session_document_value(
         "\n### {} - Update (covering since {})\n",
         time_str, last_update
     );
+
+    let mut pi_distill = None;
+    if interface == "pi" {
+        pi_distill =
+            distill_pi_log_activity(project_root, &since_rfc3339, source_log_hint.as_deref())?;
+        if let Some(summary) = &pi_distill {
+            update_section.push('\n');
+            update_section.push_str(&summary.block);
+            update_section.push('\n');
+        }
+    }
+
     update_section.push_str("\n**Git Activity:**\n");
     update_section.push_str(&format!(
         "- Commits this session: {}{}\n",
@@ -403,10 +454,25 @@ fn update_session_document_value(
     update_section.push_str(&format!("- Last commit: {}\n", last_commit_time));
     update_section.push('\n');
 
-    let mut file = OpenOptions::new().append(true).open(session_path)?;
-    file.write_all(update_section.as_bytes())?;
-    let current_markdown = fs::read_to_string(session_path)?;
-    let synced = session::sync_session_document(project_root, &runtime_id, &current_markdown)?;
+    let mut updated_markdown =
+        append_to_section(&current_markdown, "## Activity Log", &update_section);
+
+    if let Some(summary) = pi_distill {
+        if let Some(mut doc) = session::parse_document(&updated_markdown) {
+            doc.frontmatter.source_log = Some(summary.source_log_path);
+            doc.frontmatter.source_log_span_start = summary.span_start;
+            doc.frontmatter.source_log_span_end = summary.span_end;
+            updated_markdown = doc.render()?;
+        }
+    }
+
+    session::validate_canonical_section_frame(
+        &session::parse_document(&updated_markdown)
+            .map(|doc| doc.body)
+            .unwrap_or_default(),
+    )?;
+    fs::write(session_path, &updated_markdown)?;
+    let synced = session::sync_session_document(project_root, &runtime_id, &updated_markdown)?;
 
     if let Some(path) = last_update_path {
         fs::write(path, &time_str)?;
@@ -505,7 +571,15 @@ fn end_session_document_value(
     }
 
     let mut appendix = String::new();
-    appendix.push_str(&format!("\n## Beliefs Captured: {}\n", beliefs_captured));
+    appendix.push_str("\n### Session Classification\n");
+    appendix.push_str(&format!("- Work Type: {classification}\n"));
+    appendix.push_str(&format!("- Files Changed: {files_changed}\n"));
+    appendix.push_str(&format!("- Commits: {commits_made}\n"));
+    appendix.push_str(&format!("- Patterns Modified: {patterns_modified}\n"));
+    appendix.push_str(&format!("- Beliefs Captured: {beliefs_captured}\n"));
+    appendix.push_str(&format!("- Session Tags: {session_tag}..{end_tag}\n"));
+
+    appendix.push_str("\n### Beliefs Captured\n");
     if beliefs_captured > 0 {
         for line in &beliefs_summary {
             appendix.push_str(&format!("{line}\n"));
@@ -514,24 +588,21 @@ fn end_session_document_value(
         appendix.push_str("_No beliefs captured this session_\n");
     }
 
-    appendix.push_str("\n## Session Classification\n");
-    appendix.push_str(&format!("- Work Type: {classification}\n"));
-    appendix.push_str(&format!("- Files Changed: {files_changed}\n"));
-    appendix.push_str(&format!("- Commits: {commits_made}\n"));
-    appendix.push_str(&format!("- Patterns Modified: {patterns_modified}\n"));
-    appendix.push_str(&format!("- Beliefs Captured: {beliefs_captured}\n"));
-    appendix.push_str(&format!("- Session Tags: {session_tag}..{end_tag}\n"));
-
     let prompts = extract_user_prompts(project_root, session_path);
     if !prompts.is_empty() {
-        appendix.push_str(&format!("\n## User Prompts ({})\n\n", prompts.len()));
+        appendix.push_str(&format!("\n### User Prompts ({})\n\n", prompts.len()));
         for (i, prompt) in prompts.iter().enumerate() {
             let display = truncate(prompt, 97).replace('`', "\\`");
             appendix.push_str(&format!("{}. `{}`\n", i + 1, display));
         }
     }
 
-    session_content.push_str(&appendix);
+    session_content = append_to_section(&session_content, "## Outcome", &appendix);
+    session::validate_canonical_section_frame(
+        &session::parse_document(&session_content)
+            .map(|doc| doc.body)
+            .unwrap_or_default(),
+    )?;
     fs::write(session_path, &session_content)?;
 
     let archived = session::archive_session(
@@ -624,10 +695,218 @@ fn last_update_from_document(session_path: &Path) -> String {
 }
 
 fn append_outcome_note(markdown: &str, note: &str) -> String {
-    if let Some((head, tail)) = markdown.split_once("## Outcome\n") {
-        return format!("{head}## Outcome\n{note}\n\n{tail}");
+    let note_block = format!("\n{note}\n");
+    append_to_section(markdown, "## Outcome", &note_block)
+}
+
+fn append_to_section(markdown: &str, section_heading: &str, content: &str) -> String {
+    let Some((head, tail)) = markdown.split_once(section_heading) else {
+        return format!("{markdown}\n\n{section_heading}\n{content}\n");
+    };
+
+    let insertion = if content.starts_with('\n') {
+        content.to_string()
+    } else {
+        format!("\n{content}")
+    };
+
+    let next_top_level = tail.find("\n## ");
+    match next_top_level {
+        Some(idx) => {
+            let (section_body, rest) = tail.split_at(idx);
+            format!(
+                "{head}{section_heading}{section_body}{insertion}{rest}",
+                head = head,
+                section_heading = section_heading,
+                section_body = section_body,
+                insertion = insertion,
+                rest = rest
+            )
+        }
+        None => format!(
+            "{head}{section_heading}{tail}{insertion}\n",
+            head = head,
+            section_heading = section_heading,
+            tail = tail,
+            insertion = insertion
+        ),
     }
-    format!("{markdown}\n\n## Outcome\n{note}\n")
+}
+
+#[derive(Debug, Clone)]
+struct PiDistillSummary {
+    block: String,
+    source_log_path: String,
+    span_start: Option<String>,
+    span_end: Option<String>,
+}
+
+fn distill_pi_log_activity(
+    project_root: &Path,
+    since_rfc3339: &str,
+    source_log_hint: Option<&str>,
+) -> Result<Option<PiDistillSummary>> {
+    let log_path = if let Some(source_log_hint) = source_log_hint {
+        let hinted = PathBuf::from(source_log_hint);
+        if hinted.exists() {
+            hinted
+        } else {
+            match resolve_latest_pi_log_path(project_root)? {
+                Some(path) => path,
+                None => return Ok(None),
+            }
+        }
+    } else {
+        match resolve_latest_pi_log_path(project_root)? {
+            Some(path) => path,
+            None => return Ok(None),
+        }
+    };
+
+    let since = chrono::DateTime::parse_from_rfc3339(since_rfc3339)
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now());
+
+    let file = match fs::File::open(&log_path) {
+        Ok(file) => file,
+        Err(_) => return Ok(None),
+    };
+
+    let mut user_messages = 0usize;
+    let mut assistant_messages = 0usize;
+    let mut tool_calls = 0usize;
+    let mut errors = 0usize;
+    let mut first_ts: Option<chrono::DateTime<Utc>> = None;
+    let mut last_ts: Option<chrono::DateTime<Utc>> = None;
+
+    for line in std::io::BufReader::new(file).lines() {
+        let Ok(line) = line else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+
+        let Some(ts) = parse_pi_event_timestamp(&value) else {
+            continue;
+        };
+        if ts <= since {
+            continue;
+        }
+
+        first_ts = Some(first_ts.map_or(ts, |first| first.min(ts)));
+        last_ts = Some(last_ts.map_or(ts, |last| last.max(ts)));
+
+        if value.get("type").and_then(Value::as_str) == Some("error") {
+            errors += 1;
+        }
+
+        if value.get("type").and_then(Value::as_str) == Some("message") {
+            if let Some(role) = value
+                .get("message")
+                .and_then(|message| message.get("role"))
+                .and_then(Value::as_str)
+            {
+                match role {
+                    "user" => user_messages += 1,
+                    "assistant" => assistant_messages += 1,
+                    _ => {}
+                }
+            }
+
+            tool_calls += value
+                .get("message")
+                .and_then(|message| message.get("content"))
+                .and_then(Value::as_array)
+                .map(|chunks| {
+                    chunks
+                        .iter()
+                        .filter(|chunk| {
+                            chunk.get("type").and_then(Value::as_str) == Some("toolCall")
+                        })
+                        .count()
+                })
+                .unwrap_or(0);
+        }
+    }
+
+    let source_log_path = log_path.display().to_string();
+    if first_ts.is_none() {
+        return Ok(Some(PiDistillSummary {
+            block: format!(
+                "**PI Distilled Activity:**\n- Source log: `{}`\n- Span: no new PI log events since {}\n",
+                source_log_path,
+                since.to_rfc3339()
+            ),
+            source_log_path,
+            span_start: None,
+            span_end: None,
+        }));
+    }
+
+    let span_start = first_ts.map(|ts| ts.to_rfc3339());
+    let span_end = last_ts.map(|ts| ts.to_rfc3339());
+    let total_messages = user_messages + assistant_messages;
+    Ok(Some(PiDistillSummary {
+        block: format!(
+            "**PI Distilled Activity:**\n- Source log: `{}`\n- Span: {} -> {}\n- Messages: {} (user {}, assistant {})\n- Tool calls: {}\n- Errors: {}\n",
+            source_log_path,
+            span_start.clone().unwrap_or_else(|| since.to_rfc3339()),
+            span_end.clone().unwrap_or_else(|| since.to_rfc3339()),
+            total_messages,
+            user_messages,
+            assistant_messages,
+            tool_calls,
+            errors
+        ),
+        source_log_path,
+        span_start,
+        span_end,
+    }))
+}
+
+fn parse_pi_event_timestamp(value: &Value) -> Option<chrono::DateTime<Utc>> {
+    let timestamp = value.get("timestamp")?.as_str()?;
+    chrono::DateTime::parse_from_rfc3339(timestamp)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn resolve_latest_pi_log_path(project_root: &Path) -> Result<Option<PathBuf>> {
+    let home = match std::env::var("HOME") {
+        Ok(home) => PathBuf::from(home),
+        Err(_) => return Ok(None),
+    };
+
+    let canonical = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    let normalized = canonical
+        .to_string_lossy()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+
+    let sessions_dir = home
+        .join(".pi")
+        .join("agent")
+        .join("sessions")
+        .join(format!("--{}--", normalized));
+
+    if !sessions_dir.is_dir() {
+        return Ok(None);
+    }
+
+    let mut candidates = fs::read_dir(&sessions_dir)?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"))
+        .collect::<Vec<_>>();
+
+    candidates.sort();
+    Ok(candidates.pop())
 }
 
 pub(crate) fn note_live_session(
@@ -654,16 +933,21 @@ fn note_session_document(
     let sha = git::short_sha().unwrap_or_else(|_| "no-commits".to_string());
     let git_context = format!("[{}@{}]", branch, sha);
 
-    // 3. Append timestamped note to active session markdown
+    // 3. Append timestamped note under Activity Log in active session markdown
     let now = Local::now();
     let time_str = now.format("%H:%M").to_string();
     let note_section = format!("\n### {} - Note {}\n{}\n", time_str, git_context, content);
 
-    let mut file = OpenOptions::new().append(true).open(session_path)?;
-    file.write_all(note_section.as_bytes())?;
     let runtime_id = read_session_field(session_path, "**Runtime ID**: ")?;
     let current_markdown = fs::read_to_string(session_path)?;
-    let _ = session::sync_session_document(project_root, &runtime_id, &current_markdown);
+    let updated_markdown = append_to_section(&current_markdown, "## Activity Log", &note_section);
+    session::validate_canonical_section_frame(
+        &session::parse_document(&updated_markdown)
+            .map(|doc| doc.body)
+            .unwrap_or_default(),
+    )?;
+    fs::write(session_path, &updated_markdown)?;
+    let _ = session::sync_session_document(project_root, &runtime_id, &updated_markdown);
 
     // 4. Write session.observation event to eventlog
     //    Read session ID from the active session file for the source_id
@@ -992,6 +1276,26 @@ mod tests {
     }
 
     #[test]
+    fn start_session_writes_continuity_and_work_spec_fields() {
+        let temp = setup_project();
+        let started = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("Native session", "opencode"),
+            )
+            .unwrap()
+        });
+
+        let artifact = fs::read_to_string(&started.artifact_path).unwrap();
+        let doc = session::parse_document(&artifact).expect("parse session doc");
+        assert_eq!(doc.frontmatter.work_spec.as_deref(), Some("unspecified"));
+        assert_eq!(
+            doc.frontmatter.continuity_uid.as_deref(),
+            Some(started.runtime_id.as_str())
+        );
+    }
+
+    #[test]
     fn session_update_result_json_is_machine_readable() {
         let result = SessionUpdateResult {
             command: "update",
@@ -1144,6 +1448,43 @@ mod tests {
         assert!(artifact.contains("captured wrapper-first UX"));
         assert!(artifact.contains("### "));
         assert!(!temp.path().join(".patina/local/active-session.md").exists());
+
+        let doc = session::parse_document(&artifact).expect("parse session doc");
+        assert!(session::validate_canonical_section_frame(&doc.body).is_ok());
+    }
+
+    #[test]
+    fn end_live_session_keeps_canonical_top_level_headings_only() {
+        let temp = setup_project();
+        let started = in_project(temp.path(), || {
+            start_session_value(
+                temp.path(),
+                SessionStartRequest::native("Native session", "opencode"),
+            )
+            .unwrap()
+        });
+
+        let handle = in_project(temp.path(), || {
+            resolve_live_session(temp.path(), Some(&started.runtime_id), None).unwrap()
+        });
+
+        in_project(temp.path(), || {
+            end_live_session_value(temp.path(), &handle, Some("archive")).unwrap()
+        });
+
+        let artifact = fs::read_to_string(&started.artifact_path).unwrap();
+        let doc = session::parse_document(&artifact).expect("parse archived session doc");
+        assert!(session::validate_canonical_section_frame(&doc.body).is_ok());
+        let top_level_headings = doc
+            .body
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.starts_with("## "))
+            .collect::<Vec<_>>();
+        assert!(!top_level_headings.contains(&"## Session Classification"));
+        assert!(!top_level_headings.contains(&"## Beliefs Captured"));
+        assert!(!top_level_headings.contains(&"## User Prompts"));
+        assert!(doc.body.contains("### Session Classification"));
     }
 
     #[test]
@@ -1169,5 +1510,66 @@ mod tests {
         });
 
         assert!(!pointer_path.exists());
+    }
+
+    #[test]
+    fn distill_pi_log_activity_summarizes_jsonl_span() {
+        let _guard = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path().join("proj");
+        fs::create_dir_all(&project_root).unwrap();
+        let home = temp.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+
+        let old_home = std::env::var_os("HOME");
+        unsafe {
+            std::env::set_var("HOME", &home);
+        }
+
+        let canonical = project_root.canonicalize().unwrap();
+        let normalized = canonical
+            .to_string_lossy()
+            .chars()
+            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string();
+        let sessions_dir = home
+            .join(".pi")
+            .join("agent")
+            .join("sessions")
+            .join(format!("--{}--", normalized));
+        fs::create_dir_all(&sessions_dir).unwrap();
+
+        let log_path = sessions_dir.join("2026-04-16T12-00-00-000Z_test.jsonl");
+        fs::write(
+            &log_path,
+            "{\"type\":\"session\",\"timestamp\":\"2026-04-16T12:00:00Z\"}\n\
+             {\"type\":\"message\",\"timestamp\":\"2026-04-16T12:01:00Z\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}}\n\
+             {\"type\":\"message\",\"timestamp\":\"2026-04-16T12:02:00Z\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"toolCall\",\"name\":\"bash\"}]}}\n\
+             {\"type\":\"error\",\"timestamp\":\"2026-04-16T12:03:00Z\"}\n",
+        )
+        .unwrap();
+
+        let summary = distill_pi_log_activity(&project_root, "2026-04-16T12:00:30Z", None)
+            .unwrap()
+            .unwrap();
+        assert!(summary.block.contains("Messages: 2 (user 1, assistant 1)"));
+        assert!(summary.block.contains("Tool calls: 1"));
+        assert!(summary.block.contains("Errors: 1"));
+        assert!(summary.span_start.is_some());
+        assert!(summary.span_end.is_some());
+
+        match old_home {
+            Some(value) => unsafe {
+                std::env::set_var("HOME", value);
+            },
+            None => unsafe {
+                std::env::remove_var("HOME");
+            },
+        }
     }
 }

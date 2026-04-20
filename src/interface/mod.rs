@@ -17,9 +17,7 @@ pub use internal::bundle::{
     builtin_registry_toml, interface_bundle, interface_bundle_catalog, is_supported_ai_interface,
     supported_ai_interfaces, BundleTmuxPolicy, InterfaceBundle,
 };
-pub use internal::checkin::{
-    check_in, session_writer_action, CheckInResult, InterfaceCapabilities, InterfaceCheckIn,
-};
+pub use internal::checkin::{session_writer_action, CheckInResult, InterfaceCapabilities};
 pub use internal::launcher::{
     derive_interface_session_name, launch_interface_cli, teardown_interface_tmux_lane,
 };

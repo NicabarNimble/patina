@@ -9,6 +9,7 @@ mod child;
 mod federation;
 mod health;
 mod inspector;
+mod interface_control;
 mod lifecycle;
 mod pando;
 mod rivet;
@@ -16,8 +17,11 @@ mod scry;
 mod secrets;
 
 pub use child::handle_child_request;
-pub use health::{handle_health, handle_version};
+pub use health::{handle_health, handle_ready, handle_version};
 pub use inspector::handle_inspector_typed_calls;
+pub use interface_control::{
+    handle_interface_control_call, InterfaceControlCallRequest, InterfaceControlCorrelation,
+};
 pub use lifecycle::{
     handle_lifecycle_load_pando, handle_lifecycle_refresh, handle_lifecycle_reload_child,
     handle_lifecycle_warmup_children, LifecycleError,
@@ -38,6 +42,7 @@ pub struct ScryHit {
 pub trait ApiRuntime {
     fn version(&self) -> String;
     fn uptime_secs(&self) -> u64;
+    fn ready_status(&self) -> Result<bool>;
     fn health_all(&self) -> Vec<(String, crate::ChildHealth)>;
     fn health_details(&self) -> Result<HealthDetails>;
     fn child_health(&self, child_name: &str) -> Result<crate::ChildHealth>;
@@ -85,6 +90,10 @@ pub trait ApiRuntime {
     fn lifecycle_refresh(&self) -> Result<crate::PandoRefreshResult>;
     fn lifecycle_reload_child(&self, name: &str) -> Result<crate::ChildReloadResult>;
     fn lifecycle_warmup_children(&self) -> Result<crate::ChildWarmupResult>;
+    fn interface_control_call(
+        &self,
+        request: InterfaceControlCallRequest,
+    ) -> Result<serde_json::Value>;
     fn rivet_dispatch(&self, request: RivetDispatchRequest) -> Result<serde_json::Value>;
     fn typed_call_history(&self, limit: usize) -> Result<serde_json::Value>;
     fn builtin_spec_dispatch(
@@ -102,6 +111,7 @@ pub trait ApiRuntime {
 pub trait HealthApi {
     fn version(&self) -> String;
     fn uptime_secs(&self) -> u64;
+    fn ready_status(&self) -> Result<bool>;
     fn health_all(&self) -> Vec<(String, crate::ChildHealth)>;
     fn health_details(&self) -> Result<HealthDetails>;
 }
@@ -113,6 +123,10 @@ impl<T: ApiRuntime + ?Sized> HealthApi for T {
 
     fn uptime_secs(&self) -> u64 {
         ApiRuntime::uptime_secs(self)
+    }
+
+    fn ready_status(&self) -> Result<bool> {
+        ApiRuntime::ready_status(self)
     }
 
     fn health_all(&self) -> Vec<(String, crate::ChildHealth)> {
@@ -274,6 +288,22 @@ impl<T: ApiRuntime + ?Sized> RivetApi for T {
     }
 }
 
+pub trait InterfaceControlApi {
+    fn interface_control_call(
+        &self,
+        request: InterfaceControlCallRequest,
+    ) -> Result<serde_json::Value>;
+}
+
+impl<T: ApiRuntime + ?Sized> InterfaceControlApi for T {
+    fn interface_control_call(
+        &self,
+        request: InterfaceControlCallRequest,
+    ) -> Result<serde_json::Value> {
+        ApiRuntime::interface_control_call(self, request)
+    }
+}
+
 pub trait InspectorApi {
     fn typed_call_history(&self, limit: usize) -> Result<serde_json::Value>;
 }
@@ -410,6 +440,7 @@ pub struct ProjectDatabases {
 
 pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTable {
     let health_runtime = Arc::clone(&runtime);
+    let ready_runtime = Arc::clone(&runtime);
     let version_runtime = Arc::clone(&runtime);
     let atlas_dashboard_runtime = Arc::clone(&runtime);
     let atlas_runtime = Arc::clone(&runtime);
@@ -427,12 +458,14 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let lifecycle_refresh_runtime = Arc::clone(&runtime);
     let lifecycle_reload_runtime = Arc::clone(&runtime);
     let lifecycle_warmup_runtime = Arc::clone(&runtime);
+    let interface_control_runtime = Arc::clone(&runtime);
     let rivet_dispatch_runtime = Arc::clone(&runtime);
     let inspector_typed_calls_runtime = Arc::clone(&runtime);
     let child_runtime = Arc::clone(&runtime);
 
     RouteTable {
         get_health: Arc::new(move |_request| health::handle_health(&*health_runtime)),
+        get_ready: Arc::new(move |_request| health::handle_ready(&*ready_runtime)),
         get_version: Arc::new(move |_request| health::handle_version(&*version_runtime)),
         get_atlas_dashboard: Arc::new(move |_request| {
             atlas::handle_atlas_dashboard(&*atlas_dashboard_runtime)
@@ -475,6 +508,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         }),
         post_lifecycle_warmup_children: Arc::new(move |request| {
             lifecycle::handle_lifecycle_warmup_children(request, &*lifecycle_warmup_runtime)
+        }),
+        post_interface_call: Arc::new(move |request| {
+            interface_control::handle_interface_control_call(request, &*interface_control_runtime)
         }),
         post_rivet_dispatch: Arc::new(move |request| {
             rivet::handle_rivet_dispatch(request, &*rivet_dispatch_runtime)

@@ -133,65 +133,109 @@ fn derive_session_name(project_path: &Path) -> String {
     format!("patina_{}_{:08x}", slug, hash)
 }
 
-pub fn derive_interface_session_name(project_path: &Path, adapter_name: &str) -> String {
+pub fn derive_interface_session_name(
+    project_path: &Path,
+    adapter_name: &str,
+    session_target: Option<&str>,
+) -> String {
     let lane: String = adapter_name
         .to_lowercase()
         .chars()
         .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
         .collect();
-    format!("{}_{}", derive_session_name(project_path), lane)
+
+    let target = session_target
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            value
+                .chars()
+                .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+                .collect::<String>()
+        })
+        .map(|value| {
+            if value.len() > 24 {
+                value[..24].to_string()
+            } else {
+                value
+            }
+        });
+
+    match target {
+        Some(target) => format!("{}_{}_{}", derive_session_name(project_path), lane, target),
+        None => format!("{}_{}", derive_session_name(project_path), lane),
+    }
 }
 
-pub fn teardown_interface_tmux_lane(project_path: &Path, adapter_name: &str) -> Result<bool> {
+pub fn teardown_interface_tmux_lane(
+    project_path: &Path,
+    adapter_name: &str,
+    session_target: Option<&str>,
+) -> Result<bool> {
     #[cfg(unix)]
     {
         if which::which("tmux").is_err() {
             return Ok(false);
         }
 
-        let session_name = derive_interface_session_name(project_path, adapter_name);
-        let tmux_socket = derive_tmux_socket_name(&session_name);
-
-        let has_session = Command::new("tmux")
-            .arg("-L")
-            .arg(&tmux_socket)
-            .args(["has-session", "-t", &session_name])
-            .status();
-
-        let Ok(status) = has_session else {
-            return Ok(false);
-        };
-        if !status.success() {
-            return Ok(false);
+        let mut names = vec![derive_interface_session_name(
+            project_path,
+            adapter_name,
+            session_target,
+        )];
+        if session_target.is_some() {
+            let legacy = derive_interface_session_name(project_path, adapter_name, None);
+            if !names.iter().any(|name| name == &legacy) {
+                names.push(legacy);
+            }
         }
 
-        let kill_status = Command::new("tmux")
-            .arg("-L")
-            .arg(&tmux_socket)
-            .args(["kill-session", "-t", &session_name])
-            .status()?;
+        for session_name in names {
+            let tmux_socket = derive_tmux_socket_name(&session_name);
+            let has_session = Command::new("tmux")
+                .arg("-L")
+                .arg(&tmux_socket)
+                .args(["has-session", "-t", &session_name])
+                .status();
 
-        if !kill_status.success() {
-            bail!(
-                "Failed to kill tmux session '{}' on socket '{}'",
-                session_name,
-                tmux_socket
-            );
+            let Ok(status) = has_session else {
+                continue;
+            };
+            if !status.success() {
+                continue;
+            }
+
+            let kill_status = Command::new("tmux")
+                .arg("-L")
+                .arg(&tmux_socket)
+                .args(["kill-session", "-t", &session_name])
+                .status()?;
+
+            if !kill_status.success() {
+                bail!(
+                    "Failed to kill tmux session '{}' on socket '{}'",
+                    session_name,
+                    tmux_socket
+                );
+            }
+
+            let _ = Command::new("tmux")
+                .arg("-L")
+                .arg(&tmux_socket)
+                .arg("kill-server")
+                .status();
+
+            return Ok(true);
         }
 
-        let _ = Command::new("tmux")
-            .arg("-L")
-            .arg(&tmux_socket)
-            .arg("kill-server")
-            .status();
-
-        Ok(true)
+        Ok(false)
     }
 
     #[cfg(not(unix))]
     {
         let _ = project_path;
         let _ = adapter_name;
+        let _ = session_target;
         Ok(false)
     }
 }
@@ -313,19 +357,26 @@ mod tests {
     #[test]
     fn interface_lane_names_are_stable_per_adapter() {
         let path = Path::new("/tmp/patina");
-        let first = derive_interface_session_name(path, "opencode");
-        let second = derive_interface_session_name(path, "opencode");
+        let first = derive_interface_session_name(path, "opencode", None);
+        let second = derive_interface_session_name(path, "opencode", None);
         assert_eq!(first, second);
     }
 
     #[test]
     fn interface_lane_names_do_not_collide_across_interfaces() {
         let path = Path::new("/tmp/patina");
-        let opencode = derive_interface_session_name(path, "opencode");
-        let gemini = derive_interface_session_name(path, "gemini");
+        let opencode = derive_interface_session_name(path, "opencode", None);
+        let gemini = derive_interface_session_name(path, "gemini", None);
         assert_ne!(opencode, gemini);
         assert!(opencode.ends_with("_opencode"));
         assert!(gemini.ends_with("_gemini"));
+    }
+
+    #[test]
+    fn interface_lane_names_include_session_target_when_provided() {
+        let path = Path::new("/tmp/patina");
+        let lane = derive_interface_session_name(path, "pi", Some("20260416-080506-702140000"));
+        assert!(lane.contains("_pi_"));
     }
 
     #[cfg(unix)]

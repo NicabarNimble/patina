@@ -3,18 +3,14 @@
 //! Handles the launch flow: workspace check → mother → project check → bootstrap → launch
 
 use anyhow::{bail, Context, Result};
-use serde_json::Value;
 use std::env;
 use std::fs;
-use std::io::{self, Read as _, Write};
+use std::io::{self, IsTerminal as _, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::thread;
-use std::time::Duration;
 
 use patina::git;
 use patina::interface::launch as interfaces;
-use patina::paths;
+use patina::mother::MotherRuntimeStore;
 use patina::project;
 
 use super::LaunchOptions;
@@ -37,12 +33,20 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
 
     let is_patina_project = project::is_patina_project(&project_path);
     let interface_name: String;
+    let decision_path: String;
 
     if !is_patina_project {
         if options.auto_init {
+            if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+                bail!(
+                    "Not a patina project (expected .patina/config.toml and layer/).\n\
+                     Run `patina init .` first, or launch from an interactive TTY for guided setup."
+                );
+            }
             match prompt_are_you_lost(&project_path, explicit_interface.as_deref())? {
                 Some(selected) => {
                     interface_name = selected;
+                    decision_path = "init".to_string();
                 }
                 None => {
                     return Ok(());
@@ -56,13 +60,20 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     } else {
         let project_config = project::load_with_migration(&project_path)?;
-        interface_name = explicit_interface.unwrap_or_else(|| {
-            if !project_config.interfaces.default.is_empty() {
-                project_config.interfaces.default.clone()
-            } else {
-                interfaces::default_interface_name().unwrap_or_else(|_| "claude".to_string())
-            }
-        });
+
+        interface_name = if let Some(explicit) = explicit_interface {
+            decision_path = "direct".to_string();
+            explicit
+        } else if io::stdin().is_terminal() && io::stdout().is_terminal() {
+            decision_path = "picker".to_string();
+            prompt_existing_project_interface(&project_path, &project_config.interfaces.default)?
+        } else if !project_config.interfaces.default.is_empty() {
+            decision_path = "direct".to_string();
+            project_config.interfaces.default.clone()
+        } else {
+            decision_path = "direct".to_string();
+            interfaces::default_interface_name().unwrap_or_else(|_| "claude".to_string())
+        };
 
         let iface_info = interfaces::get(&interface_name)?;
         if !iface_info.detected {
@@ -90,6 +101,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         set_default: false,
         tmux: false,
         no_tmux: false,
+        decision_path: Some(decision_path),
     })
 }
 
@@ -105,108 +117,6 @@ pub(crate) fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
         .with_context(|| format!("Project path does not exist: {}", path.display()))?;
 
     Ok(canonical)
-}
-
-fn mother_uptime_secs() -> Option<u64> {
-    let sock_path = paths::serve::socket_path();
-    let mut stream = match std::os::unix::net::UnixStream::connect(&sock_path) {
-        Ok(s) => s,
-        Err(_) => return None,
-    };
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
-
-    let request = "GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n";
-    if stream.write_all(request.as_bytes()).is_err() {
-        return None;
-    }
-
-    let mut buf = vec![0u8; 1024];
-    match stream.read(&mut buf) {
-        Ok(n) if n > 0 => {
-            let response = &buf[..n];
-            let body_start = response
-                .windows(4)
-                .position(|window| window == b"\r\n\r\n")?
-                + 4;
-            let body = &response[body_start..];
-            let payload: Value = serde_json::from_slice(body).ok()?;
-            payload.get("uptime_secs")?.as_u64()
-        }
-        _ => None,
-    }
-}
-
-fn mother_pid() -> Option<u32> {
-    fs::read_to_string(paths::serve::pid_path())
-        .ok()?
-        .trim()
-        .parse()
-        .ok()
-}
-
-fn format_uptime_secs(total_secs: u64) -> String {
-    let days = total_secs / 86_400;
-    let hours = (total_secs % 86_400) / 3_600;
-    let minutes = (total_secs % 3_600) / 60;
-
-    if days > 0 {
-        format!("{}d{}h", days, hours)
-    } else if hours > 0 {
-        format!("{}h{}m", hours, minutes)
-    } else {
-        format!("{}m", minutes)
-    }
-}
-
-/// Ensure mother is running, start if needed
-pub(crate) fn ensure_mother_running() -> Result<()> {
-    if let Some(uptime_secs) = mother_uptime_secs() {
-        let pid = mother_pid()
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-        println!(
-            "  ✓ Mother running (PID {}, uptime {})",
-            pid,
-            format_uptime_secs(uptime_secs)
-        );
-        return Ok(());
-    }
-
-    println!("  ⏳ Starting mother...");
-    start_mother_daemon()?;
-
-    // Wait for it to come up
-    for _ in 0..10 {
-        thread::sleep(Duration::from_millis(500));
-        if let Some(uptime_secs) = mother_uptime_secs() {
-            let pid = mother_pid()
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            println!(
-                "  ✓ Mother started (PID {}, uptime {})",
-                pid,
-                format_uptime_secs(uptime_secs)
-            );
-            return Ok(());
-        }
-    }
-
-    bail!("Failed to start mother daemon")
-}
-
-/// Start mother as background daemon
-pub fn start_mother_daemon() -> Result<()> {
-    let patina_bin = env::current_exe().context("getting current executable path")?;
-
-    Command::new(&patina_bin)
-        .args(["mother", "start"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .context("spawning mother daemon")?;
-
-    Ok(())
 }
 
 /// "Are you lost?" prompt - show git context and offer to initialize.
@@ -251,7 +161,7 @@ pub(crate) fn prompt_are_you_lost(
     }
 
     println!();
-    print!("Initialize as patina project? [y/N]: ");
+    print!("Initialize this directory as a Patina project? [y/N]: ");
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -279,6 +189,82 @@ pub(crate) fn prompt_are_you_lost(
     } else {
         Ok(None)
     }
+}
+
+fn prompt_existing_project_interface(project_path: &Path, project_default: &str) -> Result<String> {
+    let all_interfaces = interfaces::list()?;
+    let available: Vec<_> = all_interfaces.into_iter().filter(|a| a.detected).collect();
+
+    if available.is_empty() {
+        bail!(
+            "No AI interfaces detected on this system. Install one of: {}",
+            interfaces::list()?
+                .iter()
+                .map(|iface| iface.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
+    let preference = read_project_last_interface(project_path)
+        .or_else(|| {
+            if project_default.trim().is_empty() {
+                None
+            } else {
+                Some(project_default.trim().to_string())
+            }
+        })
+        .or_else(|| interfaces::default_interface_name().ok());
+
+    let default_idx = preference
+        .as_deref()
+        .and_then(|pref| available.iter().position(|a| a.name == pref))
+        .map(|idx| idx + 1)
+        .unwrap_or(1);
+
+    println!("\n📱 Available HITL interfaces:");
+    for (idx, interface) in available.iter().enumerate() {
+        let number = idx + 1;
+        let marker = if number == default_idx {
+            " (default)"
+        } else {
+            ""
+        };
+        println!("  [{}] {}{}", number, interface.display, marker);
+    }
+
+    print!("\nSelect interface [{}]: ", default_idx);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    let choice = input.trim();
+    let selected_idx = if choice.is_empty() {
+        default_idx
+    } else {
+        choice.parse::<usize>().unwrap_or(default_idx)
+    };
+
+    let safe_idx = if (1..=available.len()).contains(&selected_idx) {
+        selected_idx
+    } else {
+        default_idx
+    };
+
+    Ok(available[safe_idx - 1].name.clone())
+}
+
+fn read_project_last_interface(project_path: &Path) -> Option<String> {
+    let project_uid = project::get_uid(project_path)?;
+    let key = format!("project:{}:last_interface", project_uid);
+    let runtime = MotherRuntimeStore::default();
+    runtime
+        .get_state("interface-launch", &key)
+        .ok()
+        .flatten()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 /// Format remote URL for display (strip git@/https://, .git suffix)
@@ -424,6 +410,7 @@ fn initialize_project(project_path: &Path, interface_name: &str) -> Result<bool>
             interface: Some(interface_name.to_string()),
             path: Some(project_path.display().to_string()),
             force: false,
+            all: false,
         });
 
     if let Err(e) = setup_result {
@@ -474,6 +461,7 @@ fn try_get_claude_token() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use patina::mother::MotherRuntimeStore;
     use std::fs;
     use std::process::Command;
     use tempfile::TempDir;
@@ -585,7 +573,74 @@ mod tests {
     }
 
     #[test]
-    fn initialize_project_prepares_unified_ai_surface_and_default() {
+    fn launch_non_project_requires_tty_for_guided_init() {
+        // This assertion intentionally validates non-interactive behavior used in CI/automation.
+        // In a real interactive TTY run, `patina` should show the guided init prompt instead.
+        let _lock = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = TempDir::new().unwrap();
+
+        let result = launch(LaunchOptions {
+            path: Some(temp.path().display().to_string()),
+            interface: None,
+            auto_start_mother: true,
+            auto_init: true,
+        });
+
+        assert!(result.is_err());
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("interactive TTY for guided setup"));
+    }
+
+    #[test]
+    fn read_project_last_interface_returns_none_without_uid() {
+        let temp = TempDir::new().unwrap();
+        assert!(read_project_last_interface(temp.path()).is_none());
+    }
+
+    #[test]
+    fn read_project_last_interface_returns_stored_value() {
+        let _lock = patina::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = TempDir::new().unwrap();
+
+        let patina_home = temp.path().join("patina-home");
+        fs::create_dir_all(&patina_home).unwrap();
+
+        let old_patina_home = env::var_os("PATINA_HOME");
+        unsafe {
+            env::set_var("PATINA_HOME", &patina_home);
+        }
+
+        let uid = project::create_uid_if_missing(temp.path()).unwrap();
+        let runtime = MotherRuntimeStore::default();
+        runtime
+            .put_state(
+                "interface-launch",
+                &format!("project:{}:last_interface", uid),
+                "pi",
+            )
+            .unwrap();
+
+        assert_eq!(
+            read_project_last_interface(temp.path()).as_deref(),
+            Some("pi")
+        );
+
+        match old_patina_home {
+            Some(value) => unsafe {
+                env::set_var("PATINA_HOME", value);
+            },
+            None => unsafe {
+                env::remove_var("PATINA_HOME");
+            },
+        }
+    }
+
+    #[test]
+    fn initialize_project_prepares_selected_interface_bundle_and_default() {
         let _lock = patina::test_support::env_test_mutex()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
@@ -662,16 +717,7 @@ mod tests {
             .iter()
             .any(|name| name == "gemini"));
         assert!(temp.path().join("AGENTS.md").exists());
-        assert!(temp.path().join("CLAUDE.md").exists());
         assert!(temp.path().join("GEMINI.md").exists());
-        assert!(temp
-            .path()
-            .join(".claude/commands/session-start.md")
-            .exists());
-        assert!(temp
-            .path()
-            .join(".opencode/commands/session-start.md")
-            .exists());
         assert!(temp
             .path()
             .join(".gemini/commands/session-start.toml")

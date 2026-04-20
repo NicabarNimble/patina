@@ -4,7 +4,8 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 pub use internal::artifact::{
-    parse_document, parse_session_ids, rewrite_document_status, SessionDocument, SessionFrontmatter,
+    parse_document, parse_session_ids, rewrite_document_status, validate_canonical_section_frame,
+    SessionDocument, SessionFrontmatter,
 };
 pub use internal::live::LiveSessionHandle;
 
@@ -56,6 +57,10 @@ pub struct BeginSessionRequest {
     pub interface_name: String,
     pub interface_kind: InterfaceKind,
     pub voice_uid: Option<String>,
+    pub work_spec: Option<String>,
+    pub continuity_uid: Option<String>,
+    pub takeover_from_runtime: Option<String>,
+    pub takeover_user_verified: Option<bool>,
     pub parent_runtime_id: Option<String>,
     pub handoff_from_runtime_id: Option<String>,
     pub participant: Option<SessionParticipant>,

@@ -173,6 +173,11 @@ mod tests {
                             &serde_json::json!({"ok": true}),
                         )
                     }),
+                    get_ready: Arc::new(|_| crate::http_daemon::HttpResponse {
+                        status: 204,
+                        headers: vec![],
+                        body: vec![],
+                    }),
                     get_version: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
@@ -242,6 +247,9 @@ mod tests {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     post_lifecycle_warmup_children: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_interface_call: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     post_rivet_dispatch: Arc::new(|_| {
@@ -294,6 +302,11 @@ mod tests {
                             &serde_json::json!({"ok": true}),
                         )
                     }),
+                    get_ready: Arc::new(|_| crate::http_daemon::HttpResponse {
+                        status: 204,
+                        headers: vec![],
+                        body: vec![],
+                    }),
                     get_version: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
@@ -363,6 +376,9 @@ mod tests {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     post_lifecycle_warmup_children: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_interface_call: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     post_rivet_dispatch: Arc::new(|_| {

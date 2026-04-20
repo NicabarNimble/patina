@@ -10,6 +10,10 @@ impl ApiRuntime for ServerState {
         self.uptime_secs()
     }
 
+    fn ready_status(&self) -> anyhow::Result<bool> {
+        Ok(self.query_readiness().control_plane_ready)
+    }
+
     fn health_all(&self) -> Vec<(String, patina::mother::ChildHealth)> {
         self.services.health.child_health_all(&self.registry)
     }
@@ -211,6 +215,13 @@ impl ApiRuntime for ServerState {
         self.warmup_children_now()
     }
 
+    fn interface_control_call(
+        &self,
+        request: mother_crate::http_api::InterfaceControlCallRequest,
+    ) -> anyhow::Result<serde_json::Value> {
+        super::interface_control::dispatch_interface_control_call(request)
+    }
+
     fn rivet_dispatch(
         &self,
         request: mother_crate::http_api::RivetDispatchRequest,
@@ -223,15 +234,35 @@ impl ApiRuntime for ServerState {
             ));
         }
 
+        let dispatch_target =
+            |child: &str,
+             operation_id: &str,
+             args: &serde_json::Value,
+             correlation: Option<patina::mother::CallCorrelation>| {
+                if child == "interface-control" {
+                    return super::interface_control::dispatch_interface_control_call(
+                        mother_crate::http_api::InterfaceControlCallRequest {
+                            operation_id: operation_id.to_string(),
+                            args: args.clone(),
+                            correlation: None,
+                        },
+                    );
+                }
+
+                let call = patina::mother::ChildCallRequest {
+                    operation_id: operation_id.to_string(),
+                    args: args.clone(),
+                    correlation,
+                };
+                self.registry
+                    .call(child, &call)
+                    .map(|response| response.payload)
+            };
+
         let delivery = request.delivery_policy();
         let operation_id = request.operation_id.clone();
         let args = request.args.clone();
         let correlation = request.correlation.clone();
-        let call = patina::mother::ChildCallRequest {
-            operation_id: operation_id.clone(),
-            args: args.clone(),
-            correlation: correlation.clone(),
-        };
 
         let map_primary_error = |error: anyhow::Error| {
             let detail = error.to_string();
@@ -244,14 +275,14 @@ impl ApiRuntime for ServerState {
             }
         };
 
-        match self.registry.call(&request.child, &call) {
-            Ok(response) => Ok(serde_json::json!({
+        match dispatch_target(&request.child, &operation_id, &args, correlation.clone()) {
+            Ok(payload) => Ok(serde_json::json!({
                 "adapter": "rivet",
                 "child": request.child,
                 "operation_id": operation_id,
                 "delivery": delivery,
                 "status": "delivered",
-                "payload": response.payload,
+                "payload": payload,
             })),
             Err(primary_error) => match delivery {
                 mother_crate::pando::PandoDeliveryPolicy::Required => {
@@ -275,13 +306,14 @@ impl ApiRuntime for ServerState {
                         .operation_id
                         .clone()
                         .unwrap_or_else(|| operation_id.clone());
-                    let dead_letter_call = patina::mother::ChildCallRequest {
-                        operation_id: dead_letter_operation.clone(),
-                        args,
+
+                    match dispatch_target(
+                        &dead_letter.child,
+                        &dead_letter_operation,
+                        &args,
                         correlation,
-                    };
-                    match self.registry.call(&dead_letter.child, &dead_letter_call) {
-                        Ok(dead_response) => Ok(serde_json::json!({
+                    ) {
+                        Ok(dead_payload) => Ok(serde_json::json!({
                             "adapter": "rivet",
                             "child": request.child,
                             "operation_id": operation_id,
@@ -292,7 +324,7 @@ impl ApiRuntime for ServerState {
                                 "child": dead_letter.child,
                                 "operation_id": dead_letter_operation,
                             },
-                            "payload": dead_response.payload,
+                            "payload": dead_payload,
                         })),
                         Err(dead_error) => Err(anyhow::anyhow!(
                             "dead_letter_failed: primary='{}'; dead_letter='{}'",

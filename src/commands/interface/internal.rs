@@ -68,6 +68,7 @@ mod tests {
                 interface: None,
                 path: Some(temp.path().display().to_string()),
                 force: false,
+                all: true,
             })
             .unwrap();
         });

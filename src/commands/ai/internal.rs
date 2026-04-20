@@ -114,7 +114,7 @@ pub fn end(
     stage_session_artifacts(&project_root, &handle.artifact_path)?;
     let commit_message =
         maybe_commit_session_artifacts(&handle.file_id, &handle.interface_name, auto_commit)?;
-    teardown_tmux_lane_best_effort(&project_root, &handle.interface_name);
+    teardown_tmux_lane_best_effort(&project_root, &handle.interface_name, Some(&handle.file_id));
 
     if json_output {
         println!(
@@ -204,7 +204,7 @@ fn end_session(
     stage_session_artifacts(&project_root, &artifact_path)?;
     let commit_message =
         maybe_commit_session_artifacts(&result.session_id, &result.interface, auto_commit)?;
-    teardown_tmux_lane_best_effort(&project_root, &result.interface);
+    teardown_tmux_lane_best_effort(&project_root, &result.interface, Some(&result.session_id));
 
     if json_output {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -261,8 +261,16 @@ fn append_outcome_note(markdown: &str, note: &str) -> String {
     format!("{markdown}\n\n## Outcome\n{note}\n")
 }
 
-fn teardown_tmux_lane_best_effort(project_root: &Path, interface_name: &str) {
-    match patina::interface::teardown_interface_tmux_lane(project_root, interface_name) {
+fn teardown_tmux_lane_best_effort(
+    project_root: &Path,
+    interface_name: &str,
+    session_target: Option<&str>,
+) {
+    match patina::interface::teardown_interface_tmux_lane(
+        project_root,
+        interface_name,
+        session_target,
+    ) {
         Ok(true) => {
             eprintln!(
                 "Patina: closed tmux lane for interface '{}' after session end.",

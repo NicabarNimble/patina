@@ -11,6 +11,10 @@ impl ApiRuntime for StubRuntime {
         42
     }
 
+    fn ready_status(&self) -> Result<bool> {
+        Ok(true)
+    }
+
     fn health_all(&self) -> Vec<(String, crate::ChildHealth)> {
         vec![("ducklake".to_string(), crate::ChildHealth::Healthy)]
     }
@@ -190,6 +194,19 @@ impl ApiRuntime for StubRuntime {
         })
     }
 
+    fn interface_control_call(
+        &self,
+        request: InterfaceControlCallRequest,
+    ) -> Result<serde_json::Value> {
+        Ok(serde_json::json!({
+            "adapter": "native",
+            "operation_id": request.operation_id,
+            "args": request.args,
+            "correlation": request.correlation,
+            "status": "scaffold"
+        }))
+    }
+
     fn rivet_dispatch(&self, request: RivetDispatchRequest) -> Result<serde_json::Value> {
         Ok(serde_json::json!({
             "child": request.child,
@@ -320,6 +337,127 @@ fn health_response_includes_additive_deep_fields() {
             .and_then(|v| v.as_str()),
         Some("catalog")
     );
+}
+
+#[test]
+fn ready_route_returns_204_when_runtime_is_ready() {
+    let response = handle_ready(&StubRuntime);
+    assert_eq!(response.status, 204);
+    assert!(response.body.is_empty());
+}
+
+#[test]
+fn ready_route_returns_503_when_runtime_not_ready() {
+    struct NotReady;
+
+    impl HealthApi for NotReady {
+        fn version(&self) -> String {
+            "0.0.0-test".to_string()
+        }
+
+        fn uptime_secs(&self) -> u64 {
+            0
+        }
+
+        fn ready_status(&self) -> Result<bool> {
+            Ok(false)
+        }
+
+        fn health_all(&self) -> Vec<(String, crate::ChildHealth)> {
+            vec![]
+        }
+
+        fn health_details(&self) -> Result<HealthDetails> {
+            Err(anyhow::anyhow!("unused"))
+        }
+    }
+
+    let response = handle_ready(&NotReady);
+    assert_eq!(response.status, 503);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload.get("error").and_then(|v| v.as_str()),
+        Some("not_ready")
+    );
+}
+
+#[test]
+fn ready_route_returns_503_when_runtime_errors() {
+    struct ReadyUnavailable;
+
+    impl HealthApi for ReadyUnavailable {
+        fn version(&self) -> String {
+            "0.0.0-test".to_string()
+        }
+
+        fn uptime_secs(&self) -> u64 {
+            0
+        }
+
+        fn ready_status(&self) -> Result<bool> {
+            Err(anyhow::anyhow!("probe failed"))
+        }
+
+        fn health_all(&self) -> Vec<(String, crate::ChildHealth)> {
+            vec![]
+        }
+
+        fn health_details(&self) -> Result<HealthDetails> {
+            Err(anyhow::anyhow!("unused"))
+        }
+    }
+
+    let response = handle_ready(&ReadyUnavailable);
+    assert_eq!(response.status, 503);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload.get("error").and_then(|v| v.as_str()),
+        Some("not_ready")
+    );
+}
+
+#[test]
+fn interface_control_route_translates_to_native_typed_call_shape() {
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/interface/call".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&serde_json::json!({
+            "operation_id": "patina:interface/handshake.v1",
+            "args": {"project_uid": "2bdc808e"},
+            "correlation": {
+                "project_uid": "2bdc808e",
+                "interface": "pi",
+                "launch_id": "launch-1"
+            }
+        }))
+        .unwrap(),
+    };
+
+    let response = handle_interface_control_call(&request, &StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload.get("adapter").and_then(|v| v.as_str()),
+        Some("native")
+    );
+    assert_eq!(
+        payload.get("operation_id").and_then(|v| v.as_str()),
+        Some("patina:interface/handshake.v1")
+    );
+}
+
+#[test]
+fn interface_control_route_rejects_missing_operation_id() {
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/interface/call".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&serde_json::json!({"args": []})).unwrap(),
+    };
+
+    let response = handle_interface_control_call(&request, &StubRuntime);
+    assert_eq!(response.status, 400);
 }
 
 #[test]
@@ -609,6 +747,7 @@ fn route_table_wiring_preserves_handler_surface() {
         body: vec![],
     };
     assert_eq!((routes.get_health)(&get).status, 200);
+    assert_eq!((routes.get_ready)(&get).status, 204);
     assert_eq!((routes.get_version)(&get).status, 200);
 
     let lifecycle_request = HttpRequest {
@@ -621,6 +760,18 @@ fn route_table_wiring_preserves_handler_surface() {
         (routes.post_lifecycle_load_pando)(&lifecycle_request).status,
         200
     );
+
+    let interface_request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/interface/call".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&serde_json::json!({
+            "operation_id": "patina:interface/handshake.v1",
+            "args": []
+        }))
+        .unwrap(),
+    };
+    assert_eq!((routes.post_interface_call)(&interface_request).status, 200);
 
     let rivet_request = HttpRequest {
         method: "POST".to_string(),
