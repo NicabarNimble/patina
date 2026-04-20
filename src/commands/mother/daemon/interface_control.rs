@@ -120,7 +120,7 @@ struct HandshakeRecord {
 }
 
 enum ResolveDecision {
-    Attach(patina::session::LiveSessionHandle),
+    Attach(Box<patina::session::LiveSessionHandle>),
     Create,
     Choose(Vec<patina::session::LiveSessionHandle>),
     Reject(String),
@@ -866,7 +866,7 @@ fn decide_resolution(
             .into_iter()
             .find(|session| session.runtime_id == selector || session.file_id == selector)
         {
-            return ResolveDecision::Attach(handle);
+            return ResolveDecision::Attach(Box::new(handle));
         }
 
         return ResolveDecision::Reject(format!("requested session '{}' is not active", selector));
@@ -878,12 +878,12 @@ fn decide_resolution(
             0 => ResolveDecision::Reject(
                 "launch_intent=attach-only but no active envelope exists".to_string(),
             ),
-            1 => ResolveDecision::Attach(sessions.into_iter().next().expect("singleton")),
+            1 => ResolveDecision::Attach(Box::new(sessions.into_iter().next().expect("singleton"))),
             _ => ResolveDecision::Choose(sessions),
         },
         LaunchIntent::AttachOrCreate => match sessions.len() {
             0 => ResolveDecision::Create,
-            1 => ResolveDecision::Attach(sessions.into_iter().next().expect("singleton")),
+            1 => ResolveDecision::Attach(Box::new(sessions.into_iter().next().expect("singleton"))),
             _ => ResolveDecision::Choose(sessions),
         },
     }
