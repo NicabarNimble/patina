@@ -16,10 +16,39 @@ Patina is designed around a simple idea: project knowledge should compound inste
 
 ## Quick Start
 
-```bash
-# Install the CLI
-cargo install --path .
+### Install options
 
+```bash
+# Homebrew (recommended for macOS)
+brew tap NicabarNimble/tap
+brew install patina
+
+# curl installer (stable channel default)
+curl -fsSL https://raw.githubusercontent.com/NicabarNimble/patina/main/install.sh | bash
+
+# Source install (developer path)
+cargo install --path .
+```
+
+### Release channels (curl installer)
+
+```bash
+# Stable (default)
+curl -fsSL https://raw.githubusercontent.com/NicabarNimble/patina/main/install.sh | bash
+
+# Beta (moving tag `beta`)
+curl -fsSL https://raw.githubusercontent.com/NicabarNimble/patina/main/install.sh | bash -s -- --channel beta
+
+# Nightly (moving tag `nightly`)
+curl -fsSL https://raw.githubusercontent.com/NicabarNimble/patina/main/install.sh | bash -s -- --channel nightly
+
+# Pin explicit version
+curl -fsSL https://raw.githubusercontent.com/NicabarNimble/patina/main/install.sh | bash -s -- --version 0.62.1
+```
+
+### First run
+
+```bash
 # First-run setup
 patina setup grammars
 
@@ -41,6 +70,16 @@ patina scry "error handling patterns"
 patina assay search "child engine"
 patina context --topic "testing"
 ```
+
+### Managed daemon (Homebrew)
+
+```bash
+brew services start patina
+brew services status patina
+brew services restart patina
+```
+
+Homebrew users should prefer `brew services` over manual `nohup` process management.
 
 Once configured, running bare `patina` launches the default interface.
 
@@ -109,12 +148,12 @@ rg '"event_type":"mother.grant"' layer/events.jsonl
 ### Project workflow
 
 ```bash
-patina session start "feature name"
-patina session update
-patina session note "important insight"
-patina session end
+patina ai session new "feature boundary"
+patina ai session update
+patina ai session note "important insight"
+patina ai session end
 
-patina spec create feature-name
+patina spec create feat feature-name
 patina spec ready
 patina spec promote feature-name
 patina spec complete feature-name
