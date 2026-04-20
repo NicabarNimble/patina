@@ -277,6 +277,67 @@ allow = ["patina:watch/control.status"]
 }
 
 #[test]
+fn rivet_dispatch_interface_control_child_uses_native_interface_handler() {
+    with_temp_project(|project_root| {
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Enabled,
+            registry: ChildRegistry::new(),
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let project_uid = patina::project::create_uid_if_missing(project_root).unwrap();
+
+        let response = state
+            .rivet_dispatch(mother_crate::http_api::RivetDispatchRequest {
+                child: "interface-control".to_string(),
+                operation_id: "patina:interface/handshake.v1".to_string(),
+                args: serde_json::json!({
+                    "protocol_version": "0.1",
+                    "cli_version": env!("CARGO_PKG_VERSION"),
+                    "project_uid": project_uid,
+                    "project_root": project_root.display().to_string(),
+                    "interface_name": "pi",
+                    "interface_kind": "hitl",
+                    "launch_intent": "attach-or-create",
+                    "tty": false
+                }),
+                correlation: None,
+                delivery: None,
+                dead_letter: None,
+            })
+            .expect("rivet interface-control dispatch should use native interface handler");
+
+        assert_eq!(
+            response.get("adapter").and_then(|v| v.as_str()),
+            Some("rivet")
+        );
+        assert_eq!(
+            response
+                .get("payload")
+                .and_then(|v| v.get("adapter"))
+                .and_then(|v| v.as_str()),
+            Some("native")
+        );
+        assert_eq!(
+            response
+                .get("payload")
+                .and_then(|v| v.get("operation_id"))
+                .and_then(|v| v.as_str()),
+            Some("patina:interface/handshake.v1")
+        );
+    });
+}
+
+#[test]
 fn rivet_dispatch_required_maps_unknown_child_to_not_found() {
     with_temp_project(|project_root| {
         let runtime_store = patina::mother::MotherRuntimeStore::new(

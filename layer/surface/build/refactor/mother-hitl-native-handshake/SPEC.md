@@ -20,57 +20,57 @@ related:
 exit_criteria:
 - id: mhnh1-mother-required-hitl
   text: "HITL launch path fails closed when Mother is unavailable; no best-effort local fallback in default policy."
-  checked: false
+  checked: true
 - id: mhnh2-fast-ready-probe
   text: "Launch preflight uses a bounded fast readiness probe (status-line based) and avoids multi-second blocking loops."
-  checked: false
+  checked: true
 - id: mhnh3-native-hitl-api-surface
   text: "Mother exposes native HITL control operations (`handshake`, `resolve-envelope`, `heartbeat`, `end-envelope`) through a dedicated interface control route."
-  checked: false
+  checked: true
 - id: mhnh4-wit-contract-source-of-truth
   text: "HITL control request/response types are defined in WIT and used as the canonical contract source."
-  checked: false
+  checked: true
 - id: mhnh5-rivet-shape-native-core
   text: "Native HITL route adopts Rivet-style operation envelope semantics (`operation_id`, `args`, `correlation`) without requiring Rivet integration mode."
-  checked: false
+  checked: true
 - id: mhnh6-rivet-optional-adapter
   text: "Existing `/api/rivet/dispatch` remains an optional ingress adapter and can invoke the same internal typed operations when enabled."
-  checked: false
+  checked: true
 - id: mhnh7-envelope-authority-in-mother
   text: "Mother is authoritative for `(project, interface)` envelope resolution (`attach|create|choose|reject`) and returns deterministic session/lane metadata."
-  checked: false
+  checked: true
 - id: mhnh8-identity-handshake-fields
   text: "Handshake contract includes protocol version, CLI version, project uid, project root, interface identity, and launch intent."
-  checked: false
+  checked: true
 - id: mhnh9-tmux-lane-contract
   text: "Launcher uses Mother-returned envelope/session lane identity for tmux launch/reattach behavior."
-  checked: false
+  checked: true
 - id: mhnh10-observability
   text: "Typed launch operations emit stable events with correlation and decision fields for audit/debugging."
-  checked: false
+  checked: true
 - id: mhnh11-no-regression-existing-hitl
   text: "Existing HITL UX goals remain intact (picker behavior, selected/default setup behavior, direct `patina ai <interface>` path)."
-  checked: false
+  checked: true
 - id: mhnh12-proof
   text: "`cargo check --workspace -q` passes and targeted tests cover readiness fast-path, Mother-required failure mode, handshake/resolve decision outcomes, and Rivet-adapter parity."
-  checked: false
+  checked: true
 - id: mhnh13-single-authority
   text: "Envelope attach/create/choose/reject decision logic has a single authority in Mother; launcher no longer performs parallel decision logic for HITL envelope resolution."
-  checked: false
+  checked: true
 - id: mhnh14-legacy-hitl-fallback-removed
   text: "Legacy HITL fallback path (warn-and-continue without Mother authority) is removed from default path; any override mode is explicit and non-default."
-  checked: false
+  checked: true
 - id: mhnh15-typed-decision-model
   text: "Decision outcomes and errors are represented with typed enums/variants in code paths, avoiding stringly-typed branching for core control flow."
-  checked: false
+  checked: true
 - id: mhnh16-state-machine-tests
   text: "State-machine tests cover launch transitions (`ready`, `handshake`, `resolve`, `launch`, `heartbeat`, `end`) including failure edges and ambiguous session selection behavior."
-  checked: false
+  checked: true
 - id: mhnh17-audit-readiness
   text: "Spec end state satisfies Rust systems rigor audit posture: explicit invariants, fail-closed defaults, bounded IO, and delete-after-cutover of superseded paths."
-  checked: false
-validated_against_commit: 65a8423d
-last_freshness_check: 2026-04-19
+  checked: true
+validated_against_commit: 7733ccc6
+last_freshness_check: 2026-04-20
 freshness_scope:
 - src/commands/launch/internal.rs
 - src/commands/ai/surface.rs

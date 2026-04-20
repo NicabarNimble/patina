@@ -295,7 +295,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
         env.push(("PATINA_VOICE_UID".to_string(), voice_uid.clone()));
     }
     env.push(("PATINA_ENVELOPE_ID".to_string(), envelope_id));
-    env.push(("PATINA_TMUX_LANE".to_string(), tmux_lane));
+    env.push(("PATINA_TMUX_LANE".to_string(), tmux_lane.clone()));
 
     let bundle = interface::interface_bundle(&interface_name)?;
 
@@ -308,11 +308,7 @@ pub fn launch(request: AiLaunchRequest) -> Result<()> {
             interface::BundleTmuxPolicy::Auto => interface::TmuxLaunchMode::Auto,
         }
     };
-    let tmux_session_name = Some(interface::derive_interface_session_name(
-        &project_path,
-        &interface_name,
-        Some(&checkin.session_file_id),
-    ));
+    let tmux_session_name = Some(tmux_lane);
 
     iface.launch(interface::LaunchRequest {
         project_root: project_path,
@@ -345,6 +341,38 @@ impl MotherControlClient for patina::mother::Client {
     ) -> Result<serde_json::Value> {
         patina::mother::Client::interface_control_call(self, operation_id, args, correlation)
     }
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct MotherResolveIdentity {
+    #[serde(default)]
+    envelope_id: String,
+    #[serde(default)]
+    session_runtime_id: String,
+    #[serde(default)]
+    session_file_id: String,
+    #[serde(default)]
+    tmux_lane: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum MotherResolveDecision {
+    Attach,
+    Create,
+    Choose,
+    Reject,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct MotherResolveResult {
+    decision: MotherResolveDecision,
+    #[serde(default)]
+    identity: Option<MotherResolveIdentity>,
+    #[serde(default)]
+    choices: Vec<MotherResolveIdentity>,
+    #[serde(default)]
+    reason: Option<String>,
 }
 
 fn resolve_checkin_via_mother(
@@ -428,42 +456,44 @@ fn resolve_checkin_via_mother_with_client(
         Some(correlation),
     )?;
 
-    let result = resolve
+    let result_payload = resolve
         .get("result")
         .ok_or_else(|| anyhow!("Mother resolve response missing result payload"))?;
+    let result: MotherResolveResult =
+        serde_json::from_value(result_payload.clone()).map_err(|error| {
+            anyhow!(
+                "Mother resolve response has invalid result payload shape: {}",
+                error
+            )
+        })?;
 
-    let decision = result
-        .get("decision")
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| anyhow!("Mother resolve response missing result.decision"))?;
-
-    match decision {
-        "attach" | "create" => {
+    match result.decision {
+        MotherResolveDecision::Attach | MotherResolveDecision::Create => {
+            let attached_existing = matches!(result.decision, MotherResolveDecision::Attach);
             let identity = result
-                .get("identity")
+                .identity
                 .ok_or_else(|| anyhow!("Mother resolve response missing result.identity"))?;
-            let envelope_id = identity
-                .get("envelope_id")
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| anyhow!("Mother resolve response missing identity.envelope_id"))?
-                .to_string();
-            let runtime_id = identity
-                .get("session_runtime_id")
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| {
-                    anyhow!("Mother resolve response missing identity.session_runtime_id")
-                })?
-                .to_string();
-            let file_id = identity
-                .get("session_file_id")
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| anyhow!("Mother resolve response missing identity.session_file_id"))?
-                .to_string();
+            let envelope_id = identity.envelope_id;
+            if envelope_id.trim().is_empty() {
+                return Err(anyhow!(
+                    "Mother resolve response missing identity.envelope_id"
+                ));
+            }
+            let runtime_id = identity.session_runtime_id;
+            if runtime_id.trim().is_empty() {
+                return Err(anyhow!(
+                    "Mother resolve response missing identity.session_runtime_id"
+                ));
+            }
+            let file_id = identity.session_file_id;
+            if file_id.trim().is_empty() {
+                return Err(anyhow!(
+                    "Mother resolve response missing identity.session_file_id"
+                ));
+            }
             let tmux_lane = identity
-                .get("tmux_lane")
-                .and_then(|value| value.as_str())
-                .unwrap_or(interface_name)
-                .to_string();
+                .tmux_lane
+                .unwrap_or_else(|| interface_name.to_string());
 
             let handle = match patina::session::load_session(project_root, &runtime_id)? {
                 Some(handle) => Some(handle),
@@ -481,28 +511,22 @@ fn resolve_checkin_via_mother_with_client(
                 session_runtime_id: runtime_id,
                 session_file_id: file_id,
                 artifact_path: handle.artifact_path,
-                attached_existing: decision == "attach",
+                attached_existing,
             };
 
             Ok((checkin, envelope_id, tmux_lane))
         }
-        "choose" => {
-            let choices = result
-                .get("choices")
-                .and_then(|value| value.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let formatted = choices
+        MotherResolveDecision::Choose => {
+            let formatted = result
+                .choices
                 .iter()
-                .filter_map(|entry| {
-                    let file_id = entry
-                        .get("session_file_id")
-                        .and_then(|value| value.as_str())?;
-                    let runtime_id = entry
-                        .get("session_runtime_id")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or("unknown");
-                    Some(format!("{} ({})", file_id, runtime_id))
+                .map(|entry| {
+                    let runtime_id = if entry.session_runtime_id.trim().is_empty() {
+                        "unknown"
+                    } else {
+                        entry.session_runtime_id.as_str()
+                    };
+                    format!("{} ({})", entry.session_file_id, runtime_id)
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -512,18 +536,9 @@ fn resolve_checkin_via_mother_with_client(
                 formatted
             );
         }
-        "reject" => {
-            let reason = result
-                .get("reason")
-                .and_then(|value| value.as_str())
-                .unwrap_or("unknown rejection");
+        MotherResolveDecision::Reject => {
+            let reason = result.reason.as_deref().unwrap_or("unknown rejection");
             bail!("Mother rejected HITL envelope resolution: {}", reason);
-        }
-        other => {
-            bail!(
-                "Mother resolve returned unsupported decision '{}'. Expected attach|create|choose|reject.",
-                other
-            );
         }
     }
 }
