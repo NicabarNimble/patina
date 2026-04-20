@@ -79,7 +79,7 @@ fn generate_minimal_context(project_name: &str, environment: &Environment) -> St
 
     // Session Commands (Git-integrated)
     content.push_str("## Session Commands\n\n");
-    content.push_str("- `/session-start [name]` - Start session with Git tracking\n");
+    content.push_str("- `/session-new [name]` - Create explicit new session boundary\n");
     content.push_str("- `/session-update` - Update progress with Git context\n");
     content.push_str("- `/session-note [insight]` - Capture insight\n");
     content.push_str("- `/session-end` - End session & distill learnings\n");

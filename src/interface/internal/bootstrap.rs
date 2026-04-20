@@ -692,7 +692,7 @@ mod tests {
         assert_eq!(result.context_path, temp.path().join("AGENTS.md"));
         assert!(temp
             .path()
-            .join(".opencode/commands/session-start.md")
+            .join(".opencode/commands/session-new.md")
             .exists());
         assert!(!temp.path().join(".opencode/PATINA.md").exists());
         assert!(!temp.path().join(".opencode/AGENTS.md").exists());
@@ -704,9 +704,8 @@ mod tests {
             .exists());
         assert!(temp.path().join(".opencode/bin/create-belief.sh").exists());
         let session_start =
-            std::fs::read_to_string(temp.path().join(".opencode/commands/session-start.md"))
-                .unwrap();
-        assert!(session_start.contains(".opencode/bin/session-start.sh"));
+            std::fs::read_to_string(temp.path().join(".opencode/commands/session-new.md")).unwrap();
+        assert!(session_start.contains(".opencode/bin/session-new.sh"));
         let belief_command =
             std::fs::read_to_string(temp.path().join(".opencode/commands/epistemic-beliefs.md"))
                 .unwrap();
@@ -715,8 +714,8 @@ mod tests {
         let agents = std::fs::read_to_string(temp.path().join("AGENTS.md")).unwrap();
         assert!(agents.contains("### OpenCode"));
         assert!(agents.contains("### Gemini CLI"));
-        assert!(agents.contains(".opencode/bin/session-start.sh"));
-        assert!(agents.contains(".gemini/bin/session-start.sh"));
+        assert!(agents.contains(".opencode/bin/session-new.sh"));
+        assert!(agents.contains(".gemini/bin/session-new.sh"));
         assert!(result.backup_snapshot.is_none());
     }
 

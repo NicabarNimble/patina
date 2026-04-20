@@ -277,13 +277,10 @@ mod tests {
         assert!(temp.path().join("AGENTS.md").exists());
         assert!(temp.path().join("CLAUDE.md").exists());
         assert!(temp.path().join("GEMINI.md").exists());
+        assert!(temp.path().join(".claude/commands/session-new.md").exists());
         assert!(temp
             .path()
-            .join(".claude/commands/session-start.md")
-            .exists());
-        assert!(temp
-            .path()
-            .join(".opencode/commands/session-start.md")
+            .join(".opencode/commands/session-new.md")
             .exists());
         assert!(temp.path().join(".opencode/commands/spec.md").exists());
         assert!(temp
@@ -292,14 +289,14 @@ mod tests {
             .exists());
         assert!(temp
             .path()
-            .join(".gemini/commands/session-start.toml")
+            .join(".gemini/commands/session-new.toml")
             .exists());
         assert!(temp.path().join(".gemini/commands/spec.toml").exists());
         assert!(temp
             .path()
             .join(".gemini/commands/epistemic-beliefs.toml")
             .exists());
-        assert!(temp.path().join(".pi/commands/session-start.md").exists());
+        assert!(temp.path().join(".pi/commands/session-new.md").exists());
     }
 
     #[test]

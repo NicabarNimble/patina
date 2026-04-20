@@ -1,7 +1,7 @@
-Start a new Patina development session with Git tagging:
+Create an explicit new Patina session boundary with Git tagging:
 
-1. Execute the bundled session start wrapper:
-   `.opencode/bin/session-start.sh "$ARGUMENTS"`
+1. Execute the bundled session-new wrapper:
+   `.opencode/bin/session-new.sh "$ARGUMENTS"`
 
 2. Read the returned JSON and use `artifact_path` to open the new durable session artifact in `layer/sessions/`.
 
@@ -9,7 +9,7 @@ Start a new Patina development session with Git tagging:
 
 4. If we've been discussing work already in this conversation:
    - Update the Goals section with specific tasks we've identified
-   - Add context about why this session was started
+   - Add context about why this new boundary was started
    - Note any decisions or constraints we've discussed
 
 5. Ask the user: "Would you like me to create todos for '$ARGUMENTS'?"

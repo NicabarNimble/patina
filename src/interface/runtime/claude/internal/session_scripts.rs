@@ -11,7 +11,7 @@ use super::paths;
 use crate::mother::skills;
 
 fn wrapper_start() -> String {
-    "#!/bin/bash\nexec env PATINA_AI_INTERFACE=claude patina ai session start --json --interface claude \"$@\"\n".to_string()
+    "#!/bin/bash\nexec env PATINA_AI_INTERFACE=claude patina ai session new --json --interface claude \"$@\"\n".to_string()
 }
 
 fn wrapper_update() -> String {
@@ -38,15 +38,15 @@ pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     fs::create_dir_all(&bin_path)?;
 
     // Deploy wrapper scripts (backward compatibility)
-    write_script(&bin_path.join("session-start.sh"), &wrapper_start())?;
+    write_script(&bin_path.join("session-new.sh"), &wrapper_start())?;
     write_script(&bin_path.join("session-update.sh"), &wrapper_update())?;
     write_script(&bin_path.join("session-note.sh"), &wrapper_note())?;
     write_script(&bin_path.join("session-end.sh"), &wrapper_end())?;
 
     // Deploy command definitions
     fs::write(
-        commands_path.join("session-start.md"),
-        skills::skill_content("claude", "session-start")
+        commands_path.join("session-new.md"),
+        skills::skill_content("claude", "session-new")
             .and_then(|content| content.files.first().map(|file| file.bytes))
             .unwrap_or_default(),
     )?;

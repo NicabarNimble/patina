@@ -37,7 +37,7 @@ Patina MCP is not configured for this runtime. Do not assume `context`, `scry`, 
 Use CLI/native fallbacks instead:
 - Discovery: `patina context`, `patina scry`, `patina assay`
 - Specs: `patina spec show <id>`, `patina spec check <id> --json`, `patina spec next`
-- Sessions: `.claude/bin/session-start.sh "<title>"`
+- Sessions: `.claude/bin/session-new.sh "<title>"`
 - Sessions: `.claude/bin/session-update.sh`
 - Sessions: `.claude/bin/session-note.sh "<note>"`
 - Sessions: `.claude/bin/session-end.sh`
@@ -50,7 +50,7 @@ Patina MCP is not configured for this runtime. Do not assume `context`, `scry`, 
 Use CLI/native fallbacks instead:
 - Discovery: `patina context`, `patina scry`, `patina assay`
 - Specs: `patina spec show <id>`, `patina spec check <id> --json`, `patina spec next`
-- Sessions: `.opencode/bin/session-start.sh "<title>"`
+- Sessions: `.opencode/bin/session-new.sh "<title>"`
 - Sessions: `.opencode/bin/session-update.sh`
 - Sessions: `.opencode/bin/session-note.sh "<note>"`
 - Sessions: `.opencode/bin/session-end.sh`
@@ -63,7 +63,7 @@ Patina MCP is not configured for this runtime. Do not assume `context`, `scry`, 
 Use CLI/native fallbacks instead:
 - Discovery: `patina context`, `patina scry`, `patina assay`
 - Specs: `patina spec show <id>`, `patina spec check <id> --json`, `patina spec next`
-- Sessions: `.gemini/bin/session-start.sh "<title>"`
+- Sessions: `.gemini/bin/session-new.sh "<title>"`
 - Sessions: `.gemini/bin/session-update.sh`
 - Sessions: `.gemini/bin/session-note.sh "<note>"`
 - Sessions: `.gemini/bin/session-end.sh`

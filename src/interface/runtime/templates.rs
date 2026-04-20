@@ -23,7 +23,7 @@ use crate::paths;
 
 fn wrapper_start(interface: &str) -> String {
     format!(
-        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={interface} patina ai session start --json --interface {interface} \"$@\"\n"
+        "#!/bin/bash\nexec env PATINA_AI_INTERFACE={interface} patina ai session new --json --interface {interface} \"$@\"\n"
     )
 }
 
@@ -71,7 +71,7 @@ pub fn copy_to_project(interface_name: &str, project_path: &Path) -> Result<()> 
     fs::create_dir_all(iface_dir.join("bin"))?;
 
     write_executable(
-        &iface_dir.join("bin/session-start.sh"),
+        &iface_dir.join("bin/session-new.sh"),
         &wrapper_start(interface_name),
     )?;
     write_executable(
@@ -152,7 +152,7 @@ fn install_pi_templates(interfaces_dir: &Path) -> Result<()> {
 }
 
 const INSTALL_SKILLS: &[&str] = &[
-    "session-start",
+    "session-new",
     "session-update",
     "session-note",
     "session-end",
@@ -174,7 +174,7 @@ fn install_interface_templates(
     fs::create_dir_all(interface_dir.join("bin"))?;
 
     write_executable(
-        &interface_dir.join("bin/session-start.sh"),
+        &interface_dir.join("bin/session-new.sh"),
         &wrapper_start(interface_name),
     )?;
     write_executable(
@@ -267,8 +267,8 @@ mod tests {
 
     #[test]
     fn test_claude_templates_compile() {
-        let start = skills::skill_content("claude", "session-start").unwrap();
-        assert!(start.files[0].bytes.contains("session-start.sh"));
+        let start = skills::skill_content("claude", "session-new").unwrap();
+        assert!(start.files[0].bytes.contains("session-new.sh"));
         let end = skills::skill_content("claude", "session-end").unwrap();
         assert!(end.files[0].bytes.contains("session-end.sh"));
         let spec = skills::skill_content("claude", "spec").unwrap();
@@ -283,8 +283,8 @@ mod tests {
 
     #[test]
     fn test_gemini_templates_compile() {
-        let start = skills::skill_content("gemini", "session-start").unwrap();
-        assert!(start.files[0].bytes.contains("session-start.sh"));
+        let start = skills::skill_content("gemini", "session-new").unwrap();
+        assert!(start.files[0].bytes.contains("session-new.sh"));
         let spec = skills::skill_content("gemini", "spec").unwrap();
         assert!(spec.files[0].bytes.contains("patina spec"));
         let beliefs = skills::skill_content("gemini", "epistemic-beliefs").unwrap();
@@ -296,10 +296,10 @@ mod tests {
 
     #[test]
     fn test_opencode_templates_compile() {
-        let start = skills::skill_content("opencode", "session-start").unwrap();
+        let start = skills::skill_content("opencode", "session-new").unwrap();
         assert!(start.files[0]
             .bytes
-            .contains(".opencode/bin/session-start.sh"));
+            .contains(".opencode/bin/session-new.sh"));
         let update = skills::skill_content("opencode", "session-update").unwrap();
         assert!(update.files[0]
             .bytes
@@ -323,7 +323,7 @@ mod tests {
         let end = wrapper_end("claude");
 
         assert!(start.contains("PATINA_AI_INTERFACE=claude"));
-        assert!(start.contains("patina ai session start --json --interface claude"));
+        assert!(start.contains("patina ai session new --json --interface claude"));
         assert!(update.contains("PATINA_AI_INTERFACE=opencode"));
         assert!(update.contains("patina ai session update --json"));
         assert!(note.contains("PATINA_AI_INTERFACE=gemini"));
@@ -340,9 +340,9 @@ mod tests {
 
         // Templates install to .claude/ structure for copy_to_project()
         let templates_dir = temp.path().join("claude/templates");
-        assert!(templates_dir.join(".claude/bin/session-start.sh").exists());
+        assert!(templates_dir.join(".claude/bin/session-new.sh").exists());
         assert!(templates_dir
-            .join(".claude/commands/session-start.md")
+            .join(".claude/commands/session-new.md")
             .exists());
         assert!(templates_dir
             .join(".claude/commands/patina-review.md")
@@ -353,10 +353,9 @@ mod tests {
         assert!(!templates_dir.join(".claude/bin/persona-start.sh").exists());
 
         // Wrapper scripts should forward to the native AI session backend
-        let wrapper =
-            fs::read_to_string(templates_dir.join(".claude/bin/session-start.sh")).unwrap();
+        let wrapper = fs::read_to_string(templates_dir.join(".claude/bin/session-new.sh")).unwrap();
         assert!(wrapper.contains("PATINA_AI_INTERFACE=claude"));
-        assert!(wrapper.contains("patina ai session start --json --interface claude"));
+        assert!(wrapper.contains("patina ai session new --json --interface claude"));
 
         // Skills should be installed
         assert!(templates_dir
@@ -380,9 +379,9 @@ mod tests {
 
         // Templates install to .gemini/ structure for copy_to_project()
         let templates_dir = temp.path().join("gemini/templates");
-        assert!(templates_dir.join(".gemini/bin/session-start.sh").exists());
+        assert!(templates_dir.join(".gemini/bin/session-new.sh").exists());
         assert!(templates_dir
-            .join(".gemini/commands/session-start.toml")
+            .join(".gemini/commands/session-new.toml")
             .exists());
         assert!(templates_dir.join(".gemini/commands/spec.toml").exists());
         assert!(templates_dir
@@ -391,10 +390,9 @@ mod tests {
         assert!(templates_dir.join(".gemini/bin/create-belief.sh").exists());
 
         // Wrapper scripts should forward to the native AI session backend
-        let wrapper =
-            fs::read_to_string(templates_dir.join(".gemini/bin/session-start.sh")).unwrap();
+        let wrapper = fs::read_to_string(templates_dir.join(".gemini/bin/session-new.sh")).unwrap();
         assert!(wrapper.contains("PATINA_AI_INTERFACE=gemini"));
-        assert!(wrapper.contains("patina ai session start --json --interface gemini"));
+        assert!(wrapper.contains("patina ai session new --json --interface gemini"));
     }
 
     #[test]
@@ -403,11 +401,9 @@ mod tests {
         install_opencode_templates(temp.path()).unwrap();
 
         let templates_dir = temp.path().join("opencode/templates");
+        assert!(templates_dir.join(".opencode/bin/session-new.sh").exists());
         assert!(templates_dir
-            .join(".opencode/bin/session-start.sh")
-            .exists());
-        assert!(templates_dir
-            .join(".opencode/commands/session-start.md")
+            .join(".opencode/commands/session-new.md")
             .exists());
         assert!(templates_dir.join(".opencode/commands/spec.md").exists());
         assert!(templates_dir
@@ -418,8 +414,8 @@ mod tests {
             .exists());
 
         let session_start =
-            fs::read_to_string(templates_dir.join(".opencode/commands/session-start.md")).unwrap();
-        assert!(session_start.contains(".opencode/bin/session-start.sh"));
+            fs::read_to_string(templates_dir.join(".opencode/commands/session-new.md")).unwrap();
+        assert!(session_start.contains(".opencode/bin/session-new.sh"));
         assert!(session_start.contains("spec.check"));
 
         let session_update =

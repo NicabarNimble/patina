@@ -44,7 +44,7 @@ fn with_temp_env<T>(f: impl FnOnce(&tempfile::TempDir) -> T) -> T {
 #[test]
 fn mother_owns_known_skills_per_interface() {
     let required = [
-        "session-start",
+        "session-new",
         "session-update",
         "session-note",
         "session-end",
