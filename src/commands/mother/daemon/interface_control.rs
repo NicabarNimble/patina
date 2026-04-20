@@ -990,6 +990,44 @@ mod tests {
         }
     }
 
+    fn with_test_git_identity<T>(f: impl FnOnce() -> T) -> T {
+        let old_author_name = std::env::var_os("GIT_AUTHOR_NAME");
+        let old_author_email = std::env::var_os("GIT_AUTHOR_EMAIL");
+        let old_committer_name = std::env::var_os("GIT_COMMITTER_NAME");
+        let old_committer_email = std::env::var_os("GIT_COMMITTER_EMAIL");
+
+        unsafe {
+            std::env::set_var("GIT_AUTHOR_NAME", "Patina Tests");
+            std::env::set_var("GIT_AUTHOR_EMAIL", "patina-tests@example.invalid");
+            std::env::set_var("GIT_COMMITTER_NAME", "Patina Tests");
+            std::env::set_var("GIT_COMMITTER_EMAIL", "patina-tests@example.invalid");
+        }
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+
+        match old_author_name {
+            Some(value) => unsafe { std::env::set_var("GIT_AUTHOR_NAME", value) },
+            None => unsafe { std::env::remove_var("GIT_AUTHOR_NAME") },
+        }
+        match old_author_email {
+            Some(value) => unsafe { std::env::set_var("GIT_AUTHOR_EMAIL", value) },
+            None => unsafe { std::env::remove_var("GIT_AUTHOR_EMAIL") },
+        }
+        match old_committer_name {
+            Some(value) => unsafe { std::env::set_var("GIT_COMMITTER_NAME", value) },
+            None => unsafe { std::env::remove_var("GIT_COMMITTER_NAME") },
+        }
+        match old_committer_email {
+            Some(value) => unsafe { std::env::set_var("GIT_COMMITTER_EMAIL", value) },
+            None => unsafe { std::env::remove_var("GIT_COMMITTER_EMAIL") },
+        }
+
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+
     #[test]
     fn rejects_unknown_operation_id() {
         let error =
@@ -1026,133 +1064,136 @@ mod tests {
     #[test]
     fn handshake_then_resolve_creates_session_when_none_active() {
         crate::test_support::with_temp_patina_home(|_| {
-            clear_handshakes();
-            clear_envelopes();
-            let temp = tempfile::TempDir::new().unwrap();
-            let project_root = temp.path().join("project");
-            std::fs::create_dir_all(&project_root).unwrap();
-            let project_uid = patina::project::create_uid_if_missing(&project_root).unwrap();
+            with_test_git_identity(|| {
+                clear_handshakes();
+                clear_envelopes();
+                let temp = tempfile::TempDir::new().unwrap();
+                let project_root = temp.path().join("project");
+                std::fs::create_dir_all(&project_root).unwrap();
+                let project_uid = patina::project::create_uid_if_missing(&project_root).unwrap();
 
-            let handshake = dispatch_interface_control_call(
-                mother_crate::http_api::InterfaceControlCallRequest {
-                    operation_id: "patina:interface/handshake.v1".to_string(),
-                    args: serde_json::json!({
-                        "protocol-version": "0.1",
-                        "cli-version": "0.62.0",
-                        "project-uid": project_uid,
-                        "project-root": project_root.display().to_string(),
-                        "interface-name": "pi",
-                        "interface-kind": "hitl",
-                        "launch-intent": "attach-or-create",
-                        "tty": true
-                    }),
-                    correlation: None,
-                },
-            )
-            .expect("handshake should succeed");
+                let handshake = dispatch_interface_control_call(
+                    mother_crate::http_api::InterfaceControlCallRequest {
+                        operation_id: "patina:interface/handshake.v1".to_string(),
+                        args: serde_json::json!({
+                            "protocol-version": "0.1",
+                            "cli-version": "0.62.0",
+                            "project-uid": project_uid,
+                            "project-root": project_root.display().to_string(),
+                            "interface-name": "pi",
+                            "interface-kind": "hitl",
+                            "launch-intent": "attach-or-create",
+                            "tty": true
+                        }),
+                        correlation: None,
+                    },
+                )
+                .expect("handshake should succeed");
 
-            let handshake_id = handshake
-                .get("result")
-                .and_then(|result| result.get("handshake_id"))
-                .and_then(|value| value.as_str())
-                .expect("handshake_id")
-                .to_string();
-
-            let resolve = dispatch_interface_control_call(
-                mother_crate::http_api::InterfaceControlCallRequest {
-                    operation_id: "patina:interface/envelope.resolve.v1".to_string(),
-                    args: serde_json::json!({
-                        "handshake-id": handshake_id,
-                        "title": "PI session"
-                    }),
-                    correlation: None,
-                },
-            )
-            .expect("resolve should succeed");
-
-            assert_eq!(
-                resolve
+                let handshake_id = handshake
                     .get("result")
-                    .and_then(|result| result.get("decision"))
-                    .and_then(|value| value.as_str()),
-                Some("create")
-            );
-            let identity = resolve
-                .get("result")
-                .and_then(|result| result.get("identity"))
-                .expect("identity payload present");
-            let envelope_id = identity
-                .get("envelope_id")
-                .and_then(|value| value.as_str())
-                .expect("envelope_id present");
-            let session_runtime_id = identity
-                .get("session_runtime_id")
-                .and_then(|value| value.as_str())
-                .expect("session_runtime_id present");
-            let tmux_lane = identity
-                .get("tmux_lane")
-                .and_then(|value| value.as_str())
-                .expect("tmux_lane present");
-            assert_ne!(envelope_id, session_runtime_id);
-            assert!(tmux_lane.contains("_pi_"), "got lane: {}", tmux_lane);
+                    .and_then(|result| result.get("handshake_id"))
+                    .and_then(|value| value.as_str())
+                    .expect("handshake_id")
+                    .to_string();
 
-            let active = patina::session::list_active_sessions(&project_root).unwrap();
-            assert_eq!(active.len(), 1);
+                let resolve = dispatch_interface_control_call(
+                    mother_crate::http_api::InterfaceControlCallRequest {
+                        operation_id: "patina:interface/envelope.resolve.v1".to_string(),
+                        args: serde_json::json!({
+                            "handshake-id": handshake_id,
+                            "title": "PI session"
+                        }),
+                        correlation: None,
+                    },
+                )
+                .expect("resolve should succeed");
+
+                assert_eq!(
+                    resolve
+                        .get("result")
+                        .and_then(|result| result.get("decision"))
+                        .and_then(|value| value.as_str()),
+                    Some("create")
+                );
+                let identity = resolve
+                    .get("result")
+                    .and_then(|result| result.get("identity"))
+                    .expect("identity payload present");
+                let envelope_id = identity
+                    .get("envelope_id")
+                    .and_then(|value| value.as_str())
+                    .expect("envelope_id present");
+                let session_runtime_id = identity
+                    .get("session_runtime_id")
+                    .and_then(|value| value.as_str())
+                    .expect("session_runtime_id present");
+                let tmux_lane = identity
+                    .get("tmux_lane")
+                    .and_then(|value| value.as_str())
+                    .expect("tmux_lane present");
+                assert_ne!(envelope_id, session_runtime_id);
+                assert!(tmux_lane.contains("_pi_"), "got lane: {}", tmux_lane);
+
+                let active = patina::session::list_active_sessions(&project_root).unwrap();
+                assert_eq!(active.len(), 1);
+            });
         });
     }
 
     #[test]
     fn resolve_attach_reuses_existing_envelope_id() {
         crate::test_support::with_temp_patina_home(|_| {
-            clear_handshakes();
-            clear_envelopes();
-            let temp = tempfile::TempDir::new().unwrap();
-            let project_root = temp.path().join("project");
-            std::fs::create_dir_all(&project_root).unwrap();
-            let project_uid = patina::project::create_uid_if_missing(&project_root).unwrap();
+            with_test_git_identity(|| {
+                clear_handshakes();
+                clear_envelopes();
+                let temp = tempfile::TempDir::new().unwrap();
+                let project_root = temp.path().join("project");
+                std::fs::create_dir_all(&project_root).unwrap();
+                let project_uid = patina::project::create_uid_if_missing(&project_root).unwrap();
 
-            let handshake_one = dispatch_interface_control_call(
-                mother_crate::http_api::InterfaceControlCallRequest {
-                    operation_id: "patina:interface/handshake.v1".to_string(),
-                    args: serde_json::json!({
-                        "protocol-version": "0.1",
-                        "cli-version": "0.62.0",
-                        "project-uid": project_uid,
-                        "project-root": project_root.display().to_string(),
-                        "interface-name": "pi",
-                        "interface-kind": "hitl",
-                        "launch-intent": "attach-or-create",
-                        "tty": true
-                    }),
-                    correlation: None,
-                },
-            )
-            .expect("handshake one");
-            let handshake_one_id = handshake_one
-                .get("result")
-                .and_then(|result| result.get("handshake_id"))
-                .and_then(|value| value.as_str())
-                .expect("handshake one id")
-                .to_string();
+                let handshake_one = dispatch_interface_control_call(
+                    mother_crate::http_api::InterfaceControlCallRequest {
+                        operation_id: "patina:interface/handshake.v1".to_string(),
+                        args: serde_json::json!({
+                            "protocol-version": "0.1",
+                            "cli-version": "0.62.0",
+                            "project-uid": project_uid,
+                            "project-root": project_root.display().to_string(),
+                            "interface-name": "pi",
+                            "interface-kind": "hitl",
+                            "launch-intent": "attach-or-create",
+                            "tty": true
+                        }),
+                        correlation: None,
+                    },
+                )
+                .expect("handshake one");
+                let handshake_one_id = handshake_one
+                    .get("result")
+                    .and_then(|result| result.get("handshake_id"))
+                    .and_then(|value| value.as_str())
+                    .expect("handshake one id")
+                    .to_string();
 
-            let resolve_one = dispatch_interface_control_call(
-                mother_crate::http_api::InterfaceControlCallRequest {
-                    operation_id: "patina:interface/envelope.resolve.v1".to_string(),
-                    args: serde_json::json!({"handshake-id": handshake_one_id}),
-                    correlation: None,
-                },
-            )
-            .expect("resolve one");
+                let resolve_one = dispatch_interface_control_call(
+                    mother_crate::http_api::InterfaceControlCallRequest {
+                        operation_id: "patina:interface/envelope.resolve.v1".to_string(),
+                        args: serde_json::json!({"handshake-id": handshake_one_id}),
+                        correlation: None,
+                    },
+                )
+                .expect("resolve one");
 
-            let envelope_one = resolve_one
-                .get("result")
-                .and_then(|result| result.get("identity"))
-                .and_then(|identity| identity.get("envelope_id"))
-                .and_then(|value| value.as_str())
-                .expect("envelope one")
-                .to_string();
+                let envelope_one = resolve_one
+                    .get("result")
+                    .and_then(|result| result.get("identity"))
+                    .and_then(|identity| identity.get("envelope_id"))
+                    .and_then(|value| value.as_str())
+                    .expect("envelope one")
+                    .to_string();
 
-            let handshake_two = dispatch_interface_control_call(
+                let handshake_two = dispatch_interface_control_call(
                 mother_crate::http_api::InterfaceControlCallRequest {
                     operation_id: "patina:interface/handshake.v1".to_string(),
                     args: serde_json::json!({
@@ -1169,183 +1210,187 @@ mod tests {
                 },
             )
             .expect("handshake two");
-            let handshake_two_id = handshake_two
-                .get("result")
-                .and_then(|result| result.get("handshake_id"))
-                .and_then(|value| value.as_str())
-                .expect("handshake two id")
-                .to_string();
-
-            let resolve_two = dispatch_interface_control_call(
-                mother_crate::http_api::InterfaceControlCallRequest {
-                    operation_id: "patina:interface/envelope.resolve.v1".to_string(),
-                    args: serde_json::json!({"handshake-id": handshake_two_id}),
-                    correlation: None,
-                },
-            )
-            .expect("resolve two");
-
-            assert_eq!(
-                resolve_two
+                let handshake_two_id = handshake_two
                     .get("result")
-                    .and_then(|result| result.get("decision"))
-                    .and_then(|value| value.as_str()),
-                Some("attach")
-            );
+                    .and_then(|result| result.get("handshake_id"))
+                    .and_then(|value| value.as_str())
+                    .expect("handshake two id")
+                    .to_string();
 
-            let envelope_two = resolve_two
-                .get("result")
-                .and_then(|result| result.get("identity"))
-                .and_then(|identity| identity.get("envelope_id"))
-                .and_then(|value| value.as_str())
-                .expect("envelope two")
-                .to_string();
+                let resolve_two = dispatch_interface_control_call(
+                    mother_crate::http_api::InterfaceControlCallRequest {
+                        operation_id: "patina:interface/envelope.resolve.v1".to_string(),
+                        args: serde_json::json!({"handshake-id": handshake_two_id}),
+                        correlation: None,
+                    },
+                )
+                .expect("resolve two");
 
-            assert_eq!(envelope_one, envelope_two);
+                assert_eq!(
+                    resolve_two
+                        .get("result")
+                        .and_then(|result| result.get("decision"))
+                        .and_then(|value| value.as_str()),
+                    Some("attach")
+                );
+
+                let envelope_two = resolve_two
+                    .get("result")
+                    .and_then(|result| result.get("identity"))
+                    .and_then(|identity| identity.get("envelope_id"))
+                    .and_then(|value| value.as_str())
+                    .expect("envelope two")
+                    .to_string();
+
+                assert_eq!(envelope_one, envelope_two);
+            });
         });
     }
 
     #[test]
     fn heartbeat_and_end_require_active_envelope() {
         crate::test_support::with_temp_patina_home(|_| {
-            clear_handshakes();
-            clear_envelopes();
-            let temp = tempfile::TempDir::new().unwrap();
-            let project_root = temp.path().join("project");
-            std::fs::create_dir_all(&project_root).unwrap();
-            let project_uid = patina::project::create_uid_if_missing(&project_root).unwrap();
+            with_test_git_identity(|| {
+                clear_handshakes();
+                clear_envelopes();
+                let temp = tempfile::TempDir::new().unwrap();
+                let project_root = temp.path().join("project");
+                std::fs::create_dir_all(&project_root).unwrap();
+                let project_uid = patina::project::create_uid_if_missing(&project_root).unwrap();
 
-            let handshake = dispatch_interface_control_call(
-                mother_crate::http_api::InterfaceControlCallRequest {
-                    operation_id: "patina:interface/handshake.v1".to_string(),
-                    args: serde_json::json!({
-                        "protocol-version": "0.1",
-                        "cli-version": "0.62.0",
-                        "project-uid": project_uid,
-                        "project-root": project_root.display().to_string(),
-                        "interface-name": "pi",
-                        "interface-kind": "hitl",
-                        "launch-intent": "attach-or-create",
-                        "tty": true
-                    }),
-                    correlation: None,
-                },
-            )
-            .expect("handshake");
-            let handshake_id = handshake
-                .get("result")
-                .and_then(|result| result.get("handshake_id"))
-                .and_then(|value| value.as_str())
-                .expect("handshake id")
-                .to_string();
-
-            let resolve = dispatch_interface_control_call(
-                mother_crate::http_api::InterfaceControlCallRequest {
-                    operation_id: "patina:interface/envelope.resolve.v1".to_string(),
-                    args: serde_json::json!({"handshake-id": handshake_id}),
-                    correlation: None,
-                },
-            )
-            .expect("resolve");
-
-            let envelope_id = resolve
-                .get("result")
-                .and_then(|result| result.get("identity"))
-                .and_then(|identity| identity.get("envelope_id"))
-                .and_then(|value| value.as_str())
-                .expect("envelope id")
-                .to_string();
-
-            let heartbeat = dispatch_interface_control_call(
-                mother_crate::http_api::InterfaceControlCallRequest {
-                    operation_id: "patina:interface/envelope.heartbeat.v1".to_string(),
-                    args: serde_json::json!({
-                        "envelope-id": envelope_id,
-                        "pid": 123,
-                        "tmux-lane": "lane-1",
-                        "observed-at": Utc::now().to_rfc3339()
-                    }),
-                    correlation: None,
-                },
-            )
-            .expect("heartbeat");
-
-            assert_eq!(
-                heartbeat
+                let handshake = dispatch_interface_control_call(
+                    mother_crate::http_api::InterfaceControlCallRequest {
+                        operation_id: "patina:interface/handshake.v1".to_string(),
+                        args: serde_json::json!({
+                            "protocol-version": "0.1",
+                            "cli-version": "0.62.0",
+                            "project-uid": project_uid,
+                            "project-root": project_root.display().to_string(),
+                            "interface-name": "pi",
+                            "interface-kind": "hitl",
+                            "launch-intent": "attach-or-create",
+                            "tty": true
+                        }),
+                        correlation: None,
+                    },
+                )
+                .expect("handshake");
+                let handshake_id = handshake
                     .get("result")
-                    .and_then(|result| result.get("ok"))
-                    .and_then(|value| value.as_bool()),
-                Some(true)
-            );
+                    .and_then(|result| result.get("handshake_id"))
+                    .and_then(|value| value.as_str())
+                    .expect("handshake id")
+                    .to_string();
 
-            let end = dispatch_interface_control_call(
-                mother_crate::http_api::InterfaceControlCallRequest {
-                    operation_id: "patina:interface/envelope.end.v1".to_string(),
-                    args: serde_json::json!({
-                        "envelope-id": heartbeat
-                            .get("result")
-                            .and_then(|result| result.get("envelope_id"))
-                            .and_then(|value| value.as_str())
-                            .expect("envelope id"),
-                        "reason": "done"
-                    }),
-                    correlation: None,
-                },
-            )
-            .expect("end");
-
-            assert_eq!(
-                end.get("result")
-                    .and_then(|result| result.get("ok"))
-                    .and_then(|value| value.as_bool()),
-                Some(true)
-            );
-
-            let conn = patina::eventlog::open_events_db_at(&project_root).expect("open events db");
-            let resolve_events: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
-                    ["interface.envelope.resolve"],
-                    |row| row.get(0),
+                let resolve = dispatch_interface_control_call(
+                    mother_crate::http_api::InterfaceControlCallRequest {
+                        operation_id: "patina:interface/envelope.resolve.v1".to_string(),
+                        args: serde_json::json!({"handshake-id": handshake_id}),
+                        correlation: None,
+                    },
                 )
-                .expect("count resolve events");
-            let heartbeat_events: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
-                    ["interface.envelope.heartbeat"],
-                    |row| row.get(0),
-                )
-                .expect("count heartbeat events");
-            let end_events: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
-                    ["interface.envelope.end"],
-                    |row| row.get(0),
-                )
-                .expect("count end events");
-            assert!(resolve_events >= 1);
-            assert!(heartbeat_events >= 1);
-            assert!(end_events >= 1);
+                .expect("resolve");
 
-            let heartbeat_after_end = dispatch_interface_control_call(
-                mother_crate::http_api::InterfaceControlCallRequest {
-                    operation_id: "patina:interface/envelope.heartbeat.v1".to_string(),
-                    args: serde_json::json!({
-                        "envelope-id": end
-                            .get("result")
-                            .and_then(|result| result.get("envelope_id"))
-                            .and_then(|value| value.as_str())
-                            .expect("envelope id"),
-                        "pid": 123,
-                        "tmux-lane": "lane-1",
-                        "observed-at": Utc::now().to_rfc3339()
-                    }),
-                    correlation: None,
-                },
-            )
-            .unwrap_err();
+                let envelope_id = resolve
+                    .get("result")
+                    .and_then(|result| result.get("identity"))
+                    .and_then(|identity| identity.get("envelope_id"))
+                    .and_then(|value| value.as_str())
+                    .expect("envelope id")
+                    .to_string();
 
-            assert!(heartbeat_after_end.to_string().contains("has ended"));
+                let heartbeat = dispatch_interface_control_call(
+                    mother_crate::http_api::InterfaceControlCallRequest {
+                        operation_id: "patina:interface/envelope.heartbeat.v1".to_string(),
+                        args: serde_json::json!({
+                            "envelope-id": envelope_id,
+                            "pid": 123,
+                            "tmux-lane": "lane-1",
+                            "observed-at": Utc::now().to_rfc3339()
+                        }),
+                        correlation: None,
+                    },
+                )
+                .expect("heartbeat");
+
+                assert_eq!(
+                    heartbeat
+                        .get("result")
+                        .and_then(|result| result.get("ok"))
+                        .and_then(|value| value.as_bool()),
+                    Some(true)
+                );
+
+                let end = dispatch_interface_control_call(
+                    mother_crate::http_api::InterfaceControlCallRequest {
+                        operation_id: "patina:interface/envelope.end.v1".to_string(),
+                        args: serde_json::json!({
+                            "envelope-id": heartbeat
+                                .get("result")
+                                .and_then(|result| result.get("envelope_id"))
+                                .and_then(|value| value.as_str())
+                                .expect("envelope id"),
+                            "reason": "done"
+                        }),
+                        correlation: None,
+                    },
+                )
+                .expect("end");
+
+                assert_eq!(
+                    end.get("result")
+                        .and_then(|result| result.get("ok"))
+                        .and_then(|value| value.as_bool()),
+                    Some(true)
+                );
+
+                let conn =
+                    patina::eventlog::open_events_db_at(&project_root).expect("open events db");
+                let resolve_events: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
+                        ["interface.envelope.resolve"],
+                        |row| row.get(0),
+                    )
+                    .expect("count resolve events");
+                let heartbeat_events: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
+                        ["interface.envelope.heartbeat"],
+                        |row| row.get(0),
+                    )
+                    .expect("count heartbeat events");
+                let end_events: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
+                        ["interface.envelope.end"],
+                        |row| row.get(0),
+                    )
+                    .expect("count end events");
+                assert!(resolve_events >= 1);
+                assert!(heartbeat_events >= 1);
+                assert!(end_events >= 1);
+
+                let heartbeat_after_end = dispatch_interface_control_call(
+                    mother_crate::http_api::InterfaceControlCallRequest {
+                        operation_id: "patina:interface/envelope.heartbeat.v1".to_string(),
+                        args: serde_json::json!({
+                            "envelope-id": end
+                                .get("result")
+                                .and_then(|result| result.get("envelope_id"))
+                                .and_then(|value| value.as_str())
+                                .expect("envelope id"),
+                            "pid": 123,
+                            "tmux-lane": "lane-1",
+                            "observed-at": Utc::now().to_rfc3339()
+                        }),
+                        correlation: None,
+                    },
+                )
+                .unwrap_err();
+
+                assert!(heartbeat_after_end.to_string().contains("has ended"));
+            });
         });
     }
 }
