@@ -56,7 +56,7 @@ pub fn list(json_output: bool) -> Result<()> {
 
 pub fn session(command: AiSessionCommands) -> Result<()> {
     match command {
-        AiSessionCommands::Start { title, json } => start_session(&title, json),
+        AiSessionCommands::New { title, json } => new_session(&title, json),
         AiSessionCommands::Update { session, json } => update_session(session, json),
         AiSessionCommands::Note { content, session } => note_session(content, session),
         AiSessionCommands::End {
@@ -138,7 +138,7 @@ pub fn end(
     Ok(())
 }
 
-fn start_session(title: &str, json_output: bool) -> Result<()> {
+fn new_session(title: &str, json_output: bool) -> Result<()> {
     let project_root = SessionManager::find_project_root()?;
     let interface_name = resolve_native_session_interface(&project_root, None)?;
     let result = crate::commands::session::start_session_value(
@@ -151,7 +151,7 @@ fn start_session(title: &str, json_output: bool) -> Result<()> {
         return Ok(());
     }
 
-    println!("Started AI session {}", result.session_id);
+    println!("Created AI session {}", result.session_id);
     println!("  Interface: {}", result.interface);
     println!("  Artifact: {}", result.artifact_path);
     Ok(())

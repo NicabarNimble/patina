@@ -1364,7 +1364,7 @@ fn build_report(conn: &Connection) -> Result<MeasureReport> {
     let evolve = build_evolve_summary(conn)?;
     if evolve.status == VerbStatus::NoData {
         actions
-            .push("Run a session (`patina session start`) to populate evolve metrics".to_string());
+            .push("Run a session (`patina ai session new`) to populate evolve metrics".to_string());
     }
     verbs.push(evolve);
 

@@ -6,8 +6,8 @@ use clap::Args;
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum AiSessionCommands {
-    /// Start an AI session without launching an interface
-    Start {
+    /// Create a new AI session boundary without launching an interface
+    New {
         title: String,
 
         #[arg(long)]
@@ -374,5 +374,23 @@ mod tests {
             } => assert!(commit),
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn ai_session_new_command_parses_title() {
+        let parsed = AiCli::try_parse_from(["patina", "session", "new", "boundary title"]).unwrap();
+
+        match parsed.command {
+            AiCommands::Session {
+                command: AiSessionCommands::New { title, .. },
+            } => assert_eq!(title, "boundary title"),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ai_session_start_command_is_rejected() {
+        let parsed = AiCli::try_parse_from(["patina", "session", "start", "legacy"]);
+        assert!(parsed.is_err());
     }
 }

@@ -619,7 +619,7 @@ fn end_session_document_value(
          See: {sessions_dir}/{id}.md\n\
          Tags: {start_tag}..{end_tag}\n\
          Classification: {classification}\n\n\
-         Quick start: /session-start \"continue from {title}\"\n",
+         Quick start: /session-new \"continue from {title}\"\n",
         title = session_title,
         sessions_dir = SESSIONS_DIR,
         id = session_id,
