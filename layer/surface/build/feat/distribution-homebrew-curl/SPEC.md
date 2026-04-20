@@ -1,7 +1,7 @@
 ---
 type: feat
 id: distribution-homebrew-curl
-status: ready
+status: active
 created: 2026-04-20
 sessions:
   origin: 20260416-133521-394965000
