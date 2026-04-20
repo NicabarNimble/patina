@@ -11,7 +11,8 @@ Update the current Patina session with Git-aware progress tracking:
 4. **First-update naming hook (auto-session enrichment)**:
    - If this update is the first substantive update in the session (period indicates session start) and the title is still a default interface title (for example: `opencode session`, `claude session`, `gemini session`, `pi session`), propose a concise task-specific title from actual work completed.
    - Ask for confirmation: "Rename this session to '<proposed title>'?"
-   - If approved, update the session artifact frontmatter `title:` before continuing.
+   - If JSON includes `rename_recommended: true` and `rename_suggestion`, use that suggestion first.
+   - If approved, rerun update with `--title "<approved title>"` so backend persists title to both artifact and Mother state.
 
 5. Fill in the update section with what happened during that time period:
    - **Work completed**: Code written, files modified, problems solved
