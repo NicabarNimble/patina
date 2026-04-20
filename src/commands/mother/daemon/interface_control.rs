@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 const HANDSHAKE_TTL_SECS: i64 = 120;
 const HANDSHAKE_STORE_CAP: usize = 512;
+const ENVELOPE_STORE_CAP: usize = 2048;
+const ENVELOPE_RETAIN_HOURS: i64 = 24;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InterfaceControlOperation {
@@ -123,8 +125,43 @@ enum ResolveDecision {
     Reject(String),
 }
 
+#[derive(Debug, Clone)]
+enum EnvelopeStatus {
+    Active,
+    Ended {
+        reason: String,
+        ended_at: chrono::DateTime<Utc>,
+    },
+}
+
+impl EnvelopeStatus {
+    fn is_active(&self) -> bool {
+        matches!(self, Self::Active)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct EnvelopeRecord {
+    envelope_id: String,
+    project_uid: String,
+    interface_name: String,
+    session_runtime_id: String,
+    session_file_id: String,
+    tmux_lane: String,
+    created_at: chrono::DateTime<Utc>,
+    updated_at: chrono::DateTime<Utc>,
+    last_heartbeat_at: Option<chrono::DateTime<Utc>>,
+    pid: Option<u32>,
+    status: EnvelopeStatus,
+}
+
 fn handshake_store() -> &'static Mutex<HashMap<String, HandshakeRecord>> {
     static STORE: OnceLock<Mutex<HashMap<String, HandshakeRecord>>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn envelope_store() -> &'static Mutex<HashMap<String, EnvelopeRecord>> {
+    static STORE: OnceLock<Mutex<HashMap<String, EnvelopeRecord>>> = OnceLock::new();
     STORE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -169,6 +206,7 @@ fn handle_handshake(
     args: serde_json::Value,
 ) -> Result<serde_json::Value> {
     prune_handshakes();
+    prune_envelopes();
 
     let args: HandshakeArgs = serde_json::from_value(args)
         .map_err(|error| invalid_request(format!("invalid handshake args: {}", error)))?;
@@ -246,6 +284,7 @@ fn handle_resolve(
     args: serde_json::Value,
 ) -> Result<serde_json::Value> {
     prune_handshakes();
+    prune_envelopes();
 
     let args: ResolveArgs = serde_json::from_value(args)
         .map_err(|error| invalid_request(format!("invalid resolve args: {}", error)))?;
@@ -269,12 +308,15 @@ fn handle_resolve(
     );
 
     let result = match decision {
-        ResolveDecision::Attach(handle) => serde_json::json!({
-            "decision": "attach",
-            "identity": identity_from_handle(&handle, &handshake.project_uid, &handshake.interface_name),
-            "tmux_mode": handshake.tmux_mode,
-            "tty": handshake.tty,
-        }),
+        ResolveDecision::Attach(handle) => {
+            let envelope = get_or_create_active_envelope_for_session(&handshake, &handle);
+            serde_json::json!({
+                "decision": "attach",
+                "identity": identity_from_envelope(&envelope),
+                "tmux_mode": handshake.tmux_mode,
+                "tty": handshake.tty,
+            })
+        }
         ResolveDecision::Create => {
             let title = args
                 .title
@@ -282,9 +324,10 @@ fn handle_resolve(
                 .filter(|value| !value.is_empty())
                 .unwrap_or_else(|| format!("{} session", handshake.interface_name));
             let handle = create_session(&handshake, &title)?;
+            let envelope = get_or_create_active_envelope_for_session(&handshake, &handle);
             serde_json::json!({
                 "decision": "create",
-                "identity": identity_from_handle(&handle, &handshake.project_uid, &handshake.interface_name),
+                "identity": identity_from_envelope(&envelope),
                 "tmux_mode": handshake.tmux_mode,
                 "tty": handshake.tty,
             })
@@ -293,7 +336,12 @@ fn handle_resolve(
             let choices = candidates
                 .iter()
                 .map(|handle| {
-                    identity_from_handle(handle, &handshake.project_uid, &handshake.interface_name)
+                    choice_identity_from_handle(
+                        handle,
+                        &handshake.project_uid,
+                        &handshake.interface_name,
+                        &handshake.project_root,
+                    )
                 })
                 .collect::<Vec<_>>();
             serde_json::json!({
@@ -318,21 +366,62 @@ fn handle_heartbeat(
     operation: InterfaceControlOperation,
     args: serde_json::Value,
 ) -> Result<serde_json::Value> {
+    prune_envelopes();
+
     let args: HeartbeatArgs = serde_json::from_value(args)
         .map_err(|error| invalid_request(format!("invalid heartbeat args: {}", error)))?;
-    if args.envelope_id.trim().is_empty() {
+    let envelope_id = args.envelope_id.trim().to_string();
+    if envelope_id.is_empty() {
         return Err(invalid_request("envelope_id is required"));
     }
+    if args.tmux_lane.trim().is_empty() {
+        return Err(invalid_request("tmux_lane is required"));
+    }
+
+    let observed_at = chrono::DateTime::parse_from_rfc3339(args.observed_at.trim())
+        .map_err(|error| invalid_request(format!("invalid observed_at timestamp: {}", error)))?
+        .with_timezone(&Utc);
+
+    let (session_runtime_id, session_file_id, tmux_lane) = {
+        let mut store = envelope_store()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some(record) = store.get_mut(&envelope_id) else {
+            return Err(invalid_request(format!(
+                "unknown envelope_id '{}'",
+                envelope_id
+            )));
+        };
+        if let EnvelopeStatus::Ended { .. } = &record.status {
+            return Err(invalid_request(format!(
+                "envelope '{}' has ended",
+                envelope_id
+            )));
+        }
+
+        record.pid = Some(args.pid);
+        record.tmux_lane = args.tmux_lane.trim().to_string();
+        record.last_heartbeat_at = Some(observed_at);
+        record.updated_at = Utc::now();
+
+        (
+            record.session_runtime_id.clone(),
+            record.session_file_id.clone(),
+            record.tmux_lane.clone(),
+        )
+    };
 
     Ok(ok_response(
         operation,
         serde_json::json!({
             "ok": true,
             "detail": "heartbeat acknowledged",
-            "envelope_id": args.envelope_id,
+            "envelope_id": envelope_id,
+            "session_runtime_id": session_runtime_id,
+            "session_file_id": session_file_id,
             "pid": args.pid,
-            "tmux_lane": args.tmux_lane,
-            "observed_at": args.observed_at,
+            "tmux_lane": tmux_lane,
+            "observed_at": observed_at.to_rfc3339(),
         }),
     ))
 }
@@ -341,19 +430,63 @@ fn handle_end(
     operation: InterfaceControlOperation,
     args: serde_json::Value,
 ) -> Result<serde_json::Value> {
+    prune_envelopes();
+
     let args: EndArgs = serde_json::from_value(args)
         .map_err(|error| invalid_request(format!("invalid end args: {}", error)))?;
-    if args.envelope_id.trim().is_empty() {
+    let envelope_id = args.envelope_id.trim().to_string();
+    if envelope_id.is_empty() {
         return Err(invalid_request("envelope_id is required"));
     }
+
+    let now = Utc::now();
+    let (session_runtime_id, session_file_id, detail, ended_at) = {
+        let mut store = envelope_store()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some(record) = store.get_mut(&envelope_id) else {
+            return Err(invalid_request(format!(
+                "unknown envelope_id '{}'",
+                envelope_id
+            )));
+        };
+
+        match &record.status {
+            EnvelopeStatus::Active => {
+                record.status = EnvelopeStatus::Ended {
+                    reason: args.reason.clone(),
+                    ended_at: now,
+                };
+                record.updated_at = now;
+                (
+                    record.session_runtime_id.clone(),
+                    record.session_file_id.clone(),
+                    "envelope ended".to_string(),
+                    now.to_rfc3339(),
+                )
+            }
+            EnvelopeStatus::Ended {
+                reason: existing_reason,
+                ended_at,
+            } => (
+                record.session_runtime_id.clone(),
+                record.session_file_id.clone(),
+                format!("envelope already ended: {}", existing_reason),
+                ended_at.to_rfc3339(),
+            ),
+        }
+    };
 
     Ok(ok_response(
         operation,
         serde_json::json!({
             "ok": true,
-            "detail": "envelope ended",
-            "envelope_id": args.envelope_id,
+            "detail": detail,
+            "envelope_id": envelope_id,
+            "session_runtime_id": session_runtime_id,
+            "session_file_id": session_file_id,
             "reason": args.reason,
+            "ended_at": ended_at,
         }),
     ))
 }
@@ -470,16 +603,84 @@ fn emit_session_writer_init_failed_event(
     Ok(())
 }
 
-fn identity_from_handle(
+fn get_or_create_active_envelope_for_session(
+    handshake: &HandshakeRecord,
+    handle: &patina::session::LiveSessionHandle,
+) -> EnvelopeRecord {
+    let now = Utc::now();
+    let mut store = envelope_store()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    if let Some(existing) = store.values_mut().find(|record| {
+        record.status.is_active()
+            && record.project_uid == handshake.project_uid
+            && record.interface_name == handshake.interface_name
+            && record.session_runtime_id == handle.runtime_id
+    }) {
+        existing.updated_at = now;
+        return existing.clone();
+    }
+
+    if store.len() >= ENVELOPE_STORE_CAP {
+        trim_oldest_envelopes(&mut store);
+    }
+
+    let envelope_id = format!("env-{}", Uuid::new_v4().simple());
+    let tmux_lane = resolve_tmux_lane(
+        &handshake.project_root,
+        &handshake.interface_name,
+        &handle.file_id,
+    );
+
+    let record = EnvelopeRecord {
+        envelope_id: envelope_id.clone(),
+        project_uid: handshake.project_uid.clone(),
+        interface_name: handshake.interface_name.clone(),
+        session_runtime_id: handle.runtime_id.clone(),
+        session_file_id: handle.file_id.clone(),
+        tmux_lane,
+        created_at: now,
+        updated_at: now,
+        last_heartbeat_at: None,
+        pid: None,
+        status: EnvelopeStatus::Active,
+    };
+
+    store.insert(envelope_id, record.clone());
+    record
+}
+
+fn resolve_tmux_lane(project_root: &Path, interface_name: &str, session_file_id: &str) -> String {
+    patina::interface::derive_interface_session_name(
+        project_root,
+        interface_name,
+        Some(session_file_id),
+    )
+}
+
+fn identity_from_envelope(record: &EnvelopeRecord) -> serde_json::Value {
+    serde_json::json!({
+        "envelope_id": record.envelope_id,
+        "session_runtime_id": record.session_runtime_id,
+        "session_file_id": record.session_file_id,
+        "tmux_lane": record.tmux_lane,
+        "interface_name": record.interface_name,
+        "project_uid": record.project_uid,
+    })
+}
+
+fn choice_identity_from_handle(
     handle: &patina::session::LiveSessionHandle,
     project_uid: &str,
     interface_name: &str,
+    project_root: &Path,
 ) -> serde_json::Value {
     serde_json::json!({
-        "envelope_id": handle.runtime_id,
+        "envelope_id": format!("choice:{}", handle.runtime_id),
         "session_runtime_id": handle.runtime_id,
         "session_file_id": handle.file_id,
-        "tmux_lane": interface_name,
+        "tmux_lane": resolve_tmux_lane(project_root, interface_name, &handle.file_id),
         "interface_name": interface_name,
         "project_uid": project_uid,
     })
@@ -557,9 +758,52 @@ fn trim_oldest_handshakes(store: &mut HashMap<String, HandshakeRecord>) {
     }
 }
 
+fn prune_envelopes() {
+    let now = Utc::now();
+    let mut store = envelope_store()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    store.retain(|_, record| match &record.status {
+        EnvelopeStatus::Active => true,
+        EnvelopeStatus::Ended { ended_at, .. } => {
+            *ended_at + Duration::hours(ENVELOPE_RETAIN_HOURS) > now
+        }
+    });
+
+    if store.len() > ENVELOPE_STORE_CAP {
+        trim_oldest_envelopes(&mut store);
+    }
+}
+
+fn trim_oldest_envelopes(store: &mut HashMap<String, EnvelopeRecord>) {
+    if store.len() <= ENVELOPE_STORE_CAP {
+        return;
+    }
+
+    let overflow = store.len().saturating_sub(ENVELOPE_STORE_CAP);
+    let mut entries = store
+        .iter()
+        .map(|(id, record)| (id.clone(), record.updated_at, record.created_at))
+        .collect::<Vec<_>>();
+    entries.sort_by_key(|(_, updated_at, created_at)| (*updated_at, *created_at));
+
+    for (id, _, _) in entries.into_iter().take(overflow) {
+        store.remove(&id);
+    }
+}
+
 #[cfg(test)]
 fn clear_handshakes() {
     handshake_store()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clear();
+}
+
+#[cfg(test)]
+fn clear_envelopes() {
+    envelope_store()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clear();
@@ -624,6 +868,7 @@ mod tests {
     fn handshake_then_resolve_creates_session_when_none_active() {
         crate::test_support::with_temp_patina_home(|_| {
             clear_handshakes();
+            clear_envelopes();
             let temp = tempfile::TempDir::new().unwrap();
             let project_root = temp.path().join("project");
             std::fs::create_dir_all(&project_root).unwrap();
@@ -673,9 +918,249 @@ mod tests {
                     .and_then(|value| value.as_str()),
                 Some("create")
             );
+            let identity = resolve
+                .get("result")
+                .and_then(|result| result.get("identity"))
+                .expect("identity payload present");
+            let envelope_id = identity
+                .get("envelope_id")
+                .and_then(|value| value.as_str())
+                .expect("envelope_id present");
+            let session_runtime_id = identity
+                .get("session_runtime_id")
+                .and_then(|value| value.as_str())
+                .expect("session_runtime_id present");
+            let tmux_lane = identity
+                .get("tmux_lane")
+                .and_then(|value| value.as_str())
+                .expect("tmux_lane present");
+            assert_ne!(envelope_id, session_runtime_id);
+            assert!(tmux_lane.contains("_pi_"), "got lane: {}", tmux_lane);
 
             let active = patina::session::list_active_sessions(&project_root).unwrap();
             assert_eq!(active.len(), 1);
+        });
+    }
+
+    #[test]
+    fn resolve_attach_reuses_existing_envelope_id() {
+        crate::test_support::with_temp_patina_home(|_| {
+            clear_handshakes();
+            clear_envelopes();
+            let temp = tempfile::TempDir::new().unwrap();
+            let project_root = temp.path().join("project");
+            std::fs::create_dir_all(&project_root).unwrap();
+            let project_uid = patina::project::create_uid_if_missing(&project_root).unwrap();
+
+            let handshake_one = dispatch_interface_control_call(
+                mother_crate::http_api::InterfaceControlCallRequest {
+                    operation_id: "patina:interface/handshake.v1".to_string(),
+                    args: serde_json::json!({
+                        "protocol-version": "0.1",
+                        "cli-version": "0.62.0",
+                        "project-uid": project_uid,
+                        "project-root": project_root.display().to_string(),
+                        "interface-name": "pi",
+                        "interface-kind": "hitl",
+                        "launch-intent": "attach-or-create",
+                        "tty": true
+                    }),
+                    correlation: None,
+                },
+            )
+            .expect("handshake one");
+            let handshake_one_id = handshake_one
+                .get("result")
+                .and_then(|result| result.get("handshake_id"))
+                .and_then(|value| value.as_str())
+                .expect("handshake one id")
+                .to_string();
+
+            let resolve_one = dispatch_interface_control_call(
+                mother_crate::http_api::InterfaceControlCallRequest {
+                    operation_id: "patina:interface/envelope.resolve.v1".to_string(),
+                    args: serde_json::json!({"handshake-id": handshake_one_id}),
+                    correlation: None,
+                },
+            )
+            .expect("resolve one");
+
+            let envelope_one = resolve_one
+                .get("result")
+                .and_then(|result| result.get("identity"))
+                .and_then(|identity| identity.get("envelope_id"))
+                .and_then(|value| value.as_str())
+                .expect("envelope one")
+                .to_string();
+
+            let handshake_two = dispatch_interface_control_call(
+                mother_crate::http_api::InterfaceControlCallRequest {
+                    operation_id: "patina:interface/handshake.v1".to_string(),
+                    args: serde_json::json!({
+                        "protocol-version": "0.1",
+                        "cli-version": "0.62.0",
+                        "project-uid": patina::project::create_uid_if_missing(&project_root).unwrap(),
+                        "project-root": project_root.display().to_string(),
+                        "interface-name": "pi",
+                        "interface-kind": "hitl",
+                        "launch-intent": "attach-or-create",
+                        "tty": true
+                    }),
+                    correlation: None,
+                },
+            )
+            .expect("handshake two");
+            let handshake_two_id = handshake_two
+                .get("result")
+                .and_then(|result| result.get("handshake_id"))
+                .and_then(|value| value.as_str())
+                .expect("handshake two id")
+                .to_string();
+
+            let resolve_two = dispatch_interface_control_call(
+                mother_crate::http_api::InterfaceControlCallRequest {
+                    operation_id: "patina:interface/envelope.resolve.v1".to_string(),
+                    args: serde_json::json!({"handshake-id": handshake_two_id}),
+                    correlation: None,
+                },
+            )
+            .expect("resolve two");
+
+            assert_eq!(
+                resolve_two
+                    .get("result")
+                    .and_then(|result| result.get("decision"))
+                    .and_then(|value| value.as_str()),
+                Some("attach")
+            );
+
+            let envelope_two = resolve_two
+                .get("result")
+                .and_then(|result| result.get("identity"))
+                .and_then(|identity| identity.get("envelope_id"))
+                .and_then(|value| value.as_str())
+                .expect("envelope two")
+                .to_string();
+
+            assert_eq!(envelope_one, envelope_two);
+        });
+    }
+
+    #[test]
+    fn heartbeat_and_end_require_active_envelope() {
+        crate::test_support::with_temp_patina_home(|_| {
+            clear_handshakes();
+            clear_envelopes();
+            let temp = tempfile::TempDir::new().unwrap();
+            let project_root = temp.path().join("project");
+            std::fs::create_dir_all(&project_root).unwrap();
+            let project_uid = patina::project::create_uid_if_missing(&project_root).unwrap();
+
+            let handshake = dispatch_interface_control_call(
+                mother_crate::http_api::InterfaceControlCallRequest {
+                    operation_id: "patina:interface/handshake.v1".to_string(),
+                    args: serde_json::json!({
+                        "protocol-version": "0.1",
+                        "cli-version": "0.62.0",
+                        "project-uid": project_uid,
+                        "project-root": project_root.display().to_string(),
+                        "interface-name": "pi",
+                        "interface-kind": "hitl",
+                        "launch-intent": "attach-or-create",
+                        "tty": true
+                    }),
+                    correlation: None,
+                },
+            )
+            .expect("handshake");
+            let handshake_id = handshake
+                .get("result")
+                .and_then(|result| result.get("handshake_id"))
+                .and_then(|value| value.as_str())
+                .expect("handshake id")
+                .to_string();
+
+            let resolve = dispatch_interface_control_call(
+                mother_crate::http_api::InterfaceControlCallRequest {
+                    operation_id: "patina:interface/envelope.resolve.v1".to_string(),
+                    args: serde_json::json!({"handshake-id": handshake_id}),
+                    correlation: None,
+                },
+            )
+            .expect("resolve");
+
+            let envelope_id = resolve
+                .get("result")
+                .and_then(|result| result.get("identity"))
+                .and_then(|identity| identity.get("envelope_id"))
+                .and_then(|value| value.as_str())
+                .expect("envelope id")
+                .to_string();
+
+            let heartbeat = dispatch_interface_control_call(
+                mother_crate::http_api::InterfaceControlCallRequest {
+                    operation_id: "patina:interface/envelope.heartbeat.v1".to_string(),
+                    args: serde_json::json!({
+                        "envelope-id": envelope_id,
+                        "pid": 123,
+                        "tmux-lane": "lane-1",
+                        "observed-at": Utc::now().to_rfc3339()
+                    }),
+                    correlation: None,
+                },
+            )
+            .expect("heartbeat");
+
+            assert_eq!(
+                heartbeat
+                    .get("result")
+                    .and_then(|result| result.get("ok"))
+                    .and_then(|value| value.as_bool()),
+                Some(true)
+            );
+
+            let end = dispatch_interface_control_call(
+                mother_crate::http_api::InterfaceControlCallRequest {
+                    operation_id: "patina:interface/envelope.end.v1".to_string(),
+                    args: serde_json::json!({
+                        "envelope-id": heartbeat
+                            .get("result")
+                            .and_then(|result| result.get("envelope_id"))
+                            .and_then(|value| value.as_str())
+                            .expect("envelope id"),
+                        "reason": "done"
+                    }),
+                    correlation: None,
+                },
+            )
+            .expect("end");
+
+            assert_eq!(
+                end.get("result")
+                    .and_then(|result| result.get("ok"))
+                    .and_then(|value| value.as_bool()),
+                Some(true)
+            );
+
+            let heartbeat_after_end = dispatch_interface_control_call(
+                mother_crate::http_api::InterfaceControlCallRequest {
+                    operation_id: "patina:interface/envelope.heartbeat.v1".to_string(),
+                    args: serde_json::json!({
+                        "envelope-id": end
+                            .get("result")
+                            .and_then(|result| result.get("envelope_id"))
+                            .and_then(|value| value.as_str())
+                            .expect("envelope id"),
+                        "pid": 123,
+                        "tmux-lane": "lane-1",
+                        "observed-at": Utc::now().to_rfc3339()
+                    }),
+                    correlation: None,
+                },
+            )
+            .unwrap_err();
+
+            assert!(heartbeat_after_end.to_string().contains("has ended"));
         });
     }
 }
