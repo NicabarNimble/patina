@@ -53,7 +53,7 @@ Patina currently has source-first distribution (`cargo install --path .`) and a 
 
 ## Status
 
-Draft complete and implementation-ready.
+Active — implementation underway.
 
 ## Non-Goals
 
