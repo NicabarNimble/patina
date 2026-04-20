@@ -56,8 +56,12 @@ pub fn list(json_output: bool) -> Result<()> {
 
 pub fn session(command: AiSessionCommands) -> Result<()> {
     match command {
-        AiSessionCommands::Start { title, json } => start_session(&title, json),
-        AiSessionCommands::Update { session, json } => update_session(session, json),
+        AiSessionCommands::New { title, json } => new_session(&title, json),
+        AiSessionCommands::Update {
+            session,
+            title,
+            json,
+        } => update_session(session, title, json),
         AiSessionCommands::Note { content, session } => note_session(content, session),
         AiSessionCommands::End {
             session,
@@ -138,7 +142,7 @@ pub fn end(
     Ok(())
 }
 
-fn start_session(title: &str, json_output: bool) -> Result<()> {
+fn new_session(title: &str, json_output: bool) -> Result<()> {
     let project_root = SessionManager::find_project_root()?;
     let interface_name = resolve_native_session_interface(&project_root, None)?;
     let result = crate::commands::session::start_session_value(
@@ -151,20 +155,28 @@ fn start_session(title: &str, json_output: bool) -> Result<()> {
         return Ok(());
     }
 
-    println!("Started AI session {}", result.session_id);
+    println!("Created AI session {}", result.session_id);
     println!("  Interface: {}", result.interface);
     println!("  Artifact: {}", result.artifact_path);
     Ok(())
 }
 
-fn update_session(session_selector: Option<String>, json_output: bool) -> Result<()> {
+fn update_session(
+    session_selector: Option<String>,
+    title_override: Option<String>,
+    json_output: bool,
+) -> Result<()> {
     let project_root = SessionManager::find_project_root()?;
     let handle = crate::commands::session::resolve_live_session(
         &project_root,
         session_selector.as_deref(),
         current_interface_name().as_deref(),
     )?;
-    let result = crate::commands::session::update_live_session_value(&project_root, &handle)?;
+    let result = crate::commands::session::update_live_session_value(
+        &project_root,
+        &handle,
+        title_override.as_deref(),
+    )?;
 
     if json_output {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -173,6 +185,16 @@ fn update_session(session_selector: Option<String>, json_output: bool) -> Result
 
     println!("Updated AI session {}", result.session_id);
     println!("  Artifact: {}", result.artifact_path);
+    if result.rename_recommended {
+        if let Some(suggestion) = result.rename_suggestion.as_deref() {
+            println!("  Suggested title: {suggestion}");
+            println!(
+                "  Rename now: patina ai session update --session {} --title \"{}\"",
+                result.runtime_id,
+                suggestion.replace('"', "\\\"")
+            );
+        }
+    }
     Ok(())
 }
 

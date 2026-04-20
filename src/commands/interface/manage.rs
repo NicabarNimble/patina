@@ -503,7 +503,7 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
 
 /// Template-managed command files (not user-created)
 const TEMPLATE_COMMANDS: &[&str] = &[
-    "session-start.md",
+    "session-new.md",
     "session-update.md",
     "session-note.md",
     "session-end.md",

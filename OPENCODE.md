@@ -6,7 +6,7 @@ Read `AGENTS.md` first. This file is a compatibility shim for OpenCode and shoul
 OpenCode runtime does not have Patina MCP configured. Use CLI/session wrappers:
 - Discovery: `patina context`, `patina scry`, `patina assay`
 - Specs: `patina spec next`, `patina spec show <id>`, `patina spec check <id> --json`
-- Sessions: `.opencode/bin/session-start.sh "<title>"`, `.opencode/bin/session-update.sh`, `.opencode/bin/session-note.sh "<note>"`, `.opencode/bin/session-end.sh`
+- Sessions: `.opencode/bin/session-new.sh "<title>"`, `.opencode/bin/session-update.sh`, `.opencode/bin/session-note.sh "<note>"`, `.opencode/bin/session-end.sh`
 
 Keep custom notes outside the Patina block.
 

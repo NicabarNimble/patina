@@ -76,18 +76,15 @@ mod tests {
         assert!(temp.path().join("AGENTS.md").exists());
         assert!(temp.path().join("CLAUDE.md").exists());
         assert!(temp.path().join("GEMINI.md").exists());
+        assert!(temp.path().join(".claude/commands/session-new.md").exists());
         assert!(temp
             .path()
-            .join(".claude/commands/session-start.md")
+            .join(".opencode/commands/session-new.md")
             .exists());
         assert!(temp
             .path()
-            .join(".opencode/commands/session-start.md")
+            .join(".gemini/commands/session-new.toml")
             .exists());
-        assert!(temp
-            .path()
-            .join(".gemini/commands/session-start.toml")
-            .exists());
-        assert!(temp.path().join(".pi/commands/session-start.md").exists());
+        assert!(temp.path().join(".pi/commands/session-new.md").exists());
     }
 }

@@ -6,8 +6,8 @@ use clap::Args;
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum AiSessionCommands {
-    /// Start an AI session without launching an interface
-    Start {
+    /// Create a new AI session boundary without launching an interface
+    New {
         title: String,
 
         #[arg(long)]
@@ -18,6 +18,9 @@ pub enum AiSessionCommands {
     Update {
         #[arg(long)]
         session: Option<String>,
+
+        #[arg(long)]
+        title: Option<String>,
 
         #[arg(long)]
         json: bool,
@@ -360,6 +363,25 @@ mod tests {
     }
 
     #[test]
+    fn ai_session_update_command_accepts_title_override() {
+        let parsed = AiCli::try_parse_from([
+            "patina",
+            "session",
+            "update",
+            "--title",
+            "rename from update",
+        ])
+        .unwrap();
+
+        match parsed.command {
+            AiCommands::Session {
+                command: AiSessionCommands::Update { title, .. },
+            } => assert_eq!(title.as_deref(), Some("rename from update")),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn end_commands_accept_commit_flag() {
         let parsed = AiCli::try_parse_from(["patina", "end", "--commit"]).unwrap();
         match parsed.command {
@@ -374,5 +396,23 @@ mod tests {
             } => assert!(commit),
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn ai_session_new_command_parses_title() {
+        let parsed = AiCli::try_parse_from(["patina", "session", "new", "boundary title"]).unwrap();
+
+        match parsed.command {
+            AiCommands::Session {
+                command: AiSessionCommands::New { title, .. },
+            } => assert_eq!(title, "boundary title"),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ai_session_start_command_is_rejected() {
+        let parsed = AiCli::try_parse_from(["patina", "session", "start", "legacy"]);
+        assert!(parsed.is_err());
     }
 }

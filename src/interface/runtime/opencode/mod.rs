@@ -58,8 +58,8 @@ impl InterfaceProvider for OpenCodeInterface {
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {
         vec![
             (
-                "/session-start [name]",
-                "Start session with Git branch creation",
+                "/session-new [name]",
+                "Create explicit new session boundary",
             ),
             ("/session-update", "Update session with Git awareness"),
             ("/session-note [insight]", "Add insight with Git context"),

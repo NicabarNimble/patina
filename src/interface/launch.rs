@@ -499,7 +499,7 @@ Use MCP directly for Patina workflow:\n\
 - Discovery: `context`, `scry`, `assay`\n\
 - Specs: `spec.next`, `spec.list`, `spec.show`, `spec.check`\n\n\
 Session lifecycle stays on the bundled native wrapper path even when MCP is configured:\n\
-- Sessions: `{wrapper_root}/session-start.sh \"<title>\"`\n\
+- Sessions: `{wrapper_root}/session-new.sh \"<title>\"`\n\
 - Sessions: `{wrapper_root}/session-update.sh`\n\
 - Sessions: `{wrapper_root}/session-note.sh \"<note>\"`\n\
 - Sessions: `{wrapper_root}/session-end.sh`\n"
@@ -510,7 +510,7 @@ Session lifecycle stays on the bundled native wrapper path even when MCP is conf
 Use CLI/native fallbacks instead:\n\
 - Discovery: `patina context`, `patina scry`, `patina assay`\n\
 - Specs: `patina spec show <id>`, `patina spec check <id> --json`, `patina spec next`\n\
-- Sessions: `{wrapper_root}/session-start.sh \"<title>\"`\n\
+- Sessions: `{wrapper_root}/session-new.sh \"<title>\"`\n\
 - Sessions: `{wrapper_root}/session-update.sh`\n\
 - Sessions: `{wrapper_root}/session-note.sh \"<note>\"`\n\
 - Sessions: `{wrapper_root}/session-end.sh`\n"
@@ -580,9 +580,9 @@ mod tests {
                 "Do not assume MCP exists unless that runtime section says it is configured."
             ));
             assert!(!section.contains("session.start"));
-            assert!(section.contains(".claude/bin/session-start.sh"));
-            assert!(section.contains(".opencode/bin/session-start.sh"));
-            assert!(section.contains(".gemini/bin/session-start.sh"));
+            assert!(section.contains(".claude/bin/session-new.sh"));
+            assert!(section.contains(".opencode/bin/session-new.sh"));
+            assert!(section.contains(".gemini/bin/session-new.sh"));
             assert!(section.contains("session-note.sh"));
             assert!(section.contains("patina spec check <id> --json"));
         });

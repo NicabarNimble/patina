@@ -54,7 +54,7 @@ fn sync_claude_interface(dry_run: bool) -> Result<()> {
 
     let files_to_sync = vec![
         (
-            "resources/claude/session-start.md",
+            "resources/claude/session-new.md",
             "Session start skill definition",
         ),
         (

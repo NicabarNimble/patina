@@ -1,7 +1,7 @@
-Start a new Patina development session with Git tagging:
+Create an explicit new Patina session boundary with Git tagging:
 
 1. Launch an Agent (subagent) to initialize the session and gather context. The agent should:
-   - Run: `.claude/bin/session-start.sh "$ARGUMENTS"`
+   - Run: `.claude/bin/session-new.sh "$ARGUMENTS"`
    - Parse the returned JSON and extract all fields
    - If `last_session_path` exists in the JSON, read that file, follow the session artifact reference inside it, and read the full previous session artifact
    - Return to the main context: all JSON fields (`session_id`, `artifact_path`, `start_tag`, `last_session_path`) and the full text of the previous session artifact if it exists
@@ -12,7 +12,7 @@ Start a new Patina development session with Git tagging:
 
 4. If we've been discussing work already in this conversation:
    - Update the Goals section with specific tasks we've identified
-   - Add context about why this session was started
+   - Add context about why this new boundary was started
    - Note any decisions or constraints we've discussed
 
 5. Ask the user: "Would you like me to create todos for '$ARGUMENTS'?"

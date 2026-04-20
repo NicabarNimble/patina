@@ -1055,7 +1055,7 @@ pub fn execute_feedback() -> Result<()> {
     if total_queries == 0 {
         println!("No feedback data available yet.");
         println!("\nTo collect feedback data:");
-        println!("  1. Start a session: /session-start");
+        println!("  1. Start a session: /session-new");
         println!("  2. Run scry queries during development");
         println!("  3. Commit your changes");
         println!("  4. Run: patina scrape git");

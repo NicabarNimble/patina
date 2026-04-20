@@ -720,7 +720,7 @@ mod tests {
         assert!(temp.path().join("GEMINI.md").exists());
         assert!(temp
             .path()
-            .join(".gemini/commands/session-start.toml")
+            .join(".gemini/commands/session-new.toml")
             .exists());
     }
 }

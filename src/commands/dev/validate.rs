@@ -25,7 +25,7 @@ pub fn execute(json: bool) -> Result<()> {
 
     // Check Claude interface skill definitions
     let claude_checks = vec![
-        "session-start.md",
+        "session-new.md",
         "session-update.md",
         "session-end.md",
         "session-note.md",

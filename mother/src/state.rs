@@ -1193,6 +1193,20 @@ impl MotherRuntimeStore {
         Ok(())
     }
 
+    pub fn update_mother_session_title(
+        &self,
+        runtime_id: &str,
+        title: &str,
+        updated_at: &str,
+    ) -> Result<()> {
+        let conn = self.open()?;
+        conn.execute(
+            "UPDATE mother_sessions SET title = ?2, updated_at = ?3 WHERE runtime_id = ?1",
+            params![runtime_id, title, updated_at],
+        )?;
+        Ok(())
+    }
+
     pub fn finish_mother_session(
         &self,
         runtime_id: &str,

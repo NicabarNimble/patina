@@ -79,7 +79,7 @@ detect_commands = ["claude --version"]
 vendor_bootstrap = "CLAUDE.md"
 tmux_policy = "auto"
 version = "builtin"
-skills = { include = ["session-start", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
+skills = { include = ["session-new", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
 managed_paths = [
   { relative_path = "AGENTS.md", kind = "file" },
   { relative_path = "CLAUDE.md", kind = "file" },
@@ -94,7 +94,7 @@ command = "opencode"
 detect_commands = ["opencode --version"]
 tmux_policy = "auto"
 version = "builtin"
-skills = { include = ["session-start", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
+skills = { include = ["session-new", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
 mcp = { config_candidates = [
   "~/.config/opencode/config.json",
   "~/.config/opencode/opencode.json",
@@ -114,7 +114,7 @@ detect_commands = ["gemini --version"]
 vendor_bootstrap = "GEMINI.md"
 tmux_policy = "auto"
 version = "builtin"
-skills = { include = ["session-start", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
+skills = { include = ["session-new", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
 mcp = { config_candidates = [
   "~/.gemini/settings.json",
   "~/.config/gemini/settings.json",
@@ -134,7 +134,7 @@ command = "pi"
 detect_commands = ["pi --version"]
 tmux_policy = "auto"
 version = "builtin"
-skills = { include = ["session-start", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
+skills = { include = ["session-new", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
 managed_paths = [
   { relative_path = "AGENTS.md", kind = "file" },
   { relative_path = ".pi", kind = "directory" },
@@ -224,7 +224,7 @@ mod tests {
             return false;
         };
         [
-            "session-start",
+            "session-new",
             "session-update",
             "session-note",
             "session-end",

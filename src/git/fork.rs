@@ -68,13 +68,13 @@ This project uses [Patina](https://github.com/ai-1st/patina) for AI-assisted dev
 
 ```bash
 # Start a development session (with Claude)
-patina session start "implementing new feature"
+patina ai session new "implementing new feature"
 
 # Check project health
 patina doctor
 
 # End session and capture learnings
-patina session end
+patina ai session end
 ```
 
 ### Project Structure

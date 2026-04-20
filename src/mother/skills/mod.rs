@@ -17,7 +17,7 @@ pub struct SkillContent {
     pub files: &'static [SkillFile],
 }
 
-const CLAUDE_SESSION_START: &str = include_str!("../../../resources/claude/session-start.md");
+const CLAUDE_SESSION_START: &str = include_str!("../../../resources/claude/session-new.md");
 const CLAUDE_SESSION_UPDATE: &str = include_str!("../../../resources/claude/session-update.md");
 const CLAUDE_SESSION_NOTE: &str = include_str!("../../../resources/claude/session-note.md");
 const CLAUDE_SESSION_END: &str = include_str!("../../../resources/claude/session-end.md");
@@ -33,7 +33,7 @@ const CLAUDE_SKILL_VERIFICATION_SCHEMA: &str = include_str!(
     "../../../resources/claude/skills/epistemic-beliefs/references/verification-schema.md"
 );
 
-const GEMINI_SESSION_START: &str = include_str!("../../../resources/gemini/session-start.toml");
+const GEMINI_SESSION_START: &str = include_str!("../../../resources/gemini/session-new.toml");
 const GEMINI_SESSION_UPDATE: &str = include_str!("../../../resources/gemini/session-update.toml");
 const GEMINI_SESSION_NOTE: &str = include_str!("../../../resources/gemini/session-note.toml");
 const GEMINI_SESSION_END: &str = include_str!("../../../resources/gemini/session-end.toml");
@@ -42,7 +42,7 @@ const GEMINI_SPEC: &str = include_str!("../../../resources/gemini/spec.toml");
 const GEMINI_EPISTEMIC_BELIEFS: &str =
     include_str!("../../../resources/gemini/epistemic-beliefs.toml");
 
-const OPENCODE_SESSION_START: &str = include_str!("../../../resources/opencode/session-start.md");
+const OPENCODE_SESSION_START: &str = include_str!("../../../resources/opencode/session-new.md");
 const OPENCODE_SESSION_UPDATE: &str = include_str!("../../../resources/opencode/session-update.md");
 const OPENCODE_SESSION_NOTE: &str = include_str!("../../../resources/opencode/session-note.md");
 const OPENCODE_SESSION_END: &str = include_str!("../../../resources/opencode/session-end.md");
@@ -52,7 +52,7 @@ const OPENCODE_EPISTEMIC_BELIEFS: &str =
     include_str!("../../../resources/opencode/epistemic-beliefs.md");
 
 const SKILL_WRAPPER_SET: &[&str] = &[
-    "session-start",
+    "session-new",
     "session-update",
     "session-note",
     "session-end",
@@ -69,9 +69,9 @@ pub fn known_skills(interface: &str) -> Vec<&'static str> {
 
 pub fn skill_content(interface: &str, skill: &str) -> Option<SkillContent> {
     match (interface, skill) {
-        ("claude", "session-start") => Some(SkillContent {
+        ("claude", "session-new") => Some(SkillContent {
             files: &[SkillFile {
-                projection_file: "commands/session-start.md",
+                projection_file: "commands/session-new.md",
                 bytes: CLAUDE_SESSION_START,
                 mode: SkillContentMode::Markdown,
             }],
@@ -135,9 +135,9 @@ pub fn skill_content(interface: &str, skill: &str) -> Option<SkillContent> {
                 },
             ],
         }),
-        ("gemini", "session-start") => Some(SkillContent {
+        ("gemini", "session-new") => Some(SkillContent {
             files: &[SkillFile {
-                projection_file: "commands/session-start.toml",
+                projection_file: "commands/session-new.toml",
                 bytes: GEMINI_SESSION_START,
                 mode: SkillContentMode::Toml,
             }],
@@ -191,9 +191,9 @@ pub fn skill_content(interface: &str, skill: &str) -> Option<SkillContent> {
                 },
             ],
         }),
-        ("opencode", "session-start") => Some(SkillContent {
+        ("opencode", "session-new") => Some(SkillContent {
             files: &[SkillFile {
-                projection_file: "commands/session-start.md",
+                projection_file: "commands/session-new.md",
                 bytes: OPENCODE_SESSION_START,
                 mode: SkillContentMode::Markdown,
             }],
@@ -247,9 +247,9 @@ pub fn skill_content(interface: &str, skill: &str) -> Option<SkillContent> {
                 },
             ],
         }),
-        ("pi", "session-start") => Some(SkillContent {
+        ("pi", "session-new") => Some(SkillContent {
             files: &[SkillFile {
-                projection_file: "commands/session-start.md",
+                projection_file: "commands/session-new.md",
                 bytes: OPENCODE_SESSION_START,
                 mode: SkillContentMode::Markdown,
             }],
