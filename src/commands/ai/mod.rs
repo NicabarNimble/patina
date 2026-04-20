@@ -20,6 +20,9 @@ pub enum AiSessionCommands {
         session: Option<String>,
 
         #[arg(long)]
+        title: Option<String>,
+
+        #[arg(long)]
         json: bool,
     },
 
@@ -355,6 +358,25 @@ mod tests {
                 assert_eq!(content, "capture this");
                 assert_eq!(session.as_deref(), Some("runtime-123"));
             }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ai_session_update_command_accepts_title_override() {
+        let parsed = AiCli::try_parse_from([
+            "patina",
+            "session",
+            "update",
+            "--title",
+            "rename from update",
+        ])
+        .unwrap();
+
+        match parsed.command {
+            AiCommands::Session {
+                command: AiSessionCommands::Update { title, .. },
+            } => assert_eq!(title.as_deref(), Some("rename from update")),
             other => panic!("unexpected command: {other:?}"),
         }
     }

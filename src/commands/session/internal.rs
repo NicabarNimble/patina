@@ -86,9 +86,11 @@ pub(crate) struct SessionUpdateResult {
     pub command: &'static str,
     pub session_id: String,
     pub runtime_id: String,
+    pub title: String,
     pub artifact_path: String,
     pub branch: String,
     pub start_tag: String,
+    pub git_range: String,
     pub since: String,
     pub updated_at: String,
     pub commits_this_session: usize,
@@ -101,6 +103,10 @@ pub(crate) struct SessionUpdateResult {
     pub last_commit_time: String,
     pub last_commit_message: String,
     pub working_tree_clean: bool,
+    pub rename_recommended: bool,
+    pub rename_applied: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rename_suggestion: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -231,6 +237,7 @@ pub(crate) fn start_session_value(
 pub(crate) fn update_live_session_value(
     project_root: &Path,
     handle: &session::LiveSessionHandle,
+    title_override: Option<&str>,
 ) -> Result<SessionUpdateResult> {
     update_session_document_value(
         project_root,
@@ -238,6 +245,7 @@ pub(crate) fn update_live_session_value(
         &handle.artifact_path.display().to_string(),
         last_update_from_document(&handle.artifact_path),
         None,
+        title_override,
     )
 }
 
@@ -356,6 +364,7 @@ fn update_session_document_value(
     source_path: &str,
     last_update: String,
     last_update_path: Option<&Path>,
+    title_override: Option<&str>,
 ) -> Result<SessionUpdateResult> {
     let session_id = read_session_id(session_path)?;
     let runtime_id = read_session_field(session_path, "**Runtime ID**: ")?;
@@ -372,6 +381,11 @@ fn update_session_document_value(
     let source_log_hint = parsed_doc
         .as_ref()
         .and_then(|doc| doc.frontmatter.source_log.clone());
+    let current_title = parsed_doc
+        .as_ref()
+        .map(|doc| doc.frontmatter.title.clone())
+        .unwrap_or_else(|| format!("{} session", interface));
+    let first_substantive_update = !current_markdown.contains(" - Update (covering since ");
 
     let branch = git::current_branch().unwrap_or_else(|_| "detached".to_string());
     let commits_this_session = git::commits_since_count(&starting_commit).unwrap_or(0);
@@ -395,9 +409,30 @@ fn update_session_document_value(
         .lines()
         .map(ToOwned::to_owned)
         .collect::<Vec<_>>();
+    let should_recommend_rename =
+        first_substantive_update && is_default_interface_session_title(&current_title, &interface);
+    let suggested_title = if should_recommend_rename {
+        suggest_session_title(&recent_commits, &changed_files)
+    } else {
+        None
+    };
+
+    let mut rename_applied = false;
+    let mut working_markdown = current_markdown.clone();
+    if let Some(new_title) = normalize_title_override(title_override) {
+        if new_title != current_title {
+            working_markdown = rewrite_session_title(&working_markdown, &new_title)?;
+            rename_applied = true;
+        }
+    }
 
     let now = Local::now();
     let time_str = now.format("%H:%M").to_string();
+    let git_range = if session_tag.is_empty() {
+        "HEAD".to_string()
+    } else {
+        format!("{}..HEAD", session_tag)
+    };
     let mut update_section = format!(
         "\n### {} - Update (covering since {})\n",
         time_str, last_update
@@ -452,10 +487,11 @@ fn update_session_document_value(
         }
     ));
     update_section.push_str(&format!("- Last commit: {}\n", last_commit_time));
+    update_section.push_str(&format!("- Git range: `{}`\n", git_range));
     update_section.push('\n');
 
     let mut updated_markdown =
-        append_to_section(&current_markdown, "## Activity Log", &update_section);
+        append_to_section(&working_markdown, "## Activity Log", &update_section);
 
     if let Some(summary) = pi_distill {
         if let Some(mut doc) = session::parse_document(&updated_markdown) {
@@ -498,13 +534,22 @@ fn update_session_document_value(
         &data.to_string(),
     )?;
 
+    let rename_recommended = should_recommend_rename && !rename_applied;
+    let rename_suggestion = if rename_recommended {
+        suggested_title
+    } else {
+        None
+    };
+
     Ok(SessionUpdateResult {
         command: "update",
         session_id,
         runtime_id,
+        title: synced.title.clone(),
         artifact_path: synced.artifact_path.display().to_string(),
         branch,
         start_tag: session_tag,
+        git_range,
         since: last_update,
         updated_at: timestamp,
         commits_this_session,
@@ -517,6 +562,9 @@ fn update_session_document_value(
         last_commit_time,
         last_commit_message: last_commit_msg,
         working_tree_clean: modified + staged + untracked == 0,
+        rename_recommended,
+        rename_applied,
+        rename_suggestion,
     })
 }
 
@@ -1036,6 +1084,60 @@ fn read_session_field(session_path: &Path, prefix: &str) -> Result<String> {
     )
 }
 
+fn normalize_title_override(title_override: Option<&str>) -> Option<String> {
+    title_override
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn rewrite_session_title(markdown: &str, title: &str) -> Result<String> {
+    let mut doc = session::parse_document(markdown)
+        .ok_or_else(|| anyhow::anyhow!("session document is missing YAML frontmatter"))?;
+    doc.frontmatter.title = title.to_string();
+    doc.render()
+}
+
+fn is_default_interface_session_title(title: &str, interface: &str) -> bool {
+    title
+        .trim()
+        .eq_ignore_ascii_case(&format!("{} session", interface))
+}
+
+fn suggest_session_title(recent_commits: &[String], changed_files: &[String]) -> Option<String> {
+    for entry in recent_commits {
+        let message = entry
+            .split_once(' ')
+            .map(|(_, tail)| tail.trim())
+            .unwrap_or_else(|| entry.trim());
+        if message.is_empty() {
+            continue;
+        }
+
+        let normalized = message
+            .split_once(": ")
+            .map(|(_, tail)| tail.trim())
+            .unwrap_or(message)
+            .trim();
+        if normalized.is_empty() {
+            continue;
+        }
+
+        let mut chars = normalized.chars();
+        let Some(first) = chars.next() else {
+            continue;
+        };
+        let suggestion = format!("{}{}", first.to_ascii_uppercase(), chars.as_str());
+        return Some(truncate(&suggestion, 88));
+    }
+
+    changed_files
+        .first()
+        .and_then(|path| path.rsplit('/').next())
+        .filter(|name| !name.is_empty())
+        .map(|name| format!("Work on {}", name))
+}
+
 /// Parse insertion count from git diff --stat summary line.
 ///
 /// Input like "3 files changed, 45 insertions(+), 10 deletions(-)" → 45
@@ -1301,9 +1403,11 @@ mod tests {
             command: "update",
             session_id: "20260311-101500-ABCD".to_string(),
             runtime_id: "runtime-123".to_string(),
+            title: "opencode session".to_string(),
             artifact_path: "/tmp/session.md".to_string(),
             branch: "patina".to_string(),
             start_tag: "session-20260311-101500-ABCD-opencode-start".to_string(),
+            git_range: "session-20260311-101500-ABCD-opencode-start..HEAD".to_string(),
             since: "10:15".to_string(),
             updated_at: "2026-03-11T11:00:00Z".to_string(),
             commits_this_session: 2,
@@ -1316,6 +1420,9 @@ mod tests {
             last_commit_time: "5 minutes ago".to_string(),
             last_commit_message: "feat: wire session mcp".to_string(),
             working_tree_clean: false,
+            rename_recommended: false,
+            rename_applied: false,
+            rename_suggestion: None,
         };
 
         let json = serde_json::to_value(&result).unwrap();
