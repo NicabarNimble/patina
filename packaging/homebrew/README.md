@@ -2,6 +2,10 @@
 
 This directory stores the canonical Patina formula template for custom tap distribution.
 
+Current target support:
+- macOS Apple Silicon (`aarch64-apple-darwin`)
+- Linux x86_64 (`x86_64-unknown-linux-gnu`)
+
 ## Usage
 
 1. Copy `Formula/patina.rb` into your tap repository (`homebrew-tap/Formula/patina.rb`).

@@ -5,13 +5,8 @@ class Patina < Formula
   license "MIT"
 
   on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/NicabarNimble/patina/releases/download/v#{version}/patina-aarch64-apple-darwin.tar.gz"
-      sha256 "REPLACE_WITH_MACOS_ARM64_SHA256"
-    else
-      url "https://github.com/NicabarNimble/patina/releases/download/v#{version}/patina-x86_64-apple-darwin.tar.gz"
-      sha256 "REPLACE_WITH_MACOS_X64_SHA256"
-    end
+    url "https://github.com/NicabarNimble/patina/releases/download/v#{version}/patina-aarch64-apple-darwin.tar.gz"
+    sha256 "REPLACE_WITH_MACOS_ARM64_SHA256"
   end
 
   on_linux do
@@ -20,6 +15,10 @@ class Patina < Formula
   end
 
   def install
+    if OS.mac? && Hardware::CPU.intel?
+      odie "Patina Homebrew distribution currently supports Apple Silicon macOS only"
+    end
+
     bin.install "patina"
   end
 

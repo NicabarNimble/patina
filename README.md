@@ -19,7 +19,7 @@ Patina is designed around a simple idea: project knowledge should compound inste
 ### Install options
 
 ```bash
-# Homebrew (recommended for macOS)
+# Homebrew (recommended for macOS Apple Silicon)
 brew tap NicabarNimble/tap
 brew install patina
 

@@ -52,7 +52,7 @@ resolve_target() {
       echo "aarch64-apple-darwin"
       ;;
     darwin:x86_64)
-      echo "x86_64-apple-darwin"
+      fail "unsupported platform darwin/x86_64; macOS distribution currently targets Apple Silicon only"
       ;;
     linux:x86_64)
       echo "x86_64-unknown-linux-gnu"
