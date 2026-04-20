@@ -15,33 +15,32 @@ related:
 - src/interface/runtime/claude/mod.rs
 - src/interface/runtime/opencode/mod.rs
 - src/interface/runtime/gemini/mod.rs
-- resources/claude/session-start.md
-- resources/opencode/session-start.md
-- resources/gemini/session-start.toml
-- resources/pi/session-start.md
-- .claude/commands/session-start.md
-- .opencode/commands/session-start.md
-- .gemini/commands/session-start.toml
-- .pi/prompts/session-start.md
+- resources/claude/session-new.md
+- resources/opencode/session-new.md
+- resources/gemini/session-new.toml
+- .pi/prompts/session-new.md
+- .claude/commands/session-new.md
+- .opencode/commands/session-new.md
+- .gemini/commands/session-new.toml
 exit_criteria:
 - id: sncf1-command-surface-rename
   text: Session creation surface is renamed from `start` to `new` across CLI and HITL slash commands.
-  checked: false
+  checked: true
 - id: sncf2-no-start-alias
   text: '`session-start`/`start` compatibility aliases are removed; only `new` is accepted.'
-  checked: false
+  checked: true
 - id: sncf3-auto-flow-authoritative
   text: HITL launch remains attach-or-create authoritative; `new` is explicit boundary creation only.
-  checked: false
+  checked: true
 - id: sncf4-first-update-title-hook
   text: First `/session-update` in an auto-created default-title session prompts naming from observed work and can persist the new title.
-  checked: false
+  checked: true
 - id: sncf5-title-persistence
   text: Session rename writes both durable artifact frontmatter and Mother session record title.
-  checked: false
+  checked: true
 - id: sncf6-git-tag-continuity
   text: Start/end tag behavior remains unchanged (`session-<file_id>-<interface>-start/end`) and is linked in session outputs.
-  checked: false
+  checked: true
 validated_against_commit: '974705e6'
 last_freshness_check: 2026-04-20
 freshness_scope:
@@ -69,7 +68,7 @@ Auto HITL launch already resolves session identity (`attach-or-create`). The leg
 
 ## Status
 
-Draft complete and implementation-ready.
+Active — implementation in progress.
 
 ## Non-Goals
 
