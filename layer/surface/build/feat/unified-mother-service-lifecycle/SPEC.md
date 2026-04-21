@@ -19,7 +19,7 @@ exit_criteria:
   checked: true
 - id: umsl2-macos-launchd-backed
   text: On macOS, install/uninstall is launchd-backed and remains compatible with Homebrew service usage.
-  checked: false
+  checked: true
 - id: umsl3-linux-systemd-user-backed
   text: On Linux, install/uninstall uses systemd user units (`systemctl --user`) with equivalent daemon command contract.
   checked: false
@@ -28,7 +28,7 @@ exit_criteria:
   checked: true
 - id: umsl5-logs-and-runbook
   text: Operator docs provide unified lifecycle runbook plus backend-specific log locations/commands.
-  checked: false
+  checked: true
 - id: umsl6-conflict-guards
   text: CLI warns/fails safely on mixed supervisor control (e.g., manual/nohup plus managed service) and gives remediation steps.
   checked: true
@@ -57,7 +57,7 @@ Result: operator drift, inconsistent startup behavior, and weak cross-platform m
 
 ## Status
 
-Active — backend-aware status, Linux systemd-user install/uninstall, restart command, and mixed-control guards landed; docs/runbook/log unification remains.
+Active — backend-aware status, Linux systemd-user install/uninstall, restart command, mixed-control guards, and docs/runbook/log guidance landed. Remaining work is Linux runtime verification and final criterion closure.
 
 ## Non-Goals
 
