@@ -22,6 +22,7 @@ making claims about how something was designed.
 - [prepush-impact-lane-tuning](fix/prepush-impact-lane-tuning/SPEC.md) — tune Tier 2 pre-push impact lane to skip cargo on docs-only changes while staying fail-closed
 - [retired-mcp-guard-restoration](fix/retired-mcp-guard-restoration/SPEC.md) — restore explicit retired-MCP marker in main router for Tier 1 invariants
 - [integration-test-domain-split](refactor/integration-test-domain-split/SPEC.md) — split wasm integration + pando parity tests by subject-under-test for failure diagnosis
+- [interface-skill-ownership-split](refactor/interface-skill-ownership-split/SPEC.md) — split global HITL skills vs project-owned Patina skills (PI-first parity, all-interface touchpoints)
 
 ### Draft
 - [persona-lake-mvp1](feat/persona-lake-mvp1/SPEC.md) — persona-scoped knowledge lake (blocked by mother-duckdb-ducklake-federation)

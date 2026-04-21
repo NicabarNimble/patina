@@ -504,6 +504,26 @@ pub mod project {
         local_dir(root).join("interface-ops.jsonl")
     }
 
+    /// Project-owned Patina skill source root: `.patina/skills/`
+    pub fn skills_dir(root: &Path) -> PathBuf {
+        root.join(".patina/skills")
+    }
+
+    /// Project-owned interface skill root: `.patina/skills/{interface}/`
+    pub fn interface_skills_dir(root: &Path, interface_name: &str) -> PathBuf {
+        skills_dir(root).join(interface_name)
+    }
+
+    /// Project-owned source for one interface skill: `.patina/skills/{interface}/{skill}/`
+    pub fn interface_skill_dir(root: &Path, interface_name: &str, skill_name: &str) -> PathBuf {
+        interface_skills_dir(root, interface_name).join(skill_name)
+    }
+
+    /// Project overrides for projected interface surface: `.patina/interfaces/{interface}/overrides/`
+    pub fn interface_overrides_dir(root: &Path, interface_name: &str) -> PathBuf {
+        root.join(format!(".patina/interfaces/{}/overrides", interface_name))
+    }
+
     /// Derived data directory: `.patina/local/data/`
     pub fn data_dir(root: &Path) -> PathBuf {
         root.join(".patina/local/data")
@@ -619,6 +639,14 @@ mod tests {
         assert_eq!(
             project::managed_interface_dir(root, "opencode"),
             Path::new("/tmp/patina-project/.opencode")
+        );
+        assert_eq!(
+            project::interface_skill_dir(root, "pi", "epistemic-beliefs"),
+            Path::new("/tmp/patina-project/.patina/skills/pi/epistemic-beliefs")
+        );
+        assert_eq!(
+            project::interface_overrides_dir(root, "pi"),
+            Path::new("/tmp/patina-project/.patina/interfaces/pi/overrides")
         );
     }
 
