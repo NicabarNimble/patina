@@ -16,7 +16,7 @@ related:
 exit_criteria:
 - id: umsl1-unified-command-surface
   text: '`patina mother install|uninstall|start|stop|restart|status` provide one operator surface across supported platforms.'
-  checked: false
+  checked: true
 - id: umsl2-macos-launchd-backed
   text: On macOS, install/uninstall is launchd-backed and remains compatible with Homebrew service usage.
   checked: false
@@ -31,7 +31,7 @@ exit_criteria:
   checked: false
 - id: umsl6-conflict-guards
   text: CLI warns/fails safely on mixed supervisor control (e.g., manual/nohup plus managed service) and gives remediation steps.
-  checked: false
+  checked: true
 validated_against_commit: b1254cb0
 last_freshness_check: 2026-04-20
 freshness_scope:
@@ -57,7 +57,7 @@ Result: operator drift, inconsistent startup behavior, and weak cross-platform m
 
 ## Status
 
-Active — implementation underway (backend-aware status slice landed).
+Active — backend-aware status, Linux systemd-user install/uninstall, restart command, and mixed-control guards landed; docs/runbook/log unification remains.
 
 ## Non-Goals
 
