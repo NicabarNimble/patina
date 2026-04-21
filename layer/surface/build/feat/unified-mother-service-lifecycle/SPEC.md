@@ -25,7 +25,7 @@ exit_criteria:
   checked: false
 - id: umsl4-backend-aware-status
   text: '`patina mother status` reports effective supervisor backend (manual/launchd/systemd-user) and health.'
-  checked: false
+  checked: true
 - id: umsl5-logs-and-runbook
   text: Operator docs provide unified lifecycle runbook plus backend-specific log locations/commands.
   checked: false
@@ -57,7 +57,7 @@ Result: operator drift, inconsistent startup behavior, and weak cross-platform m
 
 ## Status
 
-Draft — ready for promotion and implementation.
+Active — implementation underway (backend-aware status slice landed).
 
 ## Non-Goals
 

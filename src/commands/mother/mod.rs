@@ -574,6 +574,94 @@ fn launchctl_domains() -> Vec<String> {
     vec![format!("gui/{uid}"), format!("user/{uid}")]
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SupervisorBackend {
+    Manual,
+    LaunchdPatina,
+    LaunchdHomebrew,
+    SystemdUser,
+}
+
+impl SupervisorBackend {
+    fn label(self) -> &'static str {
+        match self {
+            SupervisorBackend::Manual => "manual",
+            SupervisorBackend::LaunchdPatina => "launchd (patina mother install)",
+            SupervisorBackend::LaunchdHomebrew => "launchd (homebrew services)",
+            SupervisorBackend::SystemdUser => "systemd --user",
+        }
+    }
+}
+
+fn classify_supervisor_backend(
+    launchd_patina_present: bool,
+    launchd_homebrew_present: bool,
+    systemd_user_present: bool,
+) -> SupervisorBackend {
+    if launchd_homebrew_present {
+        SupervisorBackend::LaunchdHomebrew
+    } else if launchd_patina_present {
+        SupervisorBackend::LaunchdPatina
+    } else if systemd_user_present {
+        SupervisorBackend::SystemdUser
+    } else {
+        SupervisorBackend::Manual
+    }
+}
+
+fn detect_supervisor_backend() -> SupervisorBackend {
+    let launchd_patina_present = {
+        #[cfg(target_os = "macos")]
+        {
+            launchd_plist_path()
+                .map(|path| path.exists())
+                .unwrap_or(false)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            false
+        }
+    };
+
+    let launchd_homebrew_present = {
+        #[cfg(target_os = "macos")]
+        {
+            dirs::home_dir()
+                .map(|home| {
+                    home.join("Library/LaunchAgents/homebrew.mxcl.patina.plist")
+                        .exists()
+                })
+                .unwrap_or(false)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            false
+        }
+    };
+
+    let systemd_user_present = {
+        #[cfg(target_os = "linux")]
+        {
+            dirs::home_dir()
+                .map(|home| {
+                    home.join(".config/systemd/user/patina-mother.service")
+                        .exists()
+                })
+                .unwrap_or(false)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            false
+        }
+    };
+
+    classify_supervisor_backend(
+        launchd_patina_present,
+        launchd_homebrew_present,
+        systemd_user_present,
+    )
+}
+
 fn install_supervisor() -> Result<()> {
     #[cfg(not(target_os = "macos"))]
     {
@@ -846,8 +934,11 @@ fn show_status() -> Result<()> {
     let socket_path = paths::serve::socket_path();
 
     let status = mother_crate::lifecycle::probe_status(&pid_path, &socket_path)?;
+    let supervisor = detect_supervisor_backend();
+
     if !status.running {
         println!("Mother daemon: stopped");
+        println!("   Supervisor: {}", supervisor.label());
         if status.stale_pid_file {
             println!("   (stale PID file exists — run `patina mother stop` to clean up)");
         }
@@ -871,6 +962,7 @@ fn show_status() -> Result<()> {
         println!("   PID: {}", pid);
     }
     println!("   Socket: {}", socket_path.display());
+    println!("   Supervisor: {}", supervisor.label());
 
     match status.health {
         Some(health) => {
@@ -1063,5 +1155,23 @@ mod tests {
     fn xml_escape_escapes_special_characters() {
         let escaped = xml_escape("a&b<c>\"d\'e");
         assert_eq!(escaped, "a&amp;b&lt;c&gt;&quot;d&apos;e");
+    }
+
+    #[test]
+    fn classify_supervisor_backend_defaults_to_manual() {
+        let backend = classify_supervisor_backend(false, false, false);
+        assert_eq!(backend, SupervisorBackend::Manual);
+    }
+
+    #[test]
+    fn classify_supervisor_backend_prefers_homebrew_when_both_launchd_markers_exist() {
+        let backend = classify_supervisor_backend(true, true, false);
+        assert_eq!(backend, SupervisorBackend::LaunchdHomebrew);
+    }
+
+    #[test]
+    fn classify_supervisor_backend_detects_systemd_user() {
+        let backend = classify_supervisor_backend(false, false, true);
+        assert_eq!(backend, SupervisorBackend::SystemdUser);
     }
 }
