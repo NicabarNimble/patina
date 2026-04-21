@@ -379,6 +379,11 @@ pub fn git_create_tag(name: &str) -> Result<(), String> {
     crate::git::create_tag(name, &format!("v2 tag: {}", name)).map_err(|e| e.to_string())
 }
 
+pub fn git_create_tag_at(name: &str, git_ref: &str) -> Result<(), String> {
+    crate::git::create_tag_at(name, &format!("v2 tag: {}", name), git_ref)
+        .map_err(|e| e.to_string())
+}
+
 pub fn git_delete_tag(name: &str) -> Result<(), String> {
     let output = std::process::Command::new("git")
         .args(["tag", "-d", name])
@@ -411,6 +416,28 @@ pub fn git_log_oneline(limit: u32) -> Result<Vec<String>, String> {
 
 pub fn git_diff_stat() -> Result<String, String> {
     crate::git::diff_stat_summary().map_err(|e| e.to_string())
+}
+
+pub fn git_status_porcelain() -> Result<String, String> {
+    crate::git::status_porcelain().map_err(|e| e.to_string())
+}
+
+pub fn git_add_paths(paths: &[String]) -> Result<(), String> {
+    let refs: Vec<&str> = paths.iter().map(|path| path.as_str()).collect();
+    crate::git::add_paths(&refs).map_err(|e| e.to_string())
+}
+
+pub fn git_is_clean_tracked() -> Result<bool, String> {
+    crate::git::is_clean_tracked().map_err(|e| e.to_string())
+}
+
+pub fn git_commits_behind_upstream() -> Result<u32, String> {
+    let behind = crate::git::commits_behind_upstream().map_err(|e| e.to_string())?;
+    u32::try_from(behind).map_err(|_| format!("behind count {} exceeds u32", behind))
+}
+
+pub fn git_is_diverged() -> Result<bool, String> {
+    crate::git::is_diverged().map_err(|e| e.to_string())
 }
 
 pub fn log_emit(plugin_name: &str, level: &str, message: &str) {

@@ -694,6 +694,16 @@ mod bindings {
             crate::child::toy_host::v2::git_create_tag(&name)
         }
 
+        fn create_tag_at(&mut self, name: String, git_ref: String) -> Result<(), String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::git_create_tag_at(&name, &git_ref)
+        }
+
         fn delete_tag(&mut self, name: String) -> Result<(), String> {
             if !self.grants.toys.git {
                 return Err(format!(
@@ -742,6 +752,56 @@ mod bindings {
                 ));
             }
             crate::child::toy_host::v2::git_diff_stat()
+        }
+
+        fn status_porcelain(&mut self) -> Result<String, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::git_status_porcelain()
+        }
+
+        fn add_paths(&mut self, paths: Vec<String>) -> Result<(), String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::git_add_paths(&paths)
+        }
+
+        fn is_clean_tracked(&mut self) -> Result<bool, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::git_is_clean_tracked()
+        }
+
+        fn commits_behind_upstream(&mut self) -> Result<u32, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::git_commits_behind_upstream()
+        }
+
+        fn is_diverged(&mut self) -> Result<bool, String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::git_is_diverged()
         }
     }
 }
