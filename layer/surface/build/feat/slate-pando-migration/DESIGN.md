@@ -43,6 +43,7 @@ Initial contract can be a typed envelope with explicit routing mode and structur
 ### Next
 
 1. Read-only parity in Slate child (`list/next/show/check/packet`) with fixture locks.
+   - Started: `list/next/check/show` implemented via filesystem/frontmatter parsing in Slate child.
 2. Expand `patina:git` contract for mutate/release parity.
    - Started: added `create-tag-at`, `status-porcelain`, `add-paths`, `is-clean-tracked`,
      `commits-behind-upstream`, `is-diverged` to WIT + host bindings.

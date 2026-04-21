@@ -137,7 +137,8 @@ Primary principle: **parity first, innovation second**.
 - Execute mode is strict fail-closed: when Slate reports scaffold/not-implemented (or any execute-path error), Mother returns an error instead of silently falling back.
 - Added routing smoke coverage in `src/commands/spec/mod.rs` and daemon dispatch tests in `src/commands/mother/daemon/tests/mod.rs`.
 - Started Option A git-toy expansion for Slate mutate/release parity (`create-tag-at`, `status-porcelain`, `add-paths`, `is-clean-tracked`, `commits-behind-upstream`, `is-diverged`) in WIT + host bindings.
-- Slate child scaffold dispatch is now command-aware (parses envelope command + backend mode) while remaining explicitly non-parity.
+- Slate child dispatch is command-aware (parses envelope command + backend mode).
+- Slate now implements initial read-only command handlers in-child (`list`, `next`, `check`, `show`) from filesystem frontmatter parsing; outputs are intentionally marked as early parity and still need fixture-level equivalence checks.
 
 ## Toy contract packaging direction
 
