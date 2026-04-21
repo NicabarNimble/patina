@@ -96,6 +96,7 @@ struct NotifyingChild {
 
 struct TypedDispatchChild;
 struct SlateDispatchChild;
+struct ScaffoldSlateDispatchChild;
 
 fn spec_dispatch_request(
     command: patina::spec::SpecCommands,
@@ -193,6 +194,50 @@ impl Child for SlateDispatchChild {
                 "results": [
                     {
                         "ok": data.to_string(),
+                    }
+                ]
+            }),
+        })
+    }
+}
+
+impl Child for ScaffoldSlateDispatchChild {
+    fn name(&self) -> &str {
+        "slate-manager"
+    }
+
+    fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+        Ok(())
+    }
+
+    fn health(&self) -> ChildHealth {
+        ChildHealth::Healthy
+    }
+
+    fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+        Ok(ChildResponse {
+            payload: serde_json::Value::Null,
+        })
+    }
+
+    fn call(&self, request: &patina::mother::ChildCallRequest) -> Result<ChildResponse> {
+        if request.operation_id != "patina:slate/control.dispatch" {
+            return Err(anyhow::anyhow!(
+                "unexpected operation_id: {}",
+                request.operation_id
+            ));
+        }
+
+        let scaffold = serde_json::json!({
+            "status": "scaffold",
+            "message": "not implemented",
+        });
+
+        Ok(ChildResponse {
+            payload: serde_json::json!({
+                "results": [
+                    {
+                        "ok": scaffold.to_string(),
                     }
                 ]
             }),
@@ -510,6 +555,85 @@ allow = ["patina:slate/control.dispatch"]
             Some(&serde_json::json!("from-slate"))
         );
         assert_eq!(response.get("json"), Some(&serde_json::json!(true)));
+    });
+}
+
+#[test]
+fn builtin_spec_dispatch_execute_falls_back_when_slate_is_scaffold_only() {
+    with_temp_project(|project_root| {
+        std::fs::create_dir_all(project_root.join(".patina")).expect("create .patina");
+        std::fs::create_dir_all(project_root.join("layer")).expect("create layer");
+
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+
+        let manifest_path = project_root.join("slate-manager.toml");
+        std::fs::write(
+            &manifest_path,
+            r#"[child]
+name = "slate-manager"
+version = "0.1.0"
+world = "child"
+
+[child.ingress]
+mode = "hybrid"
+
+[child.contract]
+allow = ["patina:slate/control.dispatch"]
+"#,
+        )
+        .expect("write manifest");
+
+        let registry = ChildRegistry::new();
+        registry
+            .register_knowledge_with_paths(
+                Box::new(ScaffoldSlateDispatchChild),
+                std::path::PathBuf::new(),
+                manifest_path,
+            )
+            .expect("register scaffold slate child");
+
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry,
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let request = spec_dispatch_request(
+            patina::spec::SpecCommands::List {
+                status: None,
+                target: None,
+                json: true,
+            },
+            Some("execute"),
+        );
+
+        let response = <ServerState as mother_crate::http_api::ApiRuntime>::builtin_spec_dispatch(
+            &state, request,
+        )
+        .expect("execute mode should fall back when slate is scaffold-only");
+
+        assert_eq!(
+            response.get("backend").and_then(|v| v.get("mode")),
+            Some(&serde_json::json!("execute"))
+        );
+        assert_eq!(
+            response.get("backend").and_then(|v| v.get("engine")),
+            Some(&serde_json::json!("builtin-spec-manager"))
+        );
+        assert_eq!(
+            response
+                .get("backend")
+                .and_then(|v| v.get("fallback_from_slate")),
+            Some(&serde_json::json!(true))
+        );
+        assert!(response.get("data").is_some());
     });
 }
 

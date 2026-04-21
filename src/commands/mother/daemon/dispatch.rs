@@ -456,6 +456,38 @@ impl ApiRuntime for ServerState {
                 let (slate_data, slate_payload) = dispatch_to_slate(&request.command)
                     .map_err(|error| anyhow::anyhow!("slate execute dispatch failed: {}", error))?;
 
+                let scaffold_only = slate_data
+                    .get("status")
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.eq_ignore_ascii_case("scaffold"))
+                    .unwrap_or(false);
+
+                if scaffold_only {
+                    let mut payload = patina::spec::execute_command_value_with_route_backend(
+                        envelope.command.clone(),
+                        envelope.project.clone(),
+                        envelope.origin_project.clone(),
+                        envelope.backend_mode.clone(),
+                    )?;
+                    if let Some(root) = payload.as_object_mut() {
+                        root.insert(
+                            "backend".to_string(),
+                            serde_json::json!({
+                                "mode": backend_mode.as_str(),
+                                "engine": "builtin-spec-manager",
+                                "fallback_from_slate": true,
+                                "reason": "slate-scaffold-not-implemented",
+                                "slate_probe": {
+                                    "status": "not-implemented",
+                                    "data": slate_data,
+                                    "payload": slate_payload,
+                                }
+                            }),
+                        );
+                    }
+                    return Ok(payload);
+                }
+
                 return Ok(serde_json::json!({
                     "child": "spec-manager",
                     "json": json_mode,
