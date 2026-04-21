@@ -182,7 +182,7 @@ patina connect status
 patina mother start
 patina mother stop
 patina mother status
-patina mother install                # Install launchd supervisor (macOS, always-on)
+patina mother install                # Install system supervisor (launchd on macOS, systemd --user on Linux)
 patina mother search "belief query"
 patina mother sources
 patina mother graph                  # Cross-project relationship graph

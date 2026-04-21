@@ -13,8 +13,8 @@
 //! patina mother start              # Start daemon (UDS default, TCP opt-in)
 //! patina mother stop               # Graceful shutdown
 //! patina mother status             # Health check
-//! patina mother install            # Install launchd supervisor
-//! patina mother uninstall          # Remove launchd supervisor
+//! patina mother install            # Install system supervisor (launchd/systemd-user)
+//! patina mother uninstall          # Remove system supervisor
 //! patina mother graph              # Graph operations (sync, link, unlink, stats, learn)
 //! ```
 //!
@@ -54,7 +54,7 @@ pub(crate) use mother_crate::registry;
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use std::path::Path;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
 
 use patina::paths;
@@ -98,10 +98,10 @@ pub enum MotherCommands {
     /// Show daemon status
     Status,
 
-    /// Install launchd supervisor (macOS)
+    /// Install system supervisor (launchd on macOS, systemd --user on Linux)
     Install,
 
-    /// Uninstall launchd supervisor (macOS)
+    /// Uninstall system supervisor
     Uninstall,
 
     /// Graph operations — manage cross-project relationships
@@ -370,8 +370,8 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("  patina mother start    Start the daemon");
             println!("  patina mother stop     Stop the daemon");
             println!("  patina mother status   Show daemon status");
-            println!("  patina mother install  Install launchd supervisor");
-            println!("  patina mother uninstall Remove launchd supervisor");
+            println!("  patina mother install  Install system supervisor");
+            println!("  patina mother uninstall Remove system supervisor");
             println!("  patina mother graph    Graph operations");
             println!("  patina mother toys     Toy registry operations");
             println!("  patina mother federation Federation query surface");
@@ -574,6 +574,45 @@ fn launchctl_domains() -> Vec<String> {
     vec![format!("gui/{uid}"), format!("user/{uid}")]
 }
 
+#[cfg(target_os = "linux")]
+const MOTHER_SYSTEMD_UNIT: &str = "patina-mother.service";
+
+#[cfg(target_os = "linux")]
+fn systemd_user_dir() -> Result<std::path::PathBuf> {
+    let home = dirs::home_dir().context("unable to resolve home directory")?;
+    Ok(home.join(".config/systemd/user"))
+}
+
+#[cfg(target_os = "linux")]
+fn systemd_unit_path() -> Result<std::path::PathBuf> {
+    Ok(systemd_user_dir()?.join(MOTHER_SYSTEMD_UNIT))
+}
+
+#[cfg(target_os = "linux")]
+fn render_systemd_unit(exe_path: &Path) -> String {
+    format!(
+        "[Unit]\nDescription=Patina Mother daemon\nAfter=default.target\n\n[Service]\nType=simple\nExecStart={} mother start\nRestart=always\nRestartSec=2\n\n[Install]\nWantedBy=default.target\n",
+        exe_path.display()
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn run_systemctl_user(args: &[&str]) -> Result<()> {
+    let status = Command::new("systemctl")
+        .arg("--user")
+        .args(args)
+        .status()
+        .with_context(|| format!("running systemctl --user {}", args.join(" ")))?;
+    if !status.success() {
+        bail!(
+            "systemctl --user {} failed with status {}",
+            args.join(" "),
+            status
+        );
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SupervisorBackend {
     Manual,
@@ -642,11 +681,8 @@ fn detect_supervisor_backend() -> SupervisorBackend {
     let systemd_user_present = {
         #[cfg(target_os = "linux")]
         {
-            dirs::home_dir()
-                .map(|home| {
-                    home.join(".config/systemd/user/patina-mother.service")
-                        .exists()
-                })
+            systemd_unit_path()
+                .map(|path| path.exists())
                 .unwrap_or(false)
         }
         #[cfg(not(target_os = "linux"))]
@@ -663,11 +699,6 @@ fn detect_supervisor_backend() -> SupervisorBackend {
 }
 
 fn install_supervisor() -> Result<()> {
-    #[cfg(not(target_os = "macos"))]
-    {
-        bail!("patina mother install is only supported on macOS");
-    }
-
     #[cfg(target_os = "macos")]
     {
         fn run_launchctl(args: &[&str]) -> Result<()> {
@@ -722,16 +753,38 @@ fn install_supervisor() -> Result<()> {
 
         println!("Installed launchd plist: {}", plist_path.display());
         println!("Service label: {}", MOTHER_LAUNCHD_LABEL);
-        Ok(())
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let unit_path = systemd_unit_path()?;
+        let parent = unit_path
+            .parent()
+            .context("invalid systemd user unit parent path")?;
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+
+        let exe_path = std::env::current_exe().context("resolving current executable")?;
+        let unit = render_systemd_unit(&exe_path);
+        std::fs::write(&unit_path, unit)
+            .with_context(|| format!("writing {}", unit_path.display()))?;
+
+        run_systemctl_user(&["daemon-reload"])?;
+        run_systemctl_user(&["enable", "--now", MOTHER_SYSTEMD_UNIT])?;
+
+        println!("Installed systemd user unit: {}", unit_path.display());
+        println!("Unit name: {}", MOTHER_SYSTEMD_UNIT);
+        return Ok(());
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        bail!("patina mother install is unsupported on this platform")
     }
 }
 
 fn uninstall_supervisor() -> Result<()> {
-    #[cfg(not(target_os = "macos"))]
-    {
-        bail!("patina mother uninstall is only supported on macOS");
-    }
-
     #[cfg(target_os = "macos")]
     {
         fn run_launchctl(args: &[&str]) -> Result<()> {
@@ -763,7 +816,29 @@ fn uninstall_supervisor() -> Result<()> {
             println!("Launchd plist not found: {}", plist_path.display());
         }
 
-        Ok(())
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let unit_path = systemd_unit_path()?;
+        let _ = run_systemctl_user(&["disable", "--now", MOTHER_SYSTEMD_UNIT]);
+
+        if unit_path.exists() {
+            std::fs::remove_file(&unit_path)
+                .with_context(|| format!("removing {}", unit_path.display()))?;
+            println!("Removed systemd user unit: {}", unit_path.display());
+        } else {
+            println!("Systemd user unit not found: {}", unit_path.display());
+        }
+
+        let _ = run_systemctl_user(&["daemon-reload"]);
+        return Ok(());
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        bail!("patina mother uninstall is unsupported on this platform")
     }
 }
 
@@ -1155,6 +1230,17 @@ mod tests {
     fn xml_escape_escapes_special_characters() {
         let escaped = xml_escape("a&b<c>\"d\'e");
         assert_eq!(escaped, "a&amp;b&lt;c&gt;&quot;d&apos;e");
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn systemd_unit_contains_required_fields() {
+        let unit = render_systemd_unit(Path::new("/tmp/patina"));
+        assert!(unit.contains("[Unit]"));
+        assert!(unit.contains("Description=Patina Mother daemon"));
+        assert!(unit.contains("ExecStart=/tmp/patina mother start"));
+        assert!(unit.contains("Restart=always"));
+        assert!(unit.contains("WantedBy=default.target"));
     }
 
     #[test]
