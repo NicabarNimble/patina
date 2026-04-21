@@ -3362,6 +3362,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-ai-child-slate-manager"
+version = "0.1.0"
+dependencies = [
+ "patina-sdk",
+ "serde_json",
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
 name = "patina-ai-child-spec-manager"
 version = "0.1.0"
 dependencies = [

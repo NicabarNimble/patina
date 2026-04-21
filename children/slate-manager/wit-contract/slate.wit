@@ -1,0 +1,5 @@
+package patina:slate@0.1.0;
+
+interface control {
+    dispatch: func(command-json: string) -> result<string, string>;
+}
