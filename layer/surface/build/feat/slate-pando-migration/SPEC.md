@@ -30,7 +30,7 @@ exit_criteria:
 
   - id: sp2-full-wit-child
     text: "Slate runs as a proper WASM child with typed WIT exports/imports (no legacy `handle(action,payload)` fallback in execute path)."
-    checked: false
+    checked: true
 
   - id: sp3-toy-scoped-manifest
     text: "Slate child manifest uses `[needs].toys` (+ optional scopes) only; granted toys are minimal and explicit for git/fs/process/release interactions."
@@ -38,7 +38,7 @@ exit_criteria:
 
   - id: sp4-spec-compat-kept
     text: "`patina spec` remains operational as compatibility surface and can route through Slate when enabled, preserving script compatibility."
-    checked: false
+    checked: true
 
   - id: sp5-project-opt-in-policy
     text: "Project-level opt-in exists (`off|observe|execute`) with policy config for PR/release command customization so projects can map to different CI conventions without forking core logic."
@@ -54,7 +54,7 @@ exit_criteria:
 
   - id: sp8-fail-closed-rollback
     text: "Failure modes are fail-closed with deterministic rollback path (`spec` builtin path remains callable until Slate parity is proven)."
-    checked: false
+    checked: true
 
   - id: sp9-proof-tests
     text: "Parity and routing tests pass (`cargo check -q --workspace`, targeted command snapshots, and child-runtime integration tests for observe/execute modes)."
@@ -127,6 +127,23 @@ Primary principle: **parity first, innovation second**.
 - `spec check` -> `slate check` parity
 - `spec prompt/handoff/packet` parity
 - `spec complete/archive` parity including version bump/release triggers defined by current rules
+
+## Implementation updates (2026-04-21)
+
+- Slate child scaffold exists as full-WIT package at `children/slate-manager/` and compiles.
+- `patina spec` now resolves backend mode from env or project manifest (`[spec] mode = off|observe|execute`).
+- Observe mode preserves builtin output and appends `backend.slate_probe` metadata.
+- Execute mode routes through typed `slate-manager` call path and fails closed if child is missing/unavailable.
+- Added routing smoke coverage in `src/commands/spec/mod.rs` and daemon dispatch tests in `src/commands/mother/daemon/tests/mod.rs`.
+
+## Toy contract packaging direction
+
+Git/release parity will use **Option A** (expand `patina:git`) and move toward
+multi-file WIT package layout (foldered contracts, analogous to WASI HTTP/io).
+
+- Keep WASI foundations for generic FS/clock behavior.
+- Keep Patina toys for host-boundary deltas (git/release/policy).
+- Implement packaging/tooling updates needed for non-flat Patina toy contracts as part of `sp3`.
 
 ## Project policy customization
 

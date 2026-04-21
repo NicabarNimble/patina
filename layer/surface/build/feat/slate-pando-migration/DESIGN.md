@@ -29,12 +29,21 @@ Add a Slate WIT contract that avoids untyped `handle(action,payload)` and expose
 
 Initial contract can be a typed envelope with explicit routing mode and structured response, then tighten into per-command typed functions once parity fixtures are stable.
 
-## Slice 1 (start now)
+## Slice progress
 
-1. Activate spec and index state.
-2. Freeze parity fixtures for existing `patina spec` command outputs (JSON-first).
-3. Add Slate backend routing seam in spec dispatch payload (non-breaking, ignored when unused).
-4. Add observe-mode plumbing hooks (no side effects yet).
+### Completed
+
+1. Spec activated and indexed.
+2. Backend routing seam added to spec dispatch envelopes (`off|observe|execute`).
+3. Observe mode probe added (builtin result + Slate probe metadata).
+4. Execute mode wired to typed Slate dispatch path with fail-closed behavior.
+5. Manifest opt-in added: `.patina/manifest.toml` `[spec] mode = ...`.
+
+### Next
+
+1. Read-only parity in Slate child (`list/next/show/check/packet`) with fixture locks.
+2. Expand `patina:git` contract for mutate/release parity.
+3. Move git toy toward foldered multi-file WIT package layout (WASI-like structure) with tooling support.
 
 ## Safety
 
