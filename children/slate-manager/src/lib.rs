@@ -6,6 +6,7 @@ wit_bindgen::generate!({
 
 use patina_sdk::toys;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -386,32 +387,113 @@ fn handle_list(root: &Path) -> Result<serde_json::Value, String> {
     Ok(serde_json::Value::Array(data))
 }
 
+fn parse_queue_position(target: Option<&str>) -> Option<u32> {
+    target.and_then(|t| t.trim().parse::<u32>().ok())
+}
+
+fn is_terminal_status(status: &str) -> bool {
+    matches!(status, "complete" | "completed" | "done" | "abandoned")
+}
+
 fn handle_next(root: &Path) -> Result<serde_json::Value, String> {
     let specs = load_specs(root)?;
+
+    let mut status_map: HashMap<String, String> = HashMap::new();
+    for spec in &specs {
+        status_map.insert(
+            spec.frontmatter.id.clone(),
+            status_or(&spec.frontmatter, "draft"),
+        );
+    }
+
+    let mut impact_counts: HashMap<String, usize> = HashMap::new();
+    for spec in &specs {
+        for blocker in &spec.frontmatter.blocked_by {
+            *impact_counts.entry(blocker.clone()).or_insert(0) += 1;
+        }
+    }
+
     let mut out = Vec::new();
+
     for spec in specs {
         let status = status_or(&spec.frontmatter, "draft");
-        let (priority, reason) = match status.as_str() {
-            "active" => (1_u32, "Currently active — continue working".to_string()),
-            "ready" => (5_u32, "Ready to start".to_string()),
-            "paused" => (4_u32, "Paused".to_string()),
-            "blocked" => (3_u32, "Blocked".to_string()),
-            _ => (6_u32, "Draft — unqueued".to_string()),
-        };
-        let queue_position = spec
-            .frontmatter
-            .target
-            .as_deref()
-            .and_then(|t| t.trim().parse::<u32>().ok());
+        let queue_position = parse_queue_position(spec.frontmatter.target.as_deref());
+        let impact = impact_counts
+            .get(&spec.frontmatter.id)
+            .copied()
+            .unwrap_or(0);
 
-        out.push(serde_json::json!({
-            "id": spec.frontmatter.id,
-            "status": status,
-            "reason": reason,
-            "priority": priority,
-            "impact": 0,
-            "queue_position": queue_position,
-        }));
+        match status.as_str() {
+            "active" => {
+                out.push(serde_json::json!({
+                    "id": spec.frontmatter.id,
+                    "status": status,
+                    "reason": "Currently active — continue working",
+                    "priority": 1,
+                    "impact": impact,
+                    "queue_position": queue_position,
+                }));
+            }
+            "blocked" => {
+                let all_blockers_done = spec.frontmatter.blocked_by.is_empty()
+                    || spec.frontmatter.blocked_by.iter().all(|blocker_id| {
+                        status_map
+                            .get(blocker_id)
+                            .map(|value| is_terminal_status(value))
+                            .unwrap_or(true)
+                    });
+                if all_blockers_done {
+                    out.push(serde_json::json!({
+                        "id": spec.frontmatter.id,
+                        "status": status,
+                        "reason": "Blockers complete — ready to resume",
+                        "priority": 2,
+                        "impact": impact,
+                        "queue_position": queue_position,
+                    }));
+                }
+            }
+            "paused" => {
+                out.push(serde_json::json!({
+                    "id": spec.frontmatter.id,
+                    "status": status,
+                    "reason": "Paused",
+                    "priority": 4,
+                    "impact": impact,
+                    "queue_position": queue_position,
+                }));
+            }
+            "ready" => {
+                let reason = match queue_position {
+                    Some(pos) => format!("Queue position #{}", pos),
+                    None if impact > 0 => format!("Ready — blocks {} other spec(s)", impact),
+                    None => "Ready to start".to_string(),
+                };
+                out.push(serde_json::json!({
+                    "id": spec.frontmatter.id,
+                    "status": status,
+                    "reason": reason,
+                    "priority": 5,
+                    "impact": impact,
+                    "queue_position": queue_position,
+                }));
+            }
+            "draft" => {
+                let reason = match queue_position {
+                    Some(pos) => format!("Queue position #{} — needs audit", pos),
+                    None => "Draft — unqueued".to_string(),
+                };
+                out.push(serde_json::json!({
+                    "id": spec.frontmatter.id,
+                    "status": status,
+                    "reason": reason,
+                    "priority": 6,
+                    "impact": impact,
+                    "queue_position": queue_position,
+                }));
+            }
+            _ => {}
+        }
     }
 
     out.sort_by(|a, b| {
@@ -423,7 +505,21 @@ fn handle_next(root: &Path) -> Result<serde_json::Value, String> {
             .get("priority")
             .and_then(|v| v.as_u64())
             .unwrap_or(u64::MAX);
+
+        let aq = a.get("queue_position").and_then(|v| v.as_u64());
+        let bq = b.get("queue_position").and_then(|v| v.as_u64());
+
+        let ai = a.get("impact").and_then(|v| v.as_u64()).unwrap_or(0);
+        let bi = b.get("impact").and_then(|v| v.as_u64()).unwrap_or(0);
+
         ap.cmp(&bp)
+            .then_with(|| match (aq, bq) {
+                (Some(la), Some(lb)) => la.cmp(&lb),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            })
+            .then_with(|| bi.cmp(&ai))
     });
 
     Ok(serde_json::Value::Array(out))
