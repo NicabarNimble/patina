@@ -628,14 +628,28 @@ type = "bearer"
             .unwrap()
             .success());
         let _sha = git_commit("init").unwrap();
+        assert!(git_is_clean_tracked().unwrap());
         assert!(!git_tag_exists("phase4-tag").unwrap());
         git_create_tag("phase4-tag").unwrap();
         assert!(git_tag_exists("phase4-tag").unwrap());
+        git_create_tag_at("phase4-tag-at", "HEAD").unwrap();
+        assert!(git_tag_exists("phase4-tag-at").unwrap());
         let lines = git_log_oneline(5).unwrap();
         assert!(!lines.is_empty());
         let _ = git_diff_stat().unwrap();
+        std::fs::write(repo.join("CHANGELOG.md"), "wip\n").unwrap();
+        let status = git_status_porcelain().unwrap();
+        assert!(status.contains("CHANGELOG.md"));
+        git_add_paths(&["CHANGELOG.md".to_string()]).unwrap();
+        assert!(!git_is_clean_tracked().unwrap());
+        let _ = git_commit("add changelog").unwrap();
+        assert!(git_is_clean_tracked().unwrap());
+        let _ = git_commits_behind_upstream().unwrap();
+        let _ = git_is_diverged().unwrap();
         git_delete_tag("phase4-tag").unwrap();
+        git_delete_tag("phase4-tag-at").unwrap();
         assert!(!git_tag_exists("phase4-tag").unwrap());
+        assert!(!git_tag_exists("phase4-tag-at").unwrap());
         std::env::set_current_dir(old_dir).unwrap();
     }
 }
