@@ -135,6 +135,7 @@ Primary principle: **parity first, innovation second**.
 - Observe mode preserves builtin output and appends `backend.slate_probe` metadata.
 - Execute mode routes through typed `slate-manager` call path and fails closed if child is missing/unavailable.
 - Added routing smoke coverage in `src/commands/spec/mod.rs` and daemon dispatch tests in `src/commands/mother/daemon/tests/mod.rs`.
+- Started Option A git-toy expansion for Slate mutate/release parity (`create-tag-at`, `status-porcelain`, `add-paths`, `is-clean-tracked`, `commits-behind-upstream`, `is-diverged`) in WIT + host bindings.
 
 ## Toy contract packaging direction
 
