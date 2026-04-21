@@ -16,6 +16,7 @@ interface git {
     diff-stat: func() -> result<string, string>;
     status-porcelain: func() -> result<string, string>;
     add-paths: func(paths: list<string>) -> result<_, string>;
+    remove-paths: func(paths: list<string>) -> result<_, string>;
     is-clean-tracked: func() -> result<bool, string>;
     commits-behind-upstream: func() -> result<u32, string>;
     is-diverged: func() -> result<bool, string>;

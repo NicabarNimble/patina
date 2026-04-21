@@ -427,6 +427,26 @@ pub fn git_add_paths(paths: &[String]) -> Result<(), String> {
     crate::git::add_paths(&refs).map_err(|e| e.to_string())
 }
 
+pub fn git_remove_paths(paths: &[String]) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = vec!["rm".to_string(), "-rf".to_string()];
+    args.extend(paths.iter().cloned());
+
+    let output = std::process::Command::new("git")
+        .args(args.iter().map(String::as_str))
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
 pub fn git_is_clean_tracked() -> Result<bool, String> {
     crate::git::is_clean_tracked().map_err(|e| e.to_string())
 }
@@ -643,6 +663,12 @@ type = "bearer"
         git_add_paths(&["CHANGELOG.md".to_string()]).unwrap();
         assert!(!git_is_clean_tracked().unwrap());
         let _ = git_commit("add changelog").unwrap();
+        assert!(git_is_clean_tracked().unwrap());
+
+        std::fs::remove_file(repo.join("CHANGELOG.md")).unwrap();
+        git_remove_paths(&["CHANGELOG.md".to_string()]).unwrap();
+        assert!(!git_is_clean_tracked().unwrap());
+        let _ = git_commit("remove changelog").unwrap();
         assert!(git_is_clean_tracked().unwrap());
         let _ = git_commits_behind_upstream().unwrap();
         let _ = git_is_diverged().unwrap();

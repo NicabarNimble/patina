@@ -774,6 +774,16 @@ mod bindings {
             crate::child::toy_host::v2::git_add_paths(&paths)
         }
 
+        fn remove_paths(&mut self, paths: Vec<String>) -> Result<(), String> {
+            if !self.grants.toys.git {
+                return Err(format!(
+                    "git toy not granted for child '{}'",
+                    self.plugin_name
+                ));
+            }
+            crate::child::toy_host::v2::git_remove_paths(&paths)
+        }
+
         fn is_clean_tracked(&mut self) -> Result<bool, String> {
             if !self.grants.toys.git {
                 return Err(format!(
