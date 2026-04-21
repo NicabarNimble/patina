@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::{BumpType, PreparedRelease, ReleaseStrategy};
@@ -275,6 +275,38 @@ pub(crate) fn execute_release(
 /// and included in the release commit. The caller is responsible for
 /// creating the `spec/<id>` tag before calling this (so it points to
 /// the commit that still has the spec).
+fn resolve_cargo_binary() -> Result<PathBuf> {
+    if let Ok(path) = std::env::var("PATINA_CARGO") {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    let in_path = Command::new("cargo").arg("--version").output();
+    if in_path.is_ok() {
+        return Ok(PathBuf::from("cargo"));
+    }
+
+    let mut candidates = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        candidates.push(home.join(".cargo/bin/cargo"));
+    }
+    candidates.push(PathBuf::from("/opt/homebrew/bin/cargo"));
+    candidates.push(PathBuf::from("/usr/local/bin/cargo"));
+
+    for candidate in candidates {
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    anyhow::bail!(
+        "cargo executable not found for release workflow.\n\
+         Set PATINA_CARGO to an absolute cargo path or ensure cargo is on PATH for the invoking runtime."
+    )
+}
+
 fn execute_cargo(
     prepared: PreparedRelease,
     title: &str,
@@ -292,10 +324,16 @@ fn execute_cargo(
 
     // 1. Update Cargo.toml + regenerate Cargo.lock
     update_cargo_version(new_version)?;
-    let lock_output = Command::new("cargo")
+    let cargo = resolve_cargo_binary()?;
+    let lock_output = Command::new(&cargo)
         .args(["update", "--workspace"])
         .output()
-        .context("Failed to regenerate Cargo.lock")?;
+        .with_context(|| {
+            format!(
+                "Failed to regenerate Cargo.lock (cargo binary: {})",
+                cargo.display()
+            )
+        })?;
     if !lock_output.status.success() {
         anyhow::bail!(
             "cargo update --workspace failed: {}",
@@ -461,6 +499,33 @@ pub(crate) fn update_cargo_version(new_version: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolve_cargo_binary_prefers_patina_cargo_env() {
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let tmp = tempfile::TempDir::new().unwrap();
+        let fake = tmp.path().join("cargo");
+        std::fs::write(&fake, "#!/bin/sh\n").unwrap();
+
+        let old = std::env::var_os("PATINA_CARGO");
+        unsafe {
+            std::env::set_var("PATINA_CARGO", &fake);
+        }
+
+        let resolved = resolve_cargo_binary().unwrap();
+        assert_eq!(resolved, fake);
+
+        match old {
+            Some(value) => unsafe {
+                std::env::set_var("PATINA_CARGO", value);
+            },
+            None => unsafe {
+                std::env::remove_var("PATINA_CARGO");
+            },
+        }
+    }
 
     #[test]
     fn test_compute_next_version_patch() {

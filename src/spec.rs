@@ -217,10 +217,43 @@ impl SpecCommands {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum SpecBackendMode {
+    #[default]
+    Off,
+    Observe,
+    Execute,
+}
+
+impl SpecBackendMode {
+    fn parse(raw: Option<&str>) -> Self {
+        match raw
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("off") | Some("legacy") => Self::Off,
+            Some("observe") | Some("slate-observe") => Self::Observe,
+            Some("execute") | Some("slate-execute") => Self::Execute,
+            _ => Self::Off,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Observe => "observe",
+            Self::Execute => "execute",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 struct SpecRouteContext {
     project: Option<String>,
     origin_project: Option<String>,
+    backend_mode: SpecBackendMode,
 }
 
 thread_local! {
@@ -232,10 +265,20 @@ pub fn execute_command_value_with_route(
     project: Option<String>,
     origin_project: Option<String>,
 ) -> Result<Value> {
+    execute_command_value_with_route_backend(command, project, origin_project, None)
+}
+
+pub fn execute_command_value_with_route_backend(
+    command: SpecCommands,
+    project: Option<String>,
+    origin_project: Option<String>,
+    backend_mode: Option<String>,
+) -> Result<Value> {
     let previous = SPEC_ROUTE_CONTEXT.with(|slot| {
         slot.replace(Some(SpecRouteContext {
             project,
             origin_project,
+            backend_mode: SpecBackendMode::parse(backend_mode.as_deref()),
         }))
     });
     let result = execute_command_value(command);
@@ -344,6 +387,31 @@ fn strip_routing_from_command(command: &SpecCommands) -> SpecCommands {
     }
 }
 
+fn parse_subprocess_json_output(stdout: &str) -> Result<Value> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("subprocess returned empty stdout")
+    }
+
+    if let Ok(parsed) = serde_json::from_str::<Value>(trimmed) {
+        return Ok(parsed);
+    }
+
+    // Direct-mode subprocesses can emit operational logs (release/archive progress)
+    // before the final JSON envelope. Recover by parsing the trailing JSON block.
+    for (idx, ch) in trimmed.char_indices().rev() {
+        if ch != '{' && ch != '[' {
+            continue;
+        }
+        let candidate = &trimmed[idx..];
+        if let Ok(parsed) = serde_json::from_str::<Value>(candidate) {
+            return Ok(parsed);
+        }
+    }
+
+    anyhow::bail!("Failed to parse subprocess JSON output")
+}
+
 fn execute_spec_command_in_project(project_root: &Path, command: &SpecCommands) -> Result<Value> {
     let exe = std::env::current_exe().context("Failed to resolve patina executable path")?;
     let serialized = serde_json::to_string(&strip_routing_from_command(command))?;
@@ -378,8 +446,7 @@ fn execute_spec_command_in_project(project_root: &Path, command: &SpecCommands) 
 
     let stdout = String::from_utf8(output.stdout)
         .map_err(|e| anyhow::anyhow!("Failed to decode subprocess output: {}", e))?;
-    serde_json::from_str(stdout.trim())
-        .map_err(|e| anyhow::anyhow!("Failed to parse subprocess JSON output: {}", e))
+    parse_subprocess_json_output(&stdout)
 }
 
 fn resolve_spec_command_route(
@@ -396,13 +463,27 @@ fn resolve_spec_command_route(
     Ok(None)
 }
 
-fn render_spec_response(json_mode: bool, text: Option<String>, data: Option<Value>) -> Value {
-    json!({
+fn render_spec_response(
+    route: &SpecRouteContext,
+    json_mode: bool,
+    text: Option<String>,
+    data: Option<Value>,
+) -> Value {
+    let mut payload = json!({
         "child": "spec-manager",
         "json": json_mode,
         "text": text,
         "data": data.unwrap_or(serde_json::Value::Null)
-    })
+    });
+
+    if route.backend_mode != SpecBackendMode::Off {
+        payload["backend"] = json!({
+            "mode": route.backend_mode.as_str(),
+            "engine": "builtin-spec-manager"
+        });
+    }
+
+    payload
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -637,7 +718,7 @@ pub fn execute_command_value(command: SpecCommands) -> Result<Value> {
 
     let json_mode = command.wants_json();
     let (text, data) = execute_local_spec_command(command, &route)?;
-    Ok(render_spec_response(json_mode, text, data))
+    Ok(render_spec_response(&route, json_mode, text, data))
 }
 
 // ============================================================================
@@ -1267,5 +1348,66 @@ id: minimal
         // "done" in YAML should deserialize to Complete
         let back: SpecStatus = serde_yaml::from_str("done").expect("deserialize done");
         assert_eq!(back, SpecStatus::Complete);
+    }
+
+    #[test]
+    fn parse_subprocess_json_output_accepts_plain_json() {
+        let parsed = parse_subprocess_json_output("{\"ok\":true}").expect("parse json");
+        assert_eq!(parsed["ok"], true);
+    }
+
+    #[test]
+    fn parse_subprocess_json_output_accepts_json_after_logs() {
+        let stdout = "creating tag...\narchiving spec...\n{\n  \"ok\": true,\n  \"value\": 7\n}";
+        let parsed = parse_subprocess_json_output(stdout).expect("parse trailing json");
+        assert_eq!(parsed["ok"], true);
+        assert_eq!(parsed["value"], 7);
+    }
+
+    #[test]
+    fn spec_backend_mode_parse_is_fail_closed() {
+        assert_eq!(SpecBackendMode::parse(Some("off")), SpecBackendMode::Off);
+        assert_eq!(SpecBackendMode::parse(Some("legacy")), SpecBackendMode::Off);
+        assert_eq!(
+            SpecBackendMode::parse(Some("observe")),
+            SpecBackendMode::Observe
+        );
+        assert_eq!(
+            SpecBackendMode::parse(Some("slate-observe")),
+            SpecBackendMode::Observe
+        );
+        assert_eq!(
+            SpecBackendMode::parse(Some("execute")),
+            SpecBackendMode::Execute
+        );
+        assert_eq!(
+            SpecBackendMode::parse(Some("slate-execute")),
+            SpecBackendMode::Execute
+        );
+        assert_eq!(
+            SpecBackendMode::parse(Some("unknown-mode")),
+            SpecBackendMode::Off
+        );
+        assert_eq!(SpecBackendMode::parse(None), SpecBackendMode::Off);
+    }
+
+    #[test]
+    fn render_spec_response_includes_backend_only_when_enabled() {
+        let off = SpecRouteContext {
+            project: None,
+            origin_project: None,
+            backend_mode: SpecBackendMode::Off,
+        };
+        let off_payload = render_spec_response(&off, true, None, None);
+        assert!(off_payload.get("backend").is_none());
+
+        let observe = SpecRouteContext {
+            project: None,
+            origin_project: None,
+            backend_mode: SpecBackendMode::Observe,
+        };
+        let observe_payload = render_spec_response(&observe, true, None, None);
+        assert_eq!(observe_payload["backend"]["mode"], "observe");
+        assert_eq!(observe_payload["backend"]["engine"], "builtin-spec-manager");
     }
 }

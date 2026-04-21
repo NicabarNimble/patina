@@ -1,5 +1,21 @@
 Capture Patina beliefs using the truthful project-local workflow for this runtime.
 
+## Proactive belief detection (PI/OpenCode/Gemini parity)
+
+Do not wait for exact trigger words. When you see strong decision language, ask first:
+
+- design decision: "we should", "the right way is"
+- policy language: "always", "never"
+- repeated principle across the session
+- lesson learned from a failure/reversal
+
+Ask:
+"This sounds like a belief worth capturing: '<statement>'. Should I create it?"
+
+If user says no, continue normally.
+
+## Capture flow
+
 1. Treat beliefs as durable project truth. Watch for design decisions, repeated principles, strong "always/never" guidance, or lessons learned that should survive the session.
 
 2. Ask the user before creating a new belief unless they already requested it explicitly.

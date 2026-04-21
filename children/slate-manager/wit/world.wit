@@ -1,0 +1,9 @@
+package patina:slate-manager@0.1.0;
+
+world slate-manager {
+    import wasi:logging/logging@0.1.0;
+    import patina:measure/measure@0.1.0;
+    import patina:git/git@0.1.0;
+
+    export patina:slate/control@0.1.0;
+}

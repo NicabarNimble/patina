@@ -60,6 +60,22 @@ const SKILL_WRAPPER_SET: &[&str] = &[
     "epistemic-beliefs",
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillOwnership {
+    /// Interface/runtime-native behavior that can be managed globally.
+    GlobalInterface,
+    /// Patina workflow behavior that should be owned per project.
+    ProjectPatina,
+}
+
+pub fn skill_ownership(skill: &str) -> SkillOwnership {
+    match skill {
+        "session-new" | "session-update" | "session-note" | "session-end" | "spec"
+        | "epistemic-beliefs" => SkillOwnership::ProjectPatina,
+        _ => SkillOwnership::GlobalInterface,
+    }
+}
+
 pub fn known_skills(interface: &str) -> Vec<&'static str> {
     match interface {
         "claude" | "gemini" | "opencode" | "pi" => SKILL_WRAPPER_SET.to_vec(),
@@ -304,5 +320,27 @@ pub fn skill_content(interface: &str, skill: &str) -> Option<SkillContent> {
             ],
         }),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ownership_splits_project_and_global_skills() {
+        assert_eq!(
+            skill_ownership("session-new"),
+            SkillOwnership::ProjectPatina
+        );
+        assert_eq!(skill_ownership("spec"), SkillOwnership::ProjectPatina);
+        assert_eq!(
+            skill_ownership("epistemic-beliefs"),
+            SkillOwnership::ProjectPatina
+        );
+        assert_eq!(
+            skill_ownership("patina-review"),
+            SkillOwnership::GlobalInterface
+        );
     }
 }

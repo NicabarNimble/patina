@@ -73,15 +73,36 @@ patina assay search "child engine"
 patina context --topic "testing"
 ```
 
-### Managed daemon (Homebrew)
+### Mother service runbook (macOS + Linux)
 
 ```bash
-brew services start patina
-brew services status patina
-brew services restart patina
+# Install native supervisor backend
+patina mother install
+
+# Operate lifecycle
+patina mother status
+patina mother restart
+patina mother stop
+
+# Remove native supervisor backend
+patina mother uninstall
 ```
 
-Homebrew users should prefer `brew services` over manual `nohup` process management.
+Backend notes:
+
+- **macOS (Homebrew install)**
+  ```bash
+  brew services start patina
+  brew services status patina
+  brew services restart patina
+  ```
+- **Linux (systemd user service)**
+  ```bash
+  systemctl --user status patina-mother.service
+  journalctl --user -u patina-mother.service -f
+  ```
+
+Use one supervisor owner at a time (Homebrew/launchd/systemd) to avoid lifecycle conflicts.
 
 Once configured, running bare `patina` launches the default interface.
 
@@ -181,8 +202,9 @@ patina connect status
 
 patina mother start
 patina mother stop
+patina mother restart
 patina mother status
-patina mother install                # Install launchd supervisor (macOS, always-on)
+patina mother install                # Install system supervisor (launchd on macOS, systemd --user on Linux)
 patina mother search "belief query"
 patina mother sources
 patina mother graph                  # Cross-project relationship graph

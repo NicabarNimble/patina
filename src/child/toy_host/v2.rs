@@ -379,6 +379,11 @@ pub fn git_create_tag(name: &str) -> Result<(), String> {
     crate::git::create_tag(name, &format!("v2 tag: {}", name)).map_err(|e| e.to_string())
 }
 
+pub fn git_create_tag_at(name: &str, git_ref: &str) -> Result<(), String> {
+    crate::git::create_tag_at(name, &format!("v2 tag: {}", name), git_ref)
+        .map_err(|e| e.to_string())
+}
+
 pub fn git_delete_tag(name: &str) -> Result<(), String> {
     let output = std::process::Command::new("git")
         .args(["tag", "-d", name])
@@ -411,6 +416,48 @@ pub fn git_log_oneline(limit: u32) -> Result<Vec<String>, String> {
 
 pub fn git_diff_stat() -> Result<String, String> {
     crate::git::diff_stat_summary().map_err(|e| e.to_string())
+}
+
+pub fn git_status_porcelain() -> Result<String, String> {
+    crate::git::status_porcelain().map_err(|e| e.to_string())
+}
+
+pub fn git_add_paths(paths: &[String]) -> Result<(), String> {
+    let refs: Vec<&str> = paths.iter().map(|path| path.as_str()).collect();
+    crate::git::add_paths(&refs).map_err(|e| e.to_string())
+}
+
+pub fn git_remove_paths(paths: &[String]) -> Result<(), String> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = vec!["rm".to_string(), "-rf".to_string()];
+    args.extend(paths.iter().cloned());
+
+    let output = std::process::Command::new("git")
+        .args(args.iter().map(String::as_str))
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+pub fn git_is_clean_tracked() -> Result<bool, String> {
+    crate::git::is_clean_tracked().map_err(|e| e.to_string())
+}
+
+pub fn git_commits_behind_upstream() -> Result<u32, String> {
+    let behind = crate::git::commits_behind_upstream().map_err(|e| e.to_string())?;
+    u32::try_from(behind).map_err(|_| format!("behind count {} exceeds u32", behind))
+}
+
+pub fn git_is_diverged() -> Result<bool, String> {
+    crate::git::is_diverged().map_err(|e| e.to_string())
 }
 
 pub fn log_emit(plugin_name: &str, level: &str, message: &str) {
@@ -601,14 +648,34 @@ type = "bearer"
             .unwrap()
             .success());
         let _sha = git_commit("init").unwrap();
+        assert!(git_is_clean_tracked().unwrap());
         assert!(!git_tag_exists("phase4-tag").unwrap());
         git_create_tag("phase4-tag").unwrap();
         assert!(git_tag_exists("phase4-tag").unwrap());
+        git_create_tag_at("phase4-tag-at", "HEAD").unwrap();
+        assert!(git_tag_exists("phase4-tag-at").unwrap());
         let lines = git_log_oneline(5).unwrap();
         assert!(!lines.is_empty());
         let _ = git_diff_stat().unwrap();
+        std::fs::write(repo.join("CHANGELOG.md"), "wip\n").unwrap();
+        let status = git_status_porcelain().unwrap();
+        assert!(status.contains("CHANGELOG.md"));
+        git_add_paths(&["CHANGELOG.md".to_string()]).unwrap();
+        assert!(!git_is_clean_tracked().unwrap());
+        let _ = git_commit("add changelog").unwrap();
+        assert!(git_is_clean_tracked().unwrap());
+
+        std::fs::remove_file(repo.join("CHANGELOG.md")).unwrap();
+        git_remove_paths(&["CHANGELOG.md".to_string()]).unwrap();
+        assert!(!git_is_clean_tracked().unwrap());
+        let _ = git_commit("remove changelog").unwrap();
+        assert!(git_is_clean_tracked().unwrap());
+        let _ = git_commits_behind_upstream().unwrap();
+        let _ = git_is_diverged().unwrap();
         git_delete_tag("phase4-tag").unwrap();
+        git_delete_tag("phase4-tag-at").unwrap();
         assert!(!git_tag_exists("phase4-tag").unwrap());
+        assert!(!git_tag_exists("phase4-tag-at").unwrap());
         std::env::set_current_dir(old_dir).unwrap();
     }
 }

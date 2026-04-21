@@ -12,7 +12,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::interface::interface_bundle;
-use crate::mother::skills::{self, SkillContent, SkillContentMode};
+use crate::mother::skills::{self, SkillContent, SkillContentMode, SkillOwnership};
 use crate::paths;
 
 // =============================================================================
@@ -101,8 +101,25 @@ pub fn copy_to_project(interface_name: &str, project_path: &Path) -> Result<()> 
                 interface_name
             )
         })?;
-        write_skill_content(&iface_dir, interface_name, &content)?;
+
+        match skills::skill_ownership(skill) {
+            SkillOwnership::GlobalInterface => {
+                write_skill_content(&iface_dir, interface_name, &content)?;
+            }
+            SkillOwnership::ProjectPatina => {
+                sync_project_skill_source(project_path, interface_name, skill, &content)?;
+                project_skill_to_interface_projection(
+                    project_path,
+                    &iface_dir,
+                    interface_name,
+                    skill,
+                    &content,
+                )?;
+            }
+        }
     }
+
+    apply_project_interface_overrides(project_path, interface_name, &iface_dir)?;
 
     Ok(())
 }
@@ -220,6 +237,166 @@ fn write_interface_registry(interfaces_dir: &Path) -> Result<()> {
 // Helpers
 // =============================================================================
 
+const MARKER_HTML_START: &str = "<!-- PATINA:START -->";
+const MARKER_HTML_END: &str = "<!-- PATINA:END -->";
+const MARKER_TEXT_START: &str = "# PATINA:START";
+const MARKER_TEXT_END: &str = "# PATINA:END";
+
+fn render_skill_body<'a>(interface_name: &str, source: &'a str) -> Cow<'a, str> {
+    if interface_name == "pi" {
+        Cow::Owned(source.replace(".opencode/", ".pi/"))
+    } else {
+        Cow::Borrowed(source)
+    }
+}
+
+fn sync_project_skill_source(
+    project_root: &Path,
+    interface_name: &str,
+    skill_name: &str,
+    content: &SkillContent,
+) -> Result<()> {
+    for file in content.files {
+        let source_path =
+            paths::project::interface_skill_dir(project_root, interface_name, skill_name)
+                .join(file.projection_file);
+        if let Some(parent) = source_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let body = render_skill_body(interface_name, file.bytes);
+        write_skill_file(&source_path, file.mode, body.as_ref())?;
+    }
+    Ok(())
+}
+
+fn project_skill_to_interface_projection(
+    project_root: &Path,
+    interface_dir: &Path,
+    interface_name: &str,
+    skill_name: &str,
+    content: &SkillContent,
+) -> Result<()> {
+    for file in content.files {
+        let source_path =
+            paths::project::interface_skill_dir(project_root, interface_name, skill_name)
+                .join(file.projection_file);
+        let body = if source_path.exists() {
+            fs::read_to_string(&source_path)?
+        } else {
+            render_skill_body(interface_name, file.bytes).into_owned()
+        };
+        let projection_path = interface_dir.join(file.projection_file);
+        if let Some(parent) = projection_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        write_skill_file(&projection_path, file.mode, &body)?;
+    }
+
+    Ok(())
+}
+
+fn apply_project_interface_overrides(
+    project_root: &Path,
+    interface_name: &str,
+    interface_dir: &Path,
+) -> Result<()> {
+    let overrides_dir = paths::project::interface_overrides_dir(project_root, interface_name);
+    if !overrides_dir.exists() {
+        return Ok(());
+    }
+
+    copy_override_tree(&overrides_dir, &overrides_dir, interface_dir)
+}
+
+fn copy_override_tree(root: &Path, current: &Path, destination_root: &Path) -> Result<()> {
+    for entry in fs::read_dir(current)? {
+        let entry = entry?;
+        let source = entry.path();
+        let relative = source.strip_prefix(root)?;
+        let destination = destination_root.join(relative);
+
+        if source.is_dir() {
+            fs::create_dir_all(&destination)?;
+            copy_override_tree(root, &source, destination_root)?;
+            continue;
+        }
+
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::copy(&source, &destination)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let src_mode = fs::metadata(&source)?.permissions().mode();
+            if src_mode & 0o111 != 0 {
+                let mut perms = fs::metadata(&destination)?.permissions();
+                perms.set_mode(src_mode);
+                fs::set_permissions(&destination, perms)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn managed_markers(mode: SkillContentMode) -> Option<(&'static str, &'static str)> {
+    match mode {
+        SkillContentMode::Markdown => Some((MARKER_HTML_START, MARKER_HTML_END)),
+        SkillContentMode::Toml => Some((MARKER_TEXT_START, MARKER_TEXT_END)),
+        SkillContentMode::Executable => None,
+    }
+}
+
+fn update_or_append_managed(existing: &str, managed_block: &str, start: &str, end: &str) -> String {
+    if let (Some(start_idx), Some(end_idx)) = (existing.find(start), existing.find(end)) {
+        if start_idx < end_idx {
+            let before = &existing[..start_idx];
+            let after = &existing[end_idx + end.len()..];
+            return format!("{}{}{}", before, managed_block, after);
+        }
+    }
+
+    managed_block.to_string()
+}
+
+fn wrap_managed_content(mode: SkillContentMode, body: &str) -> String {
+    let normalized = format!("{}\n", body.trim_end());
+    match mode {
+        SkillContentMode::Markdown => {
+            format!("{}\n{}\n{}", MARKER_HTML_START, normalized, MARKER_HTML_END)
+        }
+        SkillContentMode::Toml => {
+            format!("{}\n{}\n{}", MARKER_TEXT_START, normalized, MARKER_TEXT_END)
+        }
+        SkillContentMode::Executable => normalized,
+    }
+}
+
+fn write_skill_file(path: &Path, mode: SkillContentMode, body: &str) -> Result<()> {
+    if mode == SkillContentMode::Executable {
+        write_executable(path, body)?;
+        return Ok(());
+    }
+
+    let managed = wrap_managed_content(mode, body);
+    let next = if path.exists() {
+        let existing = fs::read_to_string(path)?;
+        if let Some((start, end)) = managed_markers(mode) {
+            update_or_append_managed(&existing, &managed, start, end)
+        } else {
+            managed
+        }
+    } else {
+        managed
+    };
+
+    fs::write(path, next)?;
+    Ok(())
+}
+
 fn write_skill_content(
     base_dir: &Path,
     interface_name: &str,
@@ -231,16 +408,8 @@ fn write_skill_content(
             fs::create_dir_all(parent)?;
         }
 
-        let body: Cow<'_, str> = if interface_name == "pi" {
-            Cow::Owned(file.bytes.replace(".opencode/", ".pi/"))
-        } else {
-            Cow::Borrowed(file.bytes)
-        };
-
-        match file.mode {
-            SkillContentMode::Executable => write_executable(&path, &body)?,
-            SkillContentMode::Markdown | SkillContentMode::Toml => fs::write(&path, body.as_ref())?,
-        }
+        let body = render_skill_body(interface_name, file.bytes);
+        write_skill_file(&path, file.mode, body.as_ref())?;
     }
     Ok(())
 }
@@ -435,5 +604,42 @@ mod tests {
             fs::read_to_string(templates_dir.join(".opencode/commands/epistemic-beliefs.md"))
                 .unwrap();
         assert!(beliefs.contains(".opencode/bin/create-belief.sh"));
+    }
+
+    #[test]
+    fn copy_to_project_seeds_project_owned_patina_skills_for_pi() {
+        let temp = TempDir::new().unwrap();
+        copy_to_project("pi", temp.path()).unwrap();
+
+        let source = temp
+            .path()
+            .join(".patina/skills/pi/epistemic-beliefs/commands/epistemic-beliefs.md");
+        let projected = temp.path().join(".pi/commands/epistemic-beliefs.md");
+
+        assert!(source.exists());
+        assert!(projected.exists());
+
+        let source_text = fs::read_to_string(&source).unwrap();
+        assert!(source_text.contains("PATINA:START"));
+        assert!(source_text.contains("Capture Patina beliefs"));
+
+        let projected_text = fs::read_to_string(projected).unwrap();
+        assert!(projected_text.contains("PATINA:START"));
+        assert!(projected_text.contains(".pi/bin/create-belief.sh"));
+    }
+
+    #[test]
+    fn project_overrides_win_last_for_interface_projection() {
+        let temp = TempDir::new().unwrap();
+        let override_path = temp
+            .path()
+            .join(".patina/interfaces/pi/overrides/commands/epistemic-beliefs.md");
+        fs::create_dir_all(override_path.parent().unwrap()).unwrap();
+        fs::write(&override_path, "override: true\n").unwrap();
+
+        copy_to_project("pi", temp.path()).unwrap();
+
+        let projected = temp.path().join(".pi/commands/epistemic-beliefs.md");
+        assert_eq!(fs::read_to_string(projected).unwrap(), "override: true\n");
     }
 }

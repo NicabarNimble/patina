@@ -1,0 +1,23 @@
+[package]
+name = "patina-ai-child-slate-manager"
+version = "0.1.0"
+edition = "2021"
+description = "Full-WIT Slate manager child scaffold for spec workflow parity"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen = "0.41.0"
+patina-sdk = { path = "../../sdk/patina-sdk" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+[package.metadata.component]
+package = "patina:slate-manager"
+
+[package.metadata.component.target]
+path = "wit"
+world = "slate-manager"
+
