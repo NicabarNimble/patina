@@ -621,8 +621,8 @@ fn systemd_unit_path() -> Result<std::path::PathBuf> {
 #[cfg(target_os = "linux")]
 fn render_systemd_unit(exe_path: &Path) -> String {
     format!(
-        "[Unit]\nDescription=Patina Mother daemon\nAfter=default.target\n\n[Service]\nType=simple\nEnvironment={}\nExecStart={} mother start\nRestart=always\nRestartSec=2\n\n[Install]\nWantedBy=default.target\n",
-        format!("{}=1", MOTHER_SUPERVISED_ENV),
+        "[Unit]\nDescription=Patina Mother daemon\nAfter=default.target\n\n[Service]\nType=simple\nEnvironment={}=1\nExecStart={} mother start\nRestart=always\nRestartSec=2\n\n[Install]\nWantedBy=default.target\n",
+        MOTHER_SUPERVISED_ENV,
         exe_path.display()
     )
 }
