@@ -97,6 +97,29 @@ struct NotifyingChild {
 struct TypedDispatchChild;
 struct SlateDispatchChild;
 
+fn spec_dispatch_request(
+    command: patina::spec::SpecCommands,
+    backend_mode: Option<&str>,
+) -> patina_protocol::SpecDispatchRequest {
+    #[derive(serde::Serialize)]
+    struct SpecDispatchEnvelope {
+        command: patina::spec::SpecCommands,
+        project: Option<String>,
+        origin_project: Option<String>,
+        backend_mode: Option<String>,
+    }
+
+    patina_protocol::SpecDispatchRequest {
+        command: serde_json::to_value(SpecDispatchEnvelope {
+            command,
+            project: None,
+            origin_project: None,
+            backend_mode: backend_mode.map(|value| value.to_string()),
+        })
+        .expect("serialize envelope"),
+    }
+}
+
 impl Child for TypedDispatchChild {
     fn name(&self) -> &str {
         "rivet-dispatch-child"
@@ -464,23 +487,10 @@ allow = ["patina:slate/control.dispatch"]
             readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
         });
 
-        #[derive(serde::Serialize)]
-        struct SpecDispatchEnvelope {
-            command: patina::spec::SpecCommands,
-            project: Option<String>,
-            origin_project: Option<String>,
-            backend_mode: Option<String>,
-        }
-
-        let request = patina_protocol::SpecDispatchRequest {
-            command: serde_json::to_value(SpecDispatchEnvelope {
-                command: patina::spec::SpecCommands::Next { json: true },
-                project: None,
-                origin_project: None,
-                backend_mode: Some("execute".to_string()),
-            })
-            .expect("serialize envelope"),
-        };
+        let request = spec_dispatch_request(
+            patina::spec::SpecCommands::Next { json: true },
+            Some("execute"),
+        );
 
         let response = <ServerState as mother_crate::http_api::ApiRuntime>::builtin_spec_dispatch(
             &state, request,
@@ -521,23 +531,10 @@ fn builtin_spec_dispatch_execute_fails_closed_without_slate_manager() {
             readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
         });
 
-        #[derive(serde::Serialize)]
-        struct SpecDispatchEnvelope {
-            command: patina::spec::SpecCommands,
-            project: Option<String>,
-            origin_project: Option<String>,
-            backend_mode: Option<String>,
-        }
-
-        let request = patina_protocol::SpecDispatchRequest {
-            command: serde_json::to_value(SpecDispatchEnvelope {
-                command: patina::spec::SpecCommands::Next { json: true },
-                project: None,
-                origin_project: None,
-                backend_mode: Some("execute".to_string()),
-            })
-            .expect("serialize envelope"),
-        };
+        let request = spec_dispatch_request(
+            patina::spec::SpecCommands::Next { json: true },
+            Some("execute"),
+        );
 
         let error = <ServerState as mother_crate::http_api::ApiRuntime>::builtin_spec_dispatch(
             &state, request,
@@ -546,6 +543,93 @@ fn builtin_spec_dispatch_execute_fails_closed_without_slate_manager() {
 
         assert!(error.to_string().contains("slate execute dispatch failed"));
         assert!(error.to_string().contains("slate-manager unavailable"));
+    });
+}
+
+#[test]
+fn builtin_spec_dispatch_observe_includes_slate_probe_when_available() {
+    with_temp_project(|project_root| {
+        std::fs::create_dir_all(project_root.join(".patina")).expect("create .patina");
+        std::fs::create_dir_all(project_root.join("layer")).expect("create layer");
+
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+
+        let manifest_path = project_root.join("slate-manager.toml");
+        std::fs::write(
+            &manifest_path,
+            r#"[child]
+name = "slate-manager"
+version = "0.1.0"
+world = "child"
+
+[child.ingress]
+mode = "hybrid"
+
+[child.contract]
+allow = ["patina:slate/control.dispatch"]
+"#,
+        )
+        .expect("write manifest");
+
+        let registry = ChildRegistry::new();
+        registry
+            .register_knowledge_with_paths(
+                Box::new(SlateDispatchChild),
+                std::path::PathBuf::new(),
+                manifest_path,
+            )
+            .expect("register slate child");
+
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry,
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let request = spec_dispatch_request(
+            patina::spec::SpecCommands::List {
+                status: None,
+                target: None,
+                json: true,
+            },
+            Some("observe"),
+        );
+
+        let response = <ServerState as mother_crate::http_api::ApiRuntime>::builtin_spec_dispatch(
+            &state, request,
+        )
+        .expect("observe mode should preserve builtin response and include probe");
+
+        assert_eq!(
+            response.get("backend").and_then(|v| v.get("mode")),
+            Some(&serde_json::json!("observe"))
+        );
+        assert_eq!(
+            response.get("backend").and_then(|v| v.get("engine")),
+            Some(&serde_json::json!("builtin-spec-manager"))
+        );
+        assert_eq!(
+            response
+                .get("backend")
+                .and_then(|v| v.get("slate_probe"))
+                .and_then(|v| v.get("status")),
+            Some(&serde_json::json!("called"))
+        );
+        assert_eq!(
+            response
+                .get("backend")
+                .and_then(|v| v.get("slate_probe"))
+                .and_then(|v| v.get("data"))
+                .and_then(|v| v.get("status")),
+            Some(&serde_json::json!("from-slate"))
+        );
     });
 }
 
