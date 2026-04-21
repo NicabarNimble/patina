@@ -7,4 +7,4 @@ role = "app"
 patina_min = "0.64.0"
 
 [needs]
-toys = ["logging", "measure"]
+toys = ["logging", "measure", "git"]

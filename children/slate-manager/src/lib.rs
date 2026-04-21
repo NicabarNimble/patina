@@ -15,6 +15,8 @@ struct SlateManager;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct SpecFrontmatterLite {
     id: String,
+    #[serde(rename = "type")]
+    r#type: Option<String>,
     status: Option<String>,
     target: Option<String>,
     title: Option<String>,
@@ -195,6 +197,25 @@ fn require_id<'a>(
         .ok_or_else(|| format!("{} requires id", command))
 }
 
+fn arg_bool(
+    args: Option<&serde_json::Map<String, serde_json::Value>>,
+    key: &str,
+    default: bool,
+) -> bool {
+    args.and_then(|map| map.get(key))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(default)
+}
+
+fn arg_string(
+    args: Option<&serde_json::Map<String, serde_json::Value>>,
+    key: &str,
+) -> Option<String> {
+    args.and_then(|map| map.get(key))
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string())
+}
+
 fn normalize_criteria(frontmatter: &SpecFrontmatterLite) -> Vec<(String, String, bool)> {
     frontmatter
         .exit_criteria
@@ -222,6 +243,78 @@ fn find_spec<'a>(specs: &'a [SpecRecord], id: &str) -> Result<&'a SpecRecord, St
         .iter()
         .find(|record| record.frontmatter.id == id)
         .ok_or_else(|| format!("spec '{}' not found", id))
+}
+
+fn is_terminal_status(status: &str) -> bool {
+    matches!(status, "complete" | "completed" | "done" | "abandoned")
+}
+
+fn to_repo_relative(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn archive_spec_record(root: &Path, spec: &SpecRecord, dry_run: bool) -> Result<(), String> {
+    let status = status_or(&spec.frontmatter, "unknown");
+    if !is_terminal_status(&status) {
+        return Err(format!(
+            "Spec '{}' has status '{}', expected 'complete' or 'abandoned'",
+            spec.frontmatter.id, status
+        ));
+    }
+
+    let tag_name = format!("spec/{}", spec.frontmatter.id);
+    if patina::git::git::tag_exists(&tag_name)? {
+        return Err(format!(
+            "Tag '{}' already exists. Spec may have been archived previously.",
+            tag_name
+        ));
+    }
+
+    if dry_run {
+        return Ok(());
+    }
+
+    if !patina::git::git::is_clean_tracked()? {
+        return Err(
+            "Working tree has uncommitted tracked changes. Commit or stash before archiving."
+                .to_string(),
+        );
+    }
+
+    let spec_path = Path::new(&spec.path);
+    let remove_target = spec_path
+        .parent()
+        .filter(|parent| parent.file_name().is_some())
+        .map(|dir| to_repo_relative(root, dir))
+        .unwrap_or_else(|| to_repo_relative(root, spec_path));
+    let spec_path_rel = to_repo_relative(root, spec_path);
+    let description = spec
+        .frontmatter
+        .title
+        .clone()
+        .unwrap_or_else(|| spec.frontmatter.id.clone());
+
+    patina::git::git::remove_paths(&vec![remove_target.clone()])?;
+
+    let commit_msg = format!(
+        "docs: archive {} ({})\n\nSpec preserved via git tag: {}\nRecover with: git show {}:{}",
+        tag_name, status, tag_name, tag_name, spec_path_rel
+    );
+    patina::git::git::commit(&commit_msg)?;
+    patina::git::git::create_tag_at(&tag_name, "HEAD~1")?;
+
+    toys::log::info(
+        "slate-manager",
+        &format!(
+            "archived spec id={} status={} target={} description={}",
+            spec.frontmatter.id, status, remove_target, description
+        ),
+    );
+
+    Ok(())
 }
 
 fn extract_title(text: &str) -> Option<String> {
@@ -389,10 +482,6 @@ fn handle_list(root: &Path) -> Result<serde_json::Value, String> {
 
 fn parse_queue_position(target: Option<&str>) -> Option<u32> {
     target.and_then(|t| t.trim().parse::<u32>().ok())
-}
-
-fn is_terminal_status(status: &str) -> bool {
-    matches!(status, "complete" | "completed" | "done" | "abandoned")
 }
 
 fn handle_next(root: &Path) -> Result<serde_json::Value, String> {
@@ -736,6 +825,110 @@ fn handle_packet(
     }))
 }
 
+fn handle_complete(
+    root: &Path,
+    args: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Result<serde_json::Value, String> {
+    let id = require_id(args, "complete")?;
+    let force = arg_bool(args, "force", false);
+
+    let specs = load_specs(root)?;
+    let spec = find_spec(&specs, id)?;
+    let status = status_or(&spec.frontmatter, "unknown");
+    if status != "active" {
+        return Err(format!(
+            "Cannot complete '{}' — status is '{}', expected 'active'",
+            id, status
+        ));
+    }
+
+    let criteria = normalize_criteria(&spec.frontmatter);
+    let unchecked: Vec<(String, String)> = criteria
+        .iter()
+        .filter(|(_, _, checked)| !*checked)
+        .map(|(criterion_id, text, _)| (criterion_id.clone(), text.clone()))
+        .collect();
+
+    if !unchecked.is_empty() && !force {
+        let details = unchecked
+            .iter()
+            .map(|(criterion_id, text)| format!("  ✗ {} — {}", criterion_id, text))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(format!(
+            "Cannot complete '{}' — {} unchecked exit criteria:\n{}\n\n  Use --force to bypass.",
+            id,
+            unchecked.len(),
+            details
+        ));
+    }
+
+    let spec_type = spec
+        .frontmatter
+        .r#type
+        .clone()
+        .unwrap_or_else(|| "explore".to_string());
+    if spec_type != "explore" {
+        return Err(format!(
+            "slate execute complete for spec '{}' with type '{}' is not implemented yet (release parity pending)",
+            id, spec_type
+        ));
+    }
+
+    let mut completed = spec.clone();
+    completed.frontmatter.status = Some("complete".to_string());
+    archive_spec_record(root, &completed, false)?;
+
+    Ok(serde_json::json!({
+        "command": "complete",
+        "spec_id": id,
+        "new_status": "complete",
+        "file": completed.path,
+        "tag": format!("spec/{}", id),
+        "archived": true,
+    }))
+}
+
+fn handle_archive(
+    root: &Path,
+    args: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Result<serde_json::Value, String> {
+    let stale = arg_bool(args, "stale", false);
+    let dry_run = arg_bool(args, "dry_run", false);
+
+    let specs = load_specs(root)?;
+
+    if stale {
+        let stale_specs: Vec<SpecRecord> = specs
+            .into_iter()
+            .filter(|spec| is_terminal_status(&status_or(&spec.frontmatter, "unknown")))
+            .collect();
+
+        if !dry_run {
+            for spec in &stale_specs {
+                archive_spec_record(root, spec, false)?;
+            }
+        }
+
+        return Ok(serde_json::json!({
+            "stale": true,
+            "dry_run": dry_run,
+            "count": stale_specs.len(),
+        }));
+    }
+
+    let id = arg_string(args, "id")
+        .ok_or_else(|| "Spec ID required. Use `patina spec archive <id>` or --stale".to_string())?;
+
+    let spec = find_spec(&specs, &id)?;
+    archive_spec_record(root, spec, dry_run)?;
+
+    Ok(serde_json::json!({
+        "id": id,
+        "dry_run": dry_run,
+    }))
+}
+
 impl exports::patina::slate::control::Guest for SlateManager {
     fn dispatch(command_json: String) -> Result<String, String> {
         toys::measure::counter("slate_dispatch_calls", 1.0)?;
@@ -758,6 +951,8 @@ impl exports::patina::slate::control::Guest for SlateManager {
             "prompt" => handle_prompt(&project_root, args)?,
             "handoff" => handle_handoff(&project_root, args)?,
             "packet" => handle_packet(&project_root, args)?,
+            "complete" => handle_complete(&project_root, args)?,
+            "archive" => handle_archive(&project_root, args)?,
             _ => {
                 return Ok(serde_json::json!({
                     "status": "scaffold",
