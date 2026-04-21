@@ -138,7 +138,8 @@ Primary principle: **parity first, innovation second**.
 - Added routing smoke coverage in `src/commands/spec/mod.rs` and daemon dispatch tests in `src/commands/mother/daemon/tests/mod.rs`.
 - Started Option A git-toy expansion for Slate mutate/release parity (`create-tag-at`, `status-porcelain`, `add-paths`, `is-clean-tracked`, `commits-behind-upstream`, `is-diverged`) in WIT + host bindings.
 - Slate child dispatch is command-aware (parses envelope command + backend mode).
-- Slate now implements initial read-only command handlers in-child (`list`, `next`, `check`, `show`) from filesystem frontmatter parsing; outputs are intentionally marked as early parity and still need fixture-level equivalence checks.
+- Slate now implements initial read-only command handlers in-child (`list`, `next`, `show`, `check`, `prompt`, `handoff`, `packet`) from filesystem/frontmatter parsing; outputs are still early parity and need fixture-level equivalence checks.
+- Execute dispatch now binds Slate reads to envelope project root (and fails closed on invalid project roots) for per-project isolation.
 
 ## Toy contract packaging direction
 
