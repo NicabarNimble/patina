@@ -803,7 +803,7 @@ fn restart_daemon() -> Result<()> {
             {
                 restart_launchd_label(MOTHER_LAUNCHD_LABEL)?;
                 println!("Requested restart via launchd: {}", MOTHER_LAUNCHD_LABEL);
-                return Ok(());
+                Ok(())
             }
             #[cfg(not(target_os = "macos"))]
             {
@@ -818,7 +818,7 @@ fn restart_daemon() -> Result<()> {
                     "Requested restart via launchd: {}",
                     MOTHER_HOMEBREW_LAUNCHD_LABEL
                 );
-                return Ok(());
+                Ok(())
             }
             #[cfg(not(target_os = "macos"))]
             {
@@ -833,7 +833,7 @@ fn restart_daemon() -> Result<()> {
                     "Requested restart via systemd --user: {}",
                     MOTHER_SYSTEMD_UNIT
                 );
-                return Ok(());
+                Ok(())
             }
             #[cfg(not(target_os = "linux"))]
             {
@@ -899,7 +899,7 @@ fn install_supervisor() -> Result<()> {
 
         println!("Installed launchd plist: {}", plist_path.display());
         println!("Service label: {}", MOTHER_LAUNCHD_LABEL);
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]
@@ -921,7 +921,7 @@ fn install_supervisor() -> Result<()> {
 
         println!("Installed systemd user unit: {}", unit_path.display());
         println!("Unit name: {}", MOTHER_SYSTEMD_UNIT);
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -951,7 +951,7 @@ fn uninstall_supervisor() -> Result<()> {
             println!("Launchd plist not found: {}", plist_path.display());
         }
 
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]
@@ -968,7 +968,7 @@ fn uninstall_supervisor() -> Result<()> {
         }
 
         let _ = run_systemctl_user(&["daemon-reload"]);
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
