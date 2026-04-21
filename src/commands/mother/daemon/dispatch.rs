@@ -463,29 +463,9 @@ impl ApiRuntime for ServerState {
                     .unwrap_or(false);
 
                 if scaffold_only {
-                    let mut payload = patina::spec::execute_command_value_with_route_backend(
-                        envelope.command.clone(),
-                        envelope.project.clone(),
-                        envelope.origin_project.clone(),
-                        envelope.backend_mode.clone(),
-                    )?;
-                    if let Some(root) = payload.as_object_mut() {
-                        root.insert(
-                            "backend".to_string(),
-                            serde_json::json!({
-                                "mode": backend_mode.as_str(),
-                                "engine": "builtin-spec-manager",
-                                "fallback_from_slate": true,
-                                "reason": "slate-scaffold-not-implemented",
-                                "slate_probe": {
-                                    "status": "not-implemented",
-                                    "data": slate_data,
-                                    "payload": slate_payload,
-                                }
-                            }),
-                        );
-                    }
-                    return Ok(payload);
+                    anyhow::bail!(
+                        "slate execute dispatch failed: slate-manager returned scaffold response for execute mode"
+                    );
                 }
 
                 return Ok(serde_json::json!({

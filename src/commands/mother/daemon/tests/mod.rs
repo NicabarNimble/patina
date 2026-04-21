@@ -559,7 +559,7 @@ allow = ["patina:slate/control.dispatch"]
 }
 
 #[test]
-fn builtin_spec_dispatch_execute_falls_back_when_slate_is_scaffold_only() {
+fn builtin_spec_dispatch_execute_fails_closed_when_slate_is_scaffold_only() {
     with_temp_project(|project_root| {
         std::fs::create_dir_all(project_root.join(".patina")).expect("create .patina");
         std::fs::create_dir_all(project_root.join("layer")).expect("create layer");
@@ -614,26 +614,14 @@ allow = ["patina:slate/control.dispatch"]
             Some("execute"),
         );
 
-        let response = <ServerState as mother_crate::http_api::ApiRuntime>::builtin_spec_dispatch(
+        let error = <ServerState as mother_crate::http_api::ApiRuntime>::builtin_spec_dispatch(
             &state, request,
         )
-        .expect("execute mode should fall back when slate is scaffold-only");
+        .expect_err("execute mode should fail closed when slate is scaffold-only");
 
-        assert_eq!(
-            response.get("backend").and_then(|v| v.get("mode")),
-            Some(&serde_json::json!("execute"))
-        );
-        assert_eq!(
-            response.get("backend").and_then(|v| v.get("engine")),
-            Some(&serde_json::json!("builtin-spec-manager"))
-        );
-        assert_eq!(
-            response
-                .get("backend")
-                .and_then(|v| v.get("fallback_from_slate")),
-            Some(&serde_json::json!(true))
-        );
-        assert!(response.get("data").is_some());
+        assert!(error
+            .to_string()
+            .contains("slate-manager returned scaffold response"));
     });
 }
 
