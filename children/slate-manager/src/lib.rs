@@ -63,10 +63,14 @@ fn extract_command_args<'a>(
     variant.as_object()
 }
 
+fn is_patina_project_root(path: &Path) -> bool {
+    path.join(".patina").is_dir() && path.join("layer").is_dir()
+}
+
 fn find_project_root() -> Result<PathBuf, String> {
     let mut current = std::env::current_dir().map_err(|e| e.to_string())?;
     loop {
-        if current.join(".patina").is_dir() && current.join("layer").is_dir() {
+        if is_patina_project_root(&current) {
             return Ok(current);
         }
         let Some(parent) = current.parent() else {
@@ -74,6 +78,27 @@ fn find_project_root() -> Result<PathBuf, String> {
         };
         current = parent.to_path_buf();
     }
+}
+
+fn resolve_project_root_from_envelope(envelope: &serde_json::Value) -> Result<PathBuf, String> {
+    if let Some(project) = envelope.get("project").and_then(|value| value.as_str()) {
+        let trimmed = project.trim();
+        if !trimmed.is_empty() {
+            let candidate = PathBuf::from(trimmed);
+            let resolved = if candidate.is_absolute() {
+                candidate
+            } else {
+                std::env::current_dir()
+                    .map_err(|e| e.to_string())?
+                    .join(candidate)
+            };
+            if is_patina_project_root(&resolved) {
+                return Ok(resolved);
+            }
+        }
+    }
+
+    find_project_root()
 }
 
 fn extract_frontmatter_block(content: &str) -> Option<&str> {
@@ -102,8 +127,7 @@ fn collect_spec_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> 
     Ok(())
 }
 
-fn load_specs() -> Result<Vec<SpecRecord>, String> {
-    let root = find_project_root()?;
+fn load_specs(root: &Path) -> Result<Vec<SpecRecord>, String> {
     let build_root = root.join("layer/surface/build");
     let mut files = Vec::new();
     if !build_root.exists() {
@@ -133,8 +157,8 @@ fn load_specs() -> Result<Vec<SpecRecord>, String> {
     Ok(records)
 }
 
-fn handle_list() -> Result<serde_json::Value, String> {
-    let specs = load_specs()?;
+fn handle_list(root: &Path) -> Result<serde_json::Value, String> {
+    let specs = load_specs(root)?;
     let data: Vec<serde_json::Value> = specs
         .into_iter()
         .map(|spec| {
@@ -150,8 +174,8 @@ fn handle_list() -> Result<serde_json::Value, String> {
     Ok(serde_json::Value::Array(data))
 }
 
-fn handle_next() -> Result<serde_json::Value, String> {
-    let specs = load_specs()?;
+fn handle_next(root: &Path) -> Result<serde_json::Value, String> {
+    let specs = load_specs(root)?;
     let mut out = Vec::new();
     for spec in specs {
         let status = spec
@@ -197,6 +221,7 @@ fn handle_next() -> Result<serde_json::Value, String> {
 }
 
 fn handle_check(
+    root: &Path,
     args: Option<&serde_json::Map<String, serde_json::Value>>,
 ) -> Result<serde_json::Value, String> {
     let id = args
@@ -204,7 +229,7 @@ fn handle_check(
         .and_then(|v| v.as_str())
         .ok_or_else(|| "check requires id".to_string())?;
 
-    let specs = load_specs()?;
+    let specs = load_specs(root)?;
     let spec = specs
         .into_iter()
         .find(|record| record.frontmatter.id == id)
@@ -249,6 +274,7 @@ fn handle_check(
 }
 
 fn handle_show(
+    root: &Path,
     args: Option<&serde_json::Map<String, serde_json::Value>>,
 ) -> Result<serde_json::Value, String> {
     let id = args
@@ -256,7 +282,7 @@ fn handle_show(
         .and_then(|v| v.as_str())
         .ok_or_else(|| "show requires id".to_string())?;
 
-    let specs = load_specs()?;
+    let specs = load_specs(root)?;
     let spec = specs
         .into_iter()
         .find(|record| record.frontmatter.id == id)
@@ -286,14 +312,15 @@ impl exports::patina::slate::control::Guest for SlateManager {
             extract_command_name(&envelope).ok_or_else(|| "missing command payload".to_string())?;
         let backend_mode = extract_backend_mode(&envelope);
         let args = extract_command_args(&envelope);
+        let project_root = resolve_project_root_from_envelope(&envelope)?;
 
         toys::measure::counter(&format!("slate_dispatch_command_{}", command), 1.0)?;
 
         let data = match command.as_str() {
-            "list" => handle_list()?,
-            "next" => handle_next()?,
-            "check" => handle_check(args)?,
-            "show" => handle_show(args)?,
+            "list" => handle_list(&project_root)?,
+            "next" => handle_next(&project_root)?,
+            "check" => handle_check(&project_root, args)?,
+            "show" => handle_show(&project_root, args)?,
             _ => {
                 return Ok(serde_json::json!({
                     "status": "scaffold",
@@ -309,9 +336,10 @@ impl exports::patina::slate::control::Guest for SlateManager {
         toys::log::info(
             "slate-manager",
             &format!(
-                "dispatch implemented command={} backend_mode={} bytes={}",
+                "dispatch implemented command={} backend_mode={} project={} bytes={}",
                 command,
                 backend_mode,
+                project_root.display(),
                 command_json.len()
             ),
         );
