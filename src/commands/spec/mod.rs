@@ -57,9 +57,46 @@ fn parse_spec_backend_mode(raw: &str) -> SpecBackendMode {
     }
 }
 
+#[derive(Debug, Default, Deserialize)]
+struct SpecBackendManifest {
+    #[serde(default)]
+    spec: Option<SpecBackendManifestSpec>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct SpecBackendManifestSpec {
+    #[serde(default)]
+    mode: Option<String>,
+    #[serde(default)]
+    backend: Option<String>,
+}
+
+fn parse_manifest_spec_backend_mode(content: &str) -> Option<String> {
+    let parsed = toml::from_str::<SpecBackendManifest>(content).ok()?;
+    let spec = parsed.spec?;
+    spec.mode
+        .or(spec.backend)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn load_manifest_spec_backend_mode() -> Option<String> {
+    let project_root = patina::session::SessionManager::find_project_root().ok()?;
+    let manifest_path = project_root.join(".patina/manifest.toml");
+    let raw = std::fs::read_to_string(manifest_path).ok()?;
+    parse_manifest_spec_backend_mode(&raw)
+}
+
 fn resolve_spec_backend_mode() -> SpecBackendMode {
-    let raw = std::env::var("PATINA_SPEC_BACKEND").unwrap_or_else(|_| "off".to_string());
-    parse_spec_backend_mode(&raw)
+    if let Ok(raw) = std::env::var("PATINA_SPEC_BACKEND") {
+        return parse_spec_backend_mode(&raw);
+    }
+
+    if let Some(raw) = load_manifest_spec_backend_mode() {
+        return parse_spec_backend_mode(&raw);
+    }
+
+    SpecBackendMode::Off
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -199,7 +236,9 @@ fn confirm(prompt: &str) -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_spec_backend_mode, SpecBackendMode, SpecCommands};
+    use super::{
+        parse_manifest_spec_backend_mode, parse_spec_backend_mode, SpecBackendMode, SpecCommands,
+    };
     use clap::Parser;
 
     // Minimal CLI struct for testing SpecCommands parsing
@@ -402,5 +441,56 @@ mod tests {
             parse_spec_backend_mode("unknown-mode"),
             SpecBackendMode::Off
         );
+    }
+
+    #[test]
+    fn manifest_backend_mode_parser_reads_spec_mode() {
+        let manifest = r#"
+[project]
+schema = 1
+
+[needs]
+children = ["spec-manager"]
+
+[spec]
+mode = "observe"
+"#;
+
+        assert_eq!(
+            parse_manifest_spec_backend_mode(manifest).as_deref(),
+            Some("observe")
+        );
+    }
+
+    #[test]
+    fn manifest_backend_mode_parser_accepts_backend_alias() {
+        let manifest = r#"
+[project]
+schema = 1
+
+[needs]
+children = ["spec-manager"]
+
+[spec]
+backend = "execute"
+"#;
+
+        assert_eq!(
+            parse_manifest_spec_backend_mode(manifest).as_deref(),
+            Some("execute")
+        );
+    }
+
+    #[test]
+    fn manifest_backend_mode_parser_returns_none_when_missing() {
+        let manifest = r#"
+[project]
+schema = 1
+
+[needs]
+children = ["spec-manager"]
+"#;
+
+        assert!(parse_manifest_spec_backend_mode(manifest).is_none());
     }
 }
