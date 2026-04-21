@@ -181,6 +181,7 @@ patina connect status
 
 patina mother start
 patina mother stop
+patina mother restart
 patina mother status
 patina mother install                # Install system supervisor (launchd on macOS, systemd --user on Linux)
 patina mother search "belief query"

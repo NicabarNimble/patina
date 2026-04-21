@@ -12,6 +12,7 @@
 //! patina mother                    # Show daemon status
 //! patina mother start              # Start daemon (UDS default, TCP opt-in)
 //! patina mother stop               # Graceful shutdown
+//! patina mother restart            # Supervisor-aware restart
 //! patina mother status             # Health check
 //! patina mother install            # Install system supervisor (launchd/systemd-user)
 //! patina mother uninstall          # Remove system supervisor
@@ -53,6 +54,7 @@ pub(crate) use mother_crate::registry;
 
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
+use std::io::IsTerminal;
 use std::path::Path;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
@@ -94,6 +96,9 @@ pub enum MotherCommands {
 
     /// Stop the mother daemon
     Stop,
+
+    /// Restart mother using configured supervisor backend when available
+    Restart,
 
     /// Show daemon status
     Status,
@@ -369,6 +374,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("Mother daemon commands:\n");
             println!("  patina mother start    Start the daemon");
             println!("  patina mother stop     Stop the daemon");
+            println!("  patina mother restart  Restart via supervisor when configured");
             println!("  patina mother status   Show daemon status");
             println!("  patina mother install  Install system supervisor");
             println!("  patina mother uninstall Remove system supervisor");
@@ -390,6 +396,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             if mcp {
                 bail!("MCP server path has been retired; start daemon without --mcp")
             } else {
+                enforce_start_conflict_guard()?;
                 let options = DaemonOptions {
                     host,
                     port,
@@ -400,6 +407,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             }
         }
         Some(MotherCommands::Stop) => stop_daemon(),
+        Some(MotherCommands::Restart) => restart_daemon(),
         Some(MotherCommands::Status) => show_status(),
         Some(MotherCommands::Install) => install_supervisor(),
         Some(MotherCommands::Uninstall) => uninstall_supervisor(),
@@ -537,6 +545,21 @@ fn execute_lifecycle(command: LifecycleCommands) -> Result<()> {
 
 #[cfg(target_os = "macos")]
 const MOTHER_LAUNCHD_LABEL: &str = "com.patina.mother";
+#[cfg(target_os = "macos")]
+const MOTHER_HOMEBREW_LAUNCHD_LABEL: &str = "homebrew.mxcl.patina";
+const MOTHER_SUPERVISED_ENV: &str = "PATINA_SUPERVISED";
+
+#[cfg(target_os = "macos")]
+fn run_launchctl(args: &[&str]) -> Result<()> {
+    let status = Command::new("launchctl")
+        .args(args)
+        .status()
+        .with_context(|| format!("running launchctl {}", args.join(" ")))?;
+    if !status.success() {
+        bail!("launchctl {} failed with status {}", args.join(" "), status);
+    }
+    Ok(())
+}
 
 #[cfg(target_os = "macos")]
 fn launch_agents_dir() -> Result<std::path::PathBuf> {
@@ -547,6 +570,11 @@ fn launch_agents_dir() -> Result<std::path::PathBuf> {
 #[cfg(target_os = "macos")]
 fn launchd_plist_path() -> Result<std::path::PathBuf> {
     Ok(launch_agents_dir()?.join(format!("{}.plist", MOTHER_LAUNCHD_LABEL)))
+}
+
+#[cfg(target_os = "macos")]
+fn launchd_homebrew_plist_path() -> Result<std::path::PathBuf> {
+    Ok(launch_agents_dir()?.join(format!("{}.plist", MOTHER_HOMEBREW_LAUNCHD_LABEL)))
 }
 
 #[cfg(target_os = "macos")]
@@ -563,8 +591,8 @@ fn xml_escape(value: &str) -> String {
 fn render_launchd_plist(exe_path: &Path) -> String {
     let exe = xml_escape(&exe_path.display().to_string());
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key>\n  <string>{}</string>\n  <key>ProgramArguments</key>\n  <array>\n    <string>{}</string>\n    <string>mother</string>\n    <string>start</string>\n  </array>\n  <key>RunAtLoad</key>\n  <true/>\n  <key>KeepAlive</key>\n  <true/>\n</dict>\n</plist>\n",
-        MOTHER_LAUNCHD_LABEL, exe
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key>\n  <string>{}</string>\n  <key>ProgramArguments</key>\n  <array>\n    <string>{}</string>\n    <string>mother</string>\n    <string>start</string>\n  </array>\n  <key>EnvironmentVariables</key>\n  <dict>\n    <key>{}</key>\n    <string>1</string>\n  </dict>\n  <key>RunAtLoad</key>\n  <true/>\n  <key>KeepAlive</key>\n  <true/>\n</dict>\n</plist>\n",
+        MOTHER_LAUNCHD_LABEL, exe, MOTHER_SUPERVISED_ENV
     )
 }
 
@@ -591,7 +619,8 @@ fn systemd_unit_path() -> Result<std::path::PathBuf> {
 #[cfg(target_os = "linux")]
 fn render_systemd_unit(exe_path: &Path) -> String {
     format!(
-        "[Unit]\nDescription=Patina Mother daemon\nAfter=default.target\n\n[Service]\nType=simple\nExecStart={} mother start\nRestart=always\nRestartSec=2\n\n[Install]\nWantedBy=default.target\n",
+        "[Unit]\nDescription=Patina Mother daemon\nAfter=default.target\n\n[Service]\nType=simple\nEnvironment={}\nExecStart={} mother start\nRestart=always\nRestartSec=2\n\n[Install]\nWantedBy=default.target\n",
+        format!("{}=1", MOTHER_SUPERVISED_ENV),
         exe_path.display()
     )
 }
@@ -665,11 +694,8 @@ fn detect_supervisor_backend() -> SupervisorBackend {
     let launchd_homebrew_present = {
         #[cfg(target_os = "macos")]
         {
-            dirs::home_dir()
-                .map(|home| {
-                    home.join("Library/LaunchAgents/homebrew.mxcl.patina.plist")
-                        .exists()
-                })
+            launchd_homebrew_plist_path()
+                .map(|path| path.exists())
                 .unwrap_or(false)
         }
         #[cfg(not(target_os = "macos"))]
@@ -698,18 +724,128 @@ fn detect_supervisor_backend() -> SupervisorBackend {
     )
 }
 
+fn manual_start_block_reason(
+    supervisor: SupervisorBackend,
+    supervised_invocation: bool,
+) -> Option<&'static str> {
+    if supervised_invocation {
+        return None;
+    }
+
+    match supervisor {
+        SupervisorBackend::LaunchdPatina => Some(
+            "Mother is managed by launchd (patina mother install). Use `patina mother restart` or `patina mother uninstall` before manual start.",
+        ),
+        SupervisorBackend::SystemdUser => Some(
+            "Mother is managed by systemd --user. Use `patina mother restart` or `patina mother uninstall` before manual start.",
+        ),
+        SupervisorBackend::Manual | SupervisorBackend::LaunchdHomebrew => None,
+    }
+}
+
+fn enforce_start_conflict_guard() -> Result<()> {
+    let supervisor = detect_supervisor_backend();
+    let supervised_invocation = std::env::var_os(MOTHER_SUPERVISED_ENV).is_some();
+
+    if let Some(reason) = manual_start_block_reason(supervisor, supervised_invocation) {
+        bail!(reason);
+    }
+
+    if supervisor == SupervisorBackend::LaunchdHomebrew
+        && !supervised_invocation
+        && std::io::stdin().is_terminal()
+    {
+        eprintln!(
+            "Warning: Homebrew launchd service is installed; manual start may conflict. Prefer `brew services restart patina`."
+        );
+    }
+
+    Ok(())
+}
+
+fn default_daemon_options() -> DaemonOptions {
+    DaemonOptions {
+        host: None,
+        port: 50051,
+        profile: DaemonStartupProfile::Full,
+        rivet: RivetIntegrationProfile::Disabled,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn restart_launchd_label(label: &str) -> Result<()> {
+    let mut last_error = None;
+    for domain in launchctl_domains() {
+        let service = format!("{}/{}", domain, label);
+        match run_launchctl(&["kickstart", "-k", &service]) {
+            Ok(()) => return Ok(()),
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("launchctl kickstart failed")))
+}
+
+fn restart_daemon() -> Result<()> {
+    match detect_supervisor_backend() {
+        SupervisorBackend::LaunchdPatina => {
+            #[cfg(target_os = "macos")]
+            {
+                restart_launchd_label(MOTHER_LAUNCHD_LABEL)?;
+                println!("Requested restart via launchd: {}", MOTHER_LAUNCHD_LABEL);
+                return Ok(());
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                bail!("launchd supervisor is unavailable on this platform");
+            }
+        }
+        SupervisorBackend::LaunchdHomebrew => {
+            #[cfg(target_os = "macos")]
+            {
+                restart_launchd_label(MOTHER_HOMEBREW_LAUNCHD_LABEL)?;
+                println!(
+                    "Requested restart via launchd: {}",
+                    MOTHER_HOMEBREW_LAUNCHD_LABEL
+                );
+                return Ok(());
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                bail!("launchd supervisor is unavailable on this platform");
+            }
+        }
+        SupervisorBackend::SystemdUser => {
+            #[cfg(target_os = "linux")]
+            {
+                run_systemctl_user(&["restart", MOTHER_SYSTEMD_UNIT])?;
+                println!(
+                    "Requested restart via systemd --user: {}",
+                    MOTHER_SYSTEMD_UNIT
+                );
+                return Ok(());
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                bail!("systemd --user supervisor is unavailable on this platform");
+            }
+        }
+        SupervisorBackend::Manual => {
+            stop_daemon()?;
+            println!("Restarting Mother in foreground (manual backend)...");
+            daemon::run_server(default_daemon_options())
+        }
+    }
+}
+
 fn install_supervisor() -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        fn run_launchctl(args: &[&str]) -> Result<()> {
-            let status = Command::new("launchctl")
-                .args(args)
-                .status()
-                .with_context(|| format!("running launchctl {}", args.join(" ")))?;
-            if !status.success() {
-                bail!("launchctl {} failed with status {}", args.join(" "), status);
-            }
-            Ok(())
+        let supervisor = detect_supervisor_backend();
+        if supervisor == SupervisorBackend::LaunchdHomebrew {
+            bail!(
+                "Homebrew manages Mother via launchd. Use `brew services restart patina` (or `brew services stop patina`) before `patina mother install`."
+            );
         }
 
         let plist_path = launchd_plist_path()?;
@@ -787,17 +923,6 @@ fn install_supervisor() -> Result<()> {
 fn uninstall_supervisor() -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        fn run_launchctl(args: &[&str]) -> Result<()> {
-            let status = Command::new("launchctl")
-                .args(args)
-                .status()
-                .with_context(|| format!("running launchctl {}", args.join(" ")))?;
-            if !status.success() {
-                bail!("launchctl {} failed with status {}", args.join(" "), status);
-            }
-            Ok(())
-        }
-
         let plist_path = launchd_plist_path()?;
         for domain in launchctl_domains() {
             let service = format!("{}/{}", domain, MOTHER_LAUNCHD_LABEL);
@@ -1206,6 +1331,9 @@ mod tests {
         let install = MotherCommands::Install;
         assert!(matches!(install, MotherCommands::Install));
 
+        let restart = MotherCommands::Restart;
+        assert!(matches!(restart, MotherCommands::Restart));
+
         let uninstall = MotherCommands::Uninstall;
         assert!(matches!(uninstall, MotherCommands::Uninstall));
 
@@ -1223,6 +1351,7 @@ mod tests {
         assert!(plist.contains("<string>start</string>"));
         assert!(plist.contains("<key>RunAtLoad</key>"));
         assert!(plist.contains("<key>KeepAlive</key>"));
+        assert!(plist.contains(MOTHER_SUPERVISED_ENV));
     }
 
     #[test]
@@ -1238,9 +1367,28 @@ mod tests {
         let unit = render_systemd_unit(Path::new("/tmp/patina"));
         assert!(unit.contains("[Unit]"));
         assert!(unit.contains("Description=Patina Mother daemon"));
+        assert!(unit.contains("Environment=PATINA_SUPERVISED=1"));
         assert!(unit.contains("ExecStart=/tmp/patina mother start"));
         assert!(unit.contains("Restart=always"));
         assert!(unit.contains("WantedBy=default.target"));
+    }
+
+    #[test]
+    fn manual_start_block_reason_blocks_launchd_without_supervised_marker() {
+        let reason = manual_start_block_reason(SupervisorBackend::LaunchdPatina, false);
+        assert!(reason.is_some());
+    }
+
+    #[test]
+    fn manual_start_block_reason_blocks_systemd_without_supervised_marker() {
+        let reason = manual_start_block_reason(SupervisorBackend::SystemdUser, false);
+        assert!(reason.is_some());
+    }
+
+    #[test]
+    fn manual_start_block_reason_allows_supervised_invocation() {
+        let reason = manual_start_block_reason(SupervisorBackend::LaunchdPatina, true);
+        assert!(reason.is_none());
     }
 
     #[test]
