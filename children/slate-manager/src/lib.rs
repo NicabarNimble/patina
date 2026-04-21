@@ -95,6 +95,10 @@ fn resolve_project_root_from_envelope(envelope: &serde_json::Value) -> Result<Pa
             if is_patina_project_root(&resolved) {
                 return Ok(resolved);
             }
+            return Err(format!(
+                "invalid project root in slate envelope: {}",
+                resolved.display()
+            ));
         }
     }
 
