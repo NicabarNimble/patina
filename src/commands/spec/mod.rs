@@ -257,7 +257,8 @@ mod tests {
             .unwrap_or_else(|error| error.into_inner());
         let temp = tempfile::TempDir::new().expect("temp project");
         let project_root = temp.path().join("project");
-        std::fs::create_dir_all(project_root.join(".patina")).expect("create .patina");
+        std::fs::create_dir_all(patina::paths::project::patina_dir(&project_root))
+            .expect("create .patina");
         std::fs::create_dir_all(project_root.join("layer")).expect("create layer");
 
         let old_cwd = std::env::current_dir().expect("cwd");

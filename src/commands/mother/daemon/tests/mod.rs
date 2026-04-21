@@ -641,7 +641,8 @@ allow = ["patina:slate/control.dispatch"]
 #[test]
 fn builtin_spec_dispatch_execute_fails_closed_when_slate_is_scaffold_only() {
     with_temp_project(|project_root| {
-        std::fs::create_dir_all(project_root.join(".patina")).expect("create .patina");
+        std::fs::create_dir_all(patina::paths::project::patina_dir(project_root))
+            .expect("create .patina");
         std::fs::create_dir_all(project_root.join("layer")).expect("create layer");
 
         let runtime_store = patina::mother::MotherRuntimeStore::new(
@@ -741,7 +742,8 @@ fn builtin_spec_dispatch_execute_fails_closed_without_slate_manager() {
 #[test]
 fn builtin_spec_dispatch_observe_includes_slate_probe_when_available() {
     with_temp_project(|project_root| {
-        std::fs::create_dir_all(project_root.join(".patina")).expect("create .patina");
+        std::fs::create_dir_all(patina::paths::project::patina_dir(project_root))
+            .expect("create .patina");
         std::fs::create_dir_all(project_root.join("layer")).expect("create layer");
 
         let runtime_store = patina::mother::MotherRuntimeStore::new(
@@ -828,7 +830,8 @@ allow = ["patina:slate/control.dispatch"]
 #[test]
 fn builtin_spec_dispatch_observe_fixture_diff_harness_reports_builtin_and_probe_payloads() {
     with_temp_project(|project_root| {
-        std::fs::create_dir_all(project_root.join(".patina")).expect("create .patina");
+        std::fs::create_dir_all(patina::paths::project::patina_dir(project_root))
+            .expect("create .patina");
         std::fs::create_dir_all(project_root.join("layer")).expect("create layer");
         patina::project::save(project_root, &patina::project::ProjectConfig::default())
             .expect("write project config");
