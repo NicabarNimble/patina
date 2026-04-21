@@ -67,9 +67,9 @@ fn extract_backend_mode(payload: &serde_json::Value) -> String {
         .unwrap_or_else(|| "off".to_string())
 }
 
-fn extract_command_args<'a>(
-    payload: &'a serde_json::Value,
-) -> Option<&'a serde_json::Map<String, serde_json::Value>> {
+fn extract_command_args(
+    payload: &serde_json::Value,
+) -> Option<&serde_json::Map<String, serde_json::Value>> {
     let command = payload.get("command")?.as_object()?;
     let variant = command.values().next()?;
     variant.as_object()
@@ -297,7 +297,7 @@ fn archive_spec_record(root: &Path, spec: &SpecRecord, dry_run: bool) -> Result<
         .clone()
         .unwrap_or_else(|| spec.frontmatter.id.clone());
 
-    patina::git::git::remove_paths(&vec![remove_target.clone()])?;
+    patina::git::git::remove_paths(std::slice::from_ref(&remove_target))?;
 
     let commit_msg = format!(
         "docs: archive {} ({})\n\nSpec preserved via git tag: {}\nRecover with: git show {}:{}",
