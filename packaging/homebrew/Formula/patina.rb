@@ -1,7 +1,7 @@
 class Patina < Formula
   desc "Patina AI + Mother CLI"
   homepage "https://github.com/NicabarNimble/patina"
-  version "0.62.1"
+  version "0.64.3"
   license "MIT"
 
   depends_on macos: :sonoma
