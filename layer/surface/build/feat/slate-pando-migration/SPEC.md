@@ -134,6 +134,7 @@ Primary principle: **parity first, innovation second**.
 - `patina spec` now resolves backend mode from env or project manifest (`[spec] mode = off|observe|execute`).
 - Observe mode preserves builtin output and appends `backend.slate_probe` metadata.
 - Execute mode routes through typed `slate-manager` call path and fails closed if child is missing/unavailable.
+- Execute mode currently protects spec stability: when Slate reports scaffold/not-implemented, Mother falls back to builtin spec execution and marks backend fallback metadata.
 - Added routing smoke coverage in `src/commands/spec/mod.rs` and daemon dispatch tests in `src/commands/mother/daemon/tests/mod.rs`.
 - Started Option A git-toy expansion for Slate mutate/release parity (`create-tag-at`, `status-porcelain`, `add-paths`, `is-clean-tracked`, `commits-behind-upstream`, `is-diverged`) in WIT + host bindings.
 - Slate child scaffold dispatch is now command-aware (parses envelope command + backend mode) while remaining explicitly non-parity.

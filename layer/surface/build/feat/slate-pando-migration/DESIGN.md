@@ -37,6 +37,7 @@ Initial contract can be a typed envelope with explicit routing mode and structur
 2. Backend routing seam added to spec dispatch envelopes (`off|observe|execute`).
 3. Observe mode probe added (builtin result + Slate probe metadata).
 4. Execute mode wired to typed Slate dispatch path with fail-closed behavior.
+   - Safety bridge: if Slate returns scaffold/not-implemented payload, dispatch falls back to builtin spec execution and annotates backend fallback metadata.
 5. Manifest opt-in added: `.patina/manifest.toml` `[spec] mode = ...`.
 
 ### Next
