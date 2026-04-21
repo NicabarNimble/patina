@@ -44,9 +44,13 @@ Initial contract can be a typed envelope with explicit routing mode and structur
 
 1. Read-only parity in Slate child (`list/next/show/check/packet`) with fixture locks.
    - Started: `list/next/show/check/prompt/handoff/packet` implemented via filesystem/frontmatter/design parsing in Slate child; output fixture alignment remains.
+   - Added observe-mode fixture diff harness test over read-only command set (captures builtin result + slate probe payload per command).
 2. Expand `patina:git` contract for mutate/release parity.
    - Started: added `create-tag-at`, `status-porcelain`, `add-paths`, `is-clean-tracked`,
      `commits-behind-upstream`, `is-diverged` to WIT + host bindings.
+   - Extended with `remove-paths` for tracked deletion/archive workflows.
+3. Execute mutate parity (`complete`/`archive`) in Slate.
+   - Started: git-backed archive path implemented in Slate; `complete` currently fail-closed for non-`explore` type until release/version-bump parity lands.
 3. Move git toy toward foldered multi-file WIT package layout (WASI-like structure) with tooling support.
 
 ## Safety

@@ -140,6 +140,10 @@ Primary principle: **parity first, innovation second**.
 - Slate child dispatch is command-aware (parses envelope command + backend mode).
 - Slate now implements initial read-only command handlers in-child (`list`, `next`, `show`, `check`, `prompt`, `handoff`, `packet`) from filesystem/frontmatter parsing; outputs are still early parity and need fixture-level equivalence checks.
 - Execute dispatch now binds Slate reads to envelope project root (and fails closed on invalid project roots) for per-project isolation.
+- Added execute handlers for `complete` and `archive` with git-backed archiving path inside Slate child.
+  - Current guardrail: `complete` fails closed for non-`explore` specs until release/version-bump parity is implemented.
+- Added `patina:git` toy operation `remove-paths` for tracked deletion workflows used by Slate archive path.
+- Added observe-mode fixture diff harness test covering read-only command set and builtin/probe payload capture.
 
 ## Toy contract packaging direction
 
