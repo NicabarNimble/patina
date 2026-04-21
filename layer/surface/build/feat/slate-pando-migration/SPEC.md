@@ -136,6 +136,7 @@ Primary principle: **parity first, innovation second**.
 - Execute mode routes through typed `slate-manager` call path and fails closed if child is missing/unavailable.
 - Added routing smoke coverage in `src/commands/spec/mod.rs` and daemon dispatch tests in `src/commands/mother/daemon/tests/mod.rs`.
 - Started Option A git-toy expansion for Slate mutate/release parity (`create-tag-at`, `status-porcelain`, `add-paths`, `is-clean-tracked`, `commits-behind-upstream`, `is-diverged`) in WIT + host bindings.
+- Slate child scaffold dispatch is now command-aware (parses envelope command + backend mode) while remaining explicitly non-parity.
 
 ## Toy contract packaging direction
 
