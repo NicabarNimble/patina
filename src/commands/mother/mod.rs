@@ -604,6 +604,8 @@ fn launchctl_domains() -> Vec<String> {
 
 #[cfg(target_os = "linux")]
 const MOTHER_SYSTEMD_UNIT: &str = "patina-mother.service";
+#[cfg(target_os = "linux")]
+const MOTHER_SYSTEMCTL_BIN_ENV: &str = "PATINA_SYSTEMCTL_BIN";
 
 #[cfg(target_os = "linux")]
 fn systemd_user_dir() -> Result<std::path::PathBuf> {
@@ -627,11 +629,19 @@ fn render_systemd_unit(exe_path: &Path) -> String {
 
 #[cfg(target_os = "linux")]
 fn run_systemctl_user(args: &[&str]) -> Result<()> {
-    let status = Command::new("systemctl")
+    let bin = std::env::var_os(MOTHER_SYSTEMCTL_BIN_ENV)
+        .unwrap_or_else(|| std::ffi::OsString::from("systemctl"));
+    let status = Command::new(&bin)
         .arg("--user")
         .args(args)
         .status()
-        .with_context(|| format!("running systemctl --user {}", args.join(" ")))?;
+        .with_context(|| {
+            format!(
+                "running {} --user {}",
+                std::path::Path::new(&bin).display(),
+                args.join(" ")
+            )
+        })?;
     if !status.success() {
         bail!(
             "systemctl --user {} failed with status {}",
@@ -1314,6 +1324,15 @@ fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest> {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
+    use std::ffi::{OsStr, OsString};
+    #[cfg(target_os = "linux")]
+    use std::os::unix::fs::PermissionsExt;
+    #[cfg(target_os = "linux")]
+    use std::sync::{Mutex, OnceLock};
+    #[cfg(target_os = "linux")]
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     #[test]
     fn test_mother_command_variants() {
         let start = MotherCommands::Start {
@@ -1371,6 +1390,94 @@ mod tests {
         assert!(unit.contains("ExecStart=/tmp/patina mother start"));
         assert!(unit.contains("Restart=always"));
         assert!(unit.contains("WantedBy=default.target"));
+    }
+
+    #[cfg(target_os = "linux")]
+    static LINUX_ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+
+    #[cfg(target_os = "linux")]
+    fn linux_env_lock() -> &'static Mutex<()> {
+        LINUX_ENV_MUTEX.get_or_init(|| Mutex::new(()))
+    }
+
+    #[cfg(target_os = "linux")]
+    struct EnvRestore {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    #[cfg(target_os = "linux")]
+    impl EnvRestore {
+        fn set<K: Into<&'static str>>(key: K, value: &OsStr) -> Self {
+            let key = key.into();
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            if let Some(previous) = &self.previous {
+                std::env::set_var(self.key, previous);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn linux_supervisor_install_uninstall_uses_systemd_user_contract() {
+        let _lock = linux_env_lock().lock().expect("env lock poisoned");
+
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        let sandbox = std::env::temp_dir().join(format!("patina-mother-systemd-test-{ts}"));
+        let home = sandbox.join("home");
+        let bin_dir = sandbox.join("bin");
+        let systemctl_script = bin_dir.join("systemctl");
+        let systemctl_log = sandbox.join("systemctl.log");
+
+        std::fs::create_dir_all(&home).expect("create home dir");
+        std::fs::create_dir_all(&bin_dir).expect("create bin dir");
+
+        let script = format!(
+            "#!/usr/bin/env bash\nset -euo pipefail\necho \"$*\" >> \"{}\"\n",
+            systemctl_log.display()
+        );
+        std::fs::write(&systemctl_script, script).expect("write fake systemctl script");
+        let mut perms = std::fs::metadata(&systemctl_script)
+            .expect("read fake systemctl metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&systemctl_script, perms).expect("chmod fake systemctl");
+
+        let _home = EnvRestore::set("HOME", home.as_os_str());
+        let _systemctl = EnvRestore::set(MOTHER_SYSTEMCTL_BIN_ENV, systemctl_script.as_os_str());
+
+        install_supervisor().expect("linux install supervisor should succeed");
+
+        let unit_path = home.join(".config/systemd/user/patina-mother.service");
+        assert!(unit_path.exists(), "expected systemd user unit to exist");
+        let unit_body = std::fs::read_to_string(&unit_path).expect("read systemd user unit");
+        assert!(unit_body.contains("Environment=PATINA_SUPERVISED=1"));
+
+        uninstall_supervisor().expect("linux uninstall supervisor should succeed");
+        assert!(
+            !unit_path.exists(),
+            "expected systemd user unit to be removed"
+        );
+
+        let log = std::fs::read_to_string(&systemctl_log).expect("read fake systemctl log");
+        assert!(log.contains("--user daemon-reload"));
+        assert!(log.contains("--user enable --now patina-mother.service"));
+        assert!(log.contains("--user disable --now patina-mother.service"));
+
+        let _ = std::fs::remove_dir_all(&sandbox);
     }
 
     #[test]
