@@ -8,12 +8,12 @@ class Patina < Formula
 
   on_macos do
     url "https://github.com/NicabarNimble/patina/releases/download/v#{version}/patina-aarch64-apple-darwin.tar.gz"
-    sha256 "REPLACE_WITH_MACOS_ARM64_SHA256"
+    sha256 "6e5ca81f8ace8c354666e0fcd23f88db66376e2f99dd0aad9d32b0f961aa0b7e"
   end
 
   on_linux do
     url "https://github.com/NicabarNimble/patina/releases/download/v#{version}/patina-x86_64-unknown-linux-gnu.tar.gz"
-    sha256 "REPLACE_WITH_LINUX_X64_SHA256"
+    sha256 "3850a589879d0e238f515daf713b1f644742afa37357b209ffb6cb6a36693de0"
   end
 
   def install
