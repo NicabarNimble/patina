@@ -23,15 +23,16 @@ making claims about how something was designed.
 - [retired-mcp-guard-restoration](fix/retired-mcp-guard-restoration/SPEC.md) — restore explicit retired-MCP marker in main router for Tier 1 invariants
 - [integration-test-domain-split](refactor/integration-test-domain-split/SPEC.md) — split wasm integration + pando parity tests by subject-under-test for failure diagnosis
 - [interface-skill-ownership-split](refactor/interface-skill-ownership-split/SPEC.md) — split global HITL skills vs project-owned Patina skills (PI-first parity, all-interface touchpoints)
+- [slate-pando-migration](feat/slate-pando-migration/SPEC.md) — full-WIT Slate child with 1:1 `spec` parity and opt-in routing/policy
 
 ### Draft
 - [persona-lake-mvp1](feat/persona-lake-mvp1/SPEC.md) — persona-scoped knowledge lake (blocked by mother-duckdb-ducklake-federation)
 - [multiproject-belief-share](feat/multiproject-belief-share/SPEC.md) — child-construction-canon MVP 2 (blocked by mother-duckdb-ducklake-federation)
 - [e2ee-multimother-chat](feat/e2ee-multimother-chat/SPEC.md) — child-construction-canon MVP 3
-- [slate-pando-migration](feat/slate-pando-migration/SPEC.md) — migrate spec-manager to slate pando via pando platform
 - [belief-system-hardening](feat/belief-system-hardening/SPEC.md) — staleness, verification, health scoring
 - [cloudflare-worker-child](feat/cloudflare-worker-child/SPEC.md) — Patina child as Cloudflare Worker
 - [patina-durable-backup](feat/patina-durable-backup/SPEC.md) — durable backup system
+- [spec-release-pr-automation](feat/spec-release-pr-automation/SPEC.md) — one-lane stable release PR automation (spec bump -> PR -> main ship aligns GitHub/curl/Homebrew)
 - [wit-deps-wasi-alignment](fix/wit-deps-wasi-alignment/SPEC.md) — replace flattened WASI P2 deps with upstream multi-file packages (io done, http/clocks/filesystem pending)
 - [spec-create-transaction-boundary](fix/spec-create-transaction-boundary/SPEC.md) — harden `spec create` fs/git/db failure boundaries with explicit invariants and compensation
 - [events-noise-budget](fix/events-noise-budget/SPEC.md) — split durable autobiography replica from high-volume ops telemetry and add export noise controls

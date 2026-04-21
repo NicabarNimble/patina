@@ -356,15 +356,18 @@ impl ApiRuntime for ServerState {
             project: Option<String>,
             #[serde(default)]
             origin_project: Option<String>,
+            #[serde(default)]
+            backend_mode: Option<String>,
         }
 
         if let Ok(envelope) =
             serde_json::from_value::<SpecDispatchEnvelope>(request.command.clone())
         {
-            return patina::spec::execute_command_value_with_route(
+            return patina::spec::execute_command_value_with_route_backend(
                 envelope.command,
                 envelope.project,
                 envelope.origin_project,
+                envelope.backend_mode,
             );
         }
 

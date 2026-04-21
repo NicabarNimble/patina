@@ -1,72 +1,172 @@
 ---
 type: feat
 id: slate-pando-migration
-status: draft
+status: active
 created: 2026-04-07
-parent: pando-platform
+updated: 2026-04-21
 beliefs:
-  - "[[pandos-are-products-children-are-compute]]"
-  - "[[children-have-agency-toys-are-capabilities]]"
+  - "[[spec-driven-design]]"
+  - "[[safety-boundaries]]"
+  - "[[dependable-rust]]"
+  - "[[wasi-is-foundation-not-option]]"
+references:
+  - layer/core/values/spec-driven-design.md
+  - layer/core/values/safety-boundaries.md
+  - layer/core/values/dependable-rust.md
+  - layer/core/values/unix-philosophy.md
 related:
-  - layer/surface/build/feat/pando-platform/SPEC.md
   - children/spec-manager/
-  - mother/src/builtin_children.rs
+  - sdk/patina-sdk/
   - src/commands/spec/
-  - src/main.rs
+  - src/commands/mother/daemon/dispatch.rs
+  - mother/src/runtime.rs
+  - mother/src/builtin_children.rs
+  - src/release/internal.rs
+  - layer/surface/build/feat/spec-release-pr-automation/SPEC.md
 exit_criteria:
-  - id: sp1-cli-command-discovery
-    text: "The `patina` binary asks Mother for registered pando commands. Unknown commands route to Mother for pando dispatch. `patina --help` shows native commands; `patina <pando> --help` shows pando commands served from the manifest."
+  - id: sp1-parity-command-surface
+    text: "Slate exposes a 1:1 parity command surface for current `patina spec` flows (`list`, `next`, `show`, `check`, `prompt`, `handoff`, `packet`, `complete`, `archive`) with equivalent outputs for existing fixtures."
     checked: false
 
-  - id: sp2-pando-to-child-dispatch
-    text: "Mother receives a pando command, resolves which child handles the action, calls `handle(action, payload)` on that child, and returns the result to the CLI."
+  - id: sp2-full-wit-child
+    text: "Slate runs as a proper WASM child with typed WIT exports/imports (no legacy `handle(action,payload)` fallback in execute path)."
     checked: false
 
-  - id: sp3-slate-child-built
-    text: "Slate-manager child exists as a proper WASM child using the SDK and handles spec lifecycle actions through toy boundaries."
+  - id: sp3-toy-scoped-manifest
+    text: "Slate child manifest uses `[needs].toys` (+ optional scopes) only; granted toys are minimal and explicit for git/fs/process/release interactions."
     checked: false
 
-  - id: sp4-slate-pando-commands
-    text: "Slate pando has `pando.toml` command declarations and works end-to-end via pando dispatch (`patina slate list`, `next`, `complete`, `archive`)."
+  - id: sp4-spec-compat-kept
+    text: "`patina spec` remains operational as compatibility surface and can route through Slate when enabled, preserving script compatibility."
     checked: false
 
-  - id: sp5-git-toy-additions
-    text: "`patina:git` interface includes required additions (`rm`, `for-each-ref`) with host implementations for slate migration paths."
+  - id: sp5-project-opt-in-policy
+    text: "Project-level opt-in exists (`off|observe|execute`) with policy config for PR/release command customization so projects can map to different CI conventions without forking core logic."
     checked: false
 
-  - id: sp6-builtin-dispatch-removed
-    text: "Builtin spec-manager dispatch paths are removed and replaced by slate pando flows."
+  - id: sp6-sdk-fit-defined
+    text: "SDK role is explicit: `sdk/patina-sdk` remains the child authoring surface; Slate uses it directly plus generated WIT bindings, and missing toy helpers are tracked/implemented only when they reduce repeated boilerplate."
     checked: false
 
-  - id: sp7-spec-compat-alias
-    text: "`patina spec` remains a compat alias that forwards to slate workflows so existing scripts still work (including `patina spec --help`)."
+  - id: sp7-mother-distribution-contract
+    text: "Mother can register/provision Slate as a child capability for a project and enforce runtime policy/grants centrally."
     checked: false
 
-  - id: sp8-compile-proof
-    text: "`cargo check --workspace -q` and `cargo test -q --lib` pass, and slate command flows work with real spec files."
+  - id: sp8-fail-closed-rollback
+    text: "Failure modes are fail-closed with deterministic rollback path (`spec` builtin path remains callable until Slate parity is proven)."
+    checked: false
+
+  - id: sp9-proof-tests
+    text: "Parity and routing tests pass (`cargo check -q --workspace`, targeted command snapshots, and child-runtime integration tests for observe/execute modes)."
     checked: false
 ---
-# feat: Slate Pando Migration
+# feat: Slate migration to full-WIT spec child (1:1 parity first)
+
+> Build Slate as a proper child/tool that mirrors today’s `spec` behavior exactly first. Keep `spec` alive as compatibility surface until Slate proves parity.
 
 ## Problem
 
-Spec/slate behavior still relies on builtin dispatch surfaces. To complete the
-pando architecture, slate must move to a real pando + child workflow and retire
-the builtin pathways.
+Current slate concept is tied to older pando framing and does not yet lock the immediate need:
+
+1. A **full-WIT child** implementation for spec operations.
+2. **1:1 behavior parity** with existing `patina spec` commands.
+3. A **project-selectable runtime policy** for PR/release command differences across CI setups.
+
+Without this parity-first contract, migration introduces risk and operational drift.
 
 ## Goal
 
-Deliver CLI discovery/routing plus full slate pando migration while preserving
-`patina spec` compatibility semantics.
+Deliver Slate as an opt-in full-WIT child that can execute the current spec lifecycle end-to-end with compatibility guarantees.
 
-## Scope
-
-- CLI discovery/help flow for pando commands.
-- Pando command dispatch through Mother to child actions.
-- Slate-manager child and slate pando implementation.
-- Compat alias behavior for `patina spec` including `patina spec --help`.
+Primary principle: **parity first, innovation second**.
 
 ## Non-Goals
 
-- Reworking already-complete pando platform lifecycle and artifact identity work.
-- Third-party pando registry transport (tracked in explore/future specs).
+- Replacing/removing `patina spec` in this spec.
+- Multi-channel release orchestration (alpha/beta/nightly).
+- New product surface unrelated to current spec lifecycle.
+
+## Normative architecture
+
+### 1) Command surface (user-facing)
+
+- Keep `patina spec ...` as stable command surface.
+- Add Slate execution backend and routing toggle.
+- Initial routing modes:
+  - `off`: current behavior only.
+  - `observe`: run Slate plan/render side-by-side, no side effects.
+  - `execute`: Slate performs side effects.
+
+### 2) Child runtime (execution)
+
+- Slate is a **proper child** using typed WIT interfaces.
+- No legacy untyped action envelope in execute path.
+- Child manifest follows current canon:
+  - `[needs].toys = [...]`
+  - optional `[needs.scopes]` for least privilege.
+
+### 3) Mother role (control plane)
+
+- Mother provisions Slate availability per project.
+- Mother enforces grants/policy/scopes.
+- Project data remains project-scoped; Mother owns enablement and policy authority.
+
+## SDK fit in this design
+
+`sdk/patina-sdk` is the **child authoring surface**, not release policy authority.
+
+- Slate child should use `patina-sdk` + generated WIT bindings for toy calls and typed contracts.
+- If Slate needs toy helpers not present in SDK (for example richer git/process helpers), add them only when they remove repeated cross-child boilerplate.
+- CLI command semantics, policy, and dispatch remain in Patina core/Mother surfaces; SDK stays focused on child ergonomics.
+
+## Parity matrix (must hold before default cutover)
+
+- `spec list` -> `slate list` parity
+- `spec next` -> `slate next` parity
+- `spec show` -> `slate show` parity
+- `spec check` -> `slate check` parity
+- `spec prompt/handoff/packet` parity
+- `spec complete/archive` parity including version bump/release triggers defined by current rules
+
+## Project policy customization
+
+Provide project-local config (read by routed Slate backend) for command differences such as:
+
+- PR title/body template policy
+- required check names / success interpretation
+- release branch naming conventions
+- optional command wrappers
+
+Defaults must replicate current core behavior so projects can opt in without extra config.
+
+## Execution order (implementation slices)
+
+1. **Parity contract freeze**
+   - Lock command/JSON/output fixtures for current `spec` flows.
+2. **Full-WIT Slate child scaffold**
+   - Add child contract + runtime wiring + minimal toy grants.
+3. **Observe mode routing**
+   - `patina spec` can run Slate shadow path and diff outputs.
+4. **Execute mode routing**
+   - Enable side effects behind opt-in.
+5. **Per-project policy mapping**
+   - Add CI/PR customization knobs.
+6. **Default-switch readiness review**
+   - Keep `spec` compat path until parity criteria stay green across fixtures.
+
+## Verification
+
+```bash
+patina spec check slate-pando-migration --json
+cargo check -q --workspace
+cargo test -q --lib
+```
+
+Behavior checks:
+- existing `patina spec` scripts still run with routing `off`.
+- routing `observe` produces parity reports without mutating git/GitHub state.
+- routing `execute` performs PR/release actions under explicit policy and toy grants.
+
+## Exit Criteria
+
+Frontmatter `sp1..sp9` are the source of truth.

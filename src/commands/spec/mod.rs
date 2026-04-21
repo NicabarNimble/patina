@@ -34,6 +34,34 @@ use patina_protocol::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum SpecBackendMode {
+    Off,
+    Observe,
+    Execute,
+}
+
+impl Default for SpecBackendMode {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+fn parse_spec_backend_mode(raw: &str) -> SpecBackendMode {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "off" | "legacy" => SpecBackendMode::Off,
+        "observe" | "slate-observe" => SpecBackendMode::Observe,
+        "execute" | "slate-execute" => SpecBackendMode::Execute,
+        _ => SpecBackendMode::Off,
+    }
+}
+
+fn resolve_spec_backend_mode() -> SpecBackendMode {
+    let raw = std::env::var("PATINA_SPEC_BACKEND").unwrap_or_else(|_| "off".to_string());
+    parse_spec_backend_mode(&raw)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SpecDispatchEnvelope {
     command: SpecCommands,
@@ -41,6 +69,8 @@ struct SpecDispatchEnvelope {
     project: Option<String>,
     #[serde(default)]
     origin_project: Option<String>,
+    #[serde(default)]
+    backend_mode: SpecBackendMode,
 }
 
 pub fn execute(mut command: SpecCommands, project: Option<String>) -> Result<()> {
@@ -108,6 +138,7 @@ pub fn execute(mut command: SpecCommands, project: Option<String>) -> Result<()>
         command: command.clone(),
         project: effective_project,
         origin_project,
+        backend_mode: resolve_spec_backend_mode(),
     };
 
     let protocol_request = BuiltinChildRequest::new(
@@ -168,7 +199,7 @@ fn confirm(prompt: &str) -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::SpecCommands;
+    use super::{parse_spec_backend_mode, SpecBackendMode, SpecCommands};
     use clap::Parser;
 
     // Minimal CLI struct for testing SpecCommands parsing
@@ -346,5 +377,30 @@ mod tests {
             }
             _ => panic!("expected Set"),
         }
+    }
+
+    #[test]
+    fn backend_mode_parser_maps_expected_aliases() {
+        assert_eq!(parse_spec_backend_mode("off"), SpecBackendMode::Off);
+        assert_eq!(parse_spec_backend_mode("legacy"), SpecBackendMode::Off);
+        assert_eq!(parse_spec_backend_mode("observe"), SpecBackendMode::Observe);
+        assert_eq!(
+            parse_spec_backend_mode("slate-observe"),
+            SpecBackendMode::Observe
+        );
+        assert_eq!(parse_spec_backend_mode("execute"), SpecBackendMode::Execute);
+        assert_eq!(
+            parse_spec_backend_mode("slate-execute"),
+            SpecBackendMode::Execute
+        );
+    }
+
+    #[test]
+    fn backend_mode_parser_fails_closed_to_off() {
+        assert_eq!(parse_spec_backend_mode(""), SpecBackendMode::Off);
+        assert_eq!(
+            parse_spec_backend_mode("unknown-mode"),
+            SpecBackendMode::Off
+        );
     }
 }
