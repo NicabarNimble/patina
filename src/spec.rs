@@ -344,6 +344,31 @@ fn strip_routing_from_command(command: &SpecCommands) -> SpecCommands {
     }
 }
 
+fn parse_subprocess_json_output(stdout: &str) -> Result<Value> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("subprocess returned empty stdout")
+    }
+
+    if let Ok(parsed) = serde_json::from_str::<Value>(trimmed) {
+        return Ok(parsed);
+    }
+
+    // Direct-mode subprocesses can emit operational logs (release/archive progress)
+    // before the final JSON envelope. Recover by parsing the trailing JSON block.
+    for (idx, ch) in trimmed.char_indices().rev() {
+        if ch != '{' && ch != '[' {
+            continue;
+        }
+        let candidate = &trimmed[idx..];
+        if let Ok(parsed) = serde_json::from_str::<Value>(candidate) {
+            return Ok(parsed);
+        }
+    }
+
+    anyhow::bail!("Failed to parse subprocess JSON output")
+}
+
 fn execute_spec_command_in_project(project_root: &Path, command: &SpecCommands) -> Result<Value> {
     let exe = std::env::current_exe().context("Failed to resolve patina executable path")?;
     let serialized = serde_json::to_string(&strip_routing_from_command(command))?;
@@ -378,8 +403,7 @@ fn execute_spec_command_in_project(project_root: &Path, command: &SpecCommands) 
 
     let stdout = String::from_utf8(output.stdout)
         .map_err(|e| anyhow::anyhow!("Failed to decode subprocess output: {}", e))?;
-    serde_json::from_str(stdout.trim())
-        .map_err(|e| anyhow::anyhow!("Failed to parse subprocess JSON output: {}", e))
+    parse_subprocess_json_output(&stdout)
 }
 
 fn resolve_spec_command_route(
@@ -1267,5 +1291,19 @@ id: minimal
         // "done" in YAML should deserialize to Complete
         let back: SpecStatus = serde_yaml::from_str("done").expect("deserialize done");
         assert_eq!(back, SpecStatus::Complete);
+    }
+
+    #[test]
+    fn parse_subprocess_json_output_accepts_plain_json() {
+        let parsed = parse_subprocess_json_output("{\"ok\":true}").expect("parse json");
+        assert_eq!(parsed["ok"], true);
+    }
+
+    #[test]
+    fn parse_subprocess_json_output_accepts_json_after_logs() {
+        let stdout = "creating tag...\narchiving spec...\n{\n  \"ok\": true,\n  \"value\": 7\n}";
+        let parsed = parse_subprocess_json_output(stdout).expect("parse trailing json");
+        assert_eq!(parsed["ok"], true);
+        assert_eq!(parsed["value"], 7);
     }
 }
