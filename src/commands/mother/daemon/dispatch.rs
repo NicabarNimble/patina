@@ -396,10 +396,78 @@ impl ApiRuntime for ServerState {
             serde_json::from_value::<SpecDispatchEnvelope>(request.command.clone())
         {
             let backend_mode = SpecBackendMode::parse(envelope.backend_mode.as_deref());
+
+            let dispatch_to_slate =
+                |command_payload: &serde_json::Value| -> anyhow::Result<(serde_json::Value, serde_json::Value)> {
+                    let command_json = serde_json::to_string(command_payload).context(
+                        "Failed to serialize spec dispatch envelope for slate dispatch",
+                    )?;
+                    let response = self
+                        .registry
+                        .call(
+                            "slate-manager",
+                            &patina::mother::ChildCallRequest {
+                                operation_id: "patina:slate/control.dispatch".to_string(),
+                                args: serde_json::json!([command_json]),
+                                correlation: None,
+                            },
+                        )
+                        .map_err(|error| anyhow::anyhow!("slate-manager unavailable: {}", error))?;
+
+                    let first_result = response
+                        .payload
+                        .get("results")
+                        .and_then(|value| value.as_array())
+                        .and_then(|values| values.first())
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "invalid slate response payload: expected results[0], got {}",
+                                response.payload
+                            )
+                        })?;
+
+                    if let Some(error_value) = first_result.get("err") {
+                        let error_text = error_value
+                            .as_str()
+                            .map(|value| value.to_string())
+                            .unwrap_or_else(|| error_value.to_string());
+                        anyhow::bail!("slate dispatch returned error: {}", error_text);
+                    }
+
+                    let ok_value = first_result.get("ok").ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "invalid slate response payload: missing ok/err variant in {}",
+                            first_result
+                        )
+                    })?;
+
+                    let data = if let Some(text) = ok_value.as_str() {
+                        serde_json::from_str::<serde_json::Value>(text)
+                            .unwrap_or_else(|_| serde_json::Value::String(text.to_string()))
+                    } else {
+                        ok_value.clone()
+                    };
+
+                    Ok((data, response.payload))
+                };
+
             if backend_mode == SpecBackendMode::Execute {
-                anyhow::bail!(
-                    "spec backend mode 'execute' is not wired yet; use PATINA_SPEC_BACKEND=observe or unset"
-                );
+                let json_mode = envelope.command.wants_json();
+                let (slate_data, slate_payload) = dispatch_to_slate(&request.command)
+                    .map_err(|error| anyhow::anyhow!("slate execute dispatch failed: {}", error))?;
+
+                return Ok(serde_json::json!({
+                    "child": "spec-manager",
+                    "json": json_mode,
+                    "text": serde_json::Value::Null,
+                    "data": slate_data,
+                    "backend": {
+                        "mode": backend_mode.as_str(),
+                        "engine": "slate-manager",
+                        "operation_id": "patina:slate/control.dispatch",
+                        "slate_payload": slate_payload,
+                    }
+                }));
             }
 
             let mut payload = patina::spec::execute_command_value_with_route_backend(
@@ -410,22 +478,13 @@ impl ApiRuntime for ServerState {
             )?;
 
             if backend_mode == SpecBackendMode::Observe {
-                let command_json = serde_json::to_string(&request.command).context(
-                    "Failed to serialize spec dispatch envelope for slate observe probe",
-                )?;
-                let probe = match self.registry.call(
-                    "slate-manager",
-                    &patina::mother::ChildCallRequest {
-                        operation_id: "patina:slate/control.dispatch".to_string(),
-                        args: serde_json::json!([command_json]),
-                        correlation: None,
-                    },
-                ) {
-                    Ok(response) => serde_json::json!({
+                let probe = match dispatch_to_slate(&request.command) {
+                    Ok((data, raw_payload)) => serde_json::json!({
                         "status": "called",
                         "child": "slate-manager",
                         "operation_id": "patina:slate/control.dispatch",
-                        "payload": response.payload,
+                        "data": data,
+                        "payload": raw_payload,
                     }),
                     Err(error) => serde_json::json!({
                         "status": "unavailable",
