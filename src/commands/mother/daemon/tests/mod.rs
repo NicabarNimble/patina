@@ -98,9 +98,11 @@ struct TypedDispatchChild;
 struct SlateDispatchChild;
 struct ScaffoldSlateDispatchChild;
 
-fn spec_dispatch_request(
+fn spec_dispatch_request_with_route(
     command: patina::spec::SpecCommands,
     backend_mode: Option<&str>,
+    project: Option<String>,
+    origin_project: Option<String>,
 ) -> patina_protocol::SpecDispatchRequest {
     #[derive(serde::Serialize)]
     struct SpecDispatchEnvelope {
@@ -113,12 +115,19 @@ fn spec_dispatch_request(
     patina_protocol::SpecDispatchRequest {
         command: serde_json::to_value(SpecDispatchEnvelope {
             command,
-            project: None,
-            origin_project: None,
+            project,
+            origin_project,
             backend_mode: backend_mode.map(|value| value.to_string()),
         })
         .expect("serialize envelope"),
     }
+}
+
+fn spec_dispatch_request(
+    command: patina::spec::SpecCommands,
+    backend_mode: Option<&str>,
+) -> patina_protocol::SpecDispatchRequest {
+    spec_dispatch_request_with_route(command, backend_mode, None, None)
 }
 
 impl Child for TypedDispatchChild {
@@ -184,9 +193,13 @@ impl Child for SlateDispatchChild {
             .and_then(|value| value.as_str())
             .ok_or_else(|| anyhow::anyhow!("expected slate args[0] command JSON string"))?;
 
+        let envelope: serde_json::Value =
+            serde_json::from_str(command_json).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
         let data = serde_json::json!({
             "status": "from-slate",
             "command_bytes": command_json.len(),
+            "project": envelope.get("project").cloned().unwrap_or(serde_json::Value::Null),
         });
 
         Ok(ChildResponse {
@@ -555,6 +568,73 @@ allow = ["patina:slate/control.dispatch"]
             Some(&serde_json::json!("from-slate"))
         );
         assert_eq!(response.get("json"), Some(&serde_json::json!(true)));
+    });
+}
+
+#[test]
+fn builtin_spec_dispatch_execute_forwards_project_route_to_slate_manager() {
+    with_temp_project(|project_root| {
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+
+        let manifest_path = project_root.join("slate-manager.toml");
+        std::fs::write(
+            &manifest_path,
+            r#"[child]
+name = "slate-manager"
+version = "0.1.0"
+world = "child"
+
+[child.ingress]
+mode = "hybrid"
+
+[child.contract]
+allow = ["patina:slate/control.dispatch"]
+"#,
+        )
+        .expect("write manifest");
+
+        let registry = ChildRegistry::new();
+        registry
+            .register_knowledge_with_paths(
+                Box::new(SlateDispatchChild),
+                std::path::PathBuf::new(),
+                manifest_path,
+            )
+            .expect("register slate child");
+
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry,
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let expected_project = project_root.display().to_string();
+        let request = spec_dispatch_request_with_route(
+            patina::spec::SpecCommands::Next { json: true },
+            Some("execute"),
+            Some(expected_project.clone()),
+            None,
+        );
+
+        let response = <ServerState as mother_crate::http_api::ApiRuntime>::builtin_spec_dispatch(
+            &state, request,
+        )
+        .expect("execute mode should route through slate");
+
+        assert_eq!(
+            response
+                .get("data")
+                .and_then(|v| v.get("project"))
+                .and_then(|v| v.as_str()),
+            Some(expected_project.as_str())
+        );
     });
 }
 
