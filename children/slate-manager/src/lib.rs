@@ -929,41 +929,58 @@ fn handle_archive(
     }))
 }
 
+fn dispatch_data_from_envelope(
+    envelope: &serde_json::Value,
+) -> Result<(String, String, PathBuf, serde_json::Value), String> {
+    let command =
+        extract_command_name(envelope).ok_or_else(|| "missing command payload".to_string())?;
+    let backend_mode = extract_backend_mode(envelope);
+    let args = extract_command_args(envelope);
+    let project_root = resolve_project_root_from_envelope(envelope)?;
+
+    let data = match command.as_str() {
+        "list" => handle_list(&project_root)?,
+        "next" => handle_next(&project_root)?,
+        "check" => handle_check(&project_root, args)?,
+        "show" => handle_show(&project_root, args)?,
+        "prompt" => handle_prompt(&project_root, args)?,
+        "handoff" => handle_handoff(&project_root, args)?,
+        "packet" => handle_packet(&project_root, args)?,
+        "complete" => handle_complete(&project_root, args)?,
+        "archive" => handle_archive(&project_root, args)?,
+        _ => {
+            return Ok((
+                command.clone(),
+                backend_mode,
+                project_root,
+                serde_json::json!({
+                    "status": "scaffold",
+                    "message": format!("command '{}' not implemented", command),
+                    "command": command,
+                }),
+            ))
+        }
+    };
+
+    Ok((command, backend_mode, project_root, data))
+}
+
+pub fn dispatch_for_test(command_json: &str) -> Result<serde_json::Value, String> {
+    let envelope: serde_json::Value = serde_json::from_str(command_json)
+        .map_err(|error| format!("invalid command_json: {}", error))?;
+    let (_, _, _, data) = dispatch_data_from_envelope(&envelope)?;
+    Ok(data)
+}
+
 impl exports::patina::slate::control::Guest for SlateManager {
     fn dispatch(command_json: String) -> Result<String, String> {
         toys::measure::counter("slate_dispatch_calls", 1.0)?;
 
         let envelope: serde_json::Value = serde_json::from_str(&command_json)
             .map_err(|error| format!("invalid command_json: {}", error))?;
-        let command =
-            extract_command_name(&envelope).ok_or_else(|| "missing command payload".to_string())?;
-        let backend_mode = extract_backend_mode(&envelope);
-        let args = extract_command_args(&envelope);
-        let project_root = resolve_project_root_from_envelope(&envelope)?;
+        let (command, backend_mode, project_root, data) = dispatch_data_from_envelope(&envelope)?;
 
         toys::measure::counter(&format!("slate_dispatch_command_{}", command), 1.0)?;
-
-        let data = match command.as_str() {
-            "list" => handle_list(&project_root)?,
-            "next" => handle_next(&project_root)?,
-            "check" => handle_check(&project_root, args)?,
-            "show" => handle_show(&project_root, args)?,
-            "prompt" => handle_prompt(&project_root, args)?,
-            "handoff" => handle_handoff(&project_root, args)?,
-            "packet" => handle_packet(&project_root, args)?,
-            "complete" => handle_complete(&project_root, args)?,
-            "archive" => handle_archive(&project_root, args)?,
-            _ => {
-                return Ok(serde_json::json!({
-                    "status": "scaffold",
-                    "message": format!("command '{}' not implemented", command),
-                    "command": command,
-                    "backend_mode": backend_mode,
-                    "bytes": command_json.len(),
-                })
-                .to_string())
-            }
-        };
 
         toys::log::info(
             "slate-manager",

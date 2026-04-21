@@ -826,6 +826,194 @@ allow = ["patina:slate/control.dispatch"]
 }
 
 #[test]
+fn builtin_spec_dispatch_observe_fixture_diff_harness_reports_builtin_and_probe_payloads() {
+    with_temp_project(|project_root| {
+        std::fs::create_dir_all(project_root.join(".patina")).expect("create .patina");
+        std::fs::create_dir_all(project_root.join("layer")).expect("create layer");
+        patina::project::save(project_root, &patina::project::ProjectConfig::default())
+            .expect("write project config");
+        let spec_dir = project_root.join("layer/surface/build/feat/slate-observe-fixture");
+        std::fs::create_dir_all(&spec_dir).expect("create spec dir");
+
+        std::fs::write(
+            spec_dir.join("SPEC.md"),
+            r#"---
+type: feat
+id: slate-observe-fixture
+status: active
+target: "1"
+exit_criteria:
+  - id: fixture-pass
+    text: "Fixture criterion"
+    checked: true
+---
+# Slate observe fixture
+
+## Goal
+Validate observe-mode diff harness plumbing.
+
+## Key Files
+```
+src/spec.rs
+children/slate-manager/src/lib.rs
+```
+
+## Implementation Order
+- Step one
+
+## Resolved Decisions
+- Decision one
+
+## Verification
+- Run command parity checks
+"#,
+        )
+        .expect("write SPEC.md");
+
+        std::fs::write(
+            spec_dir.join("DESIGN.md"),
+            r#"# Design
+
+## Direct Code Targets
+- src/spec.rs
+- children/slate-manager/src/lib.rs
+
+## Open Questions
+- None
+"#,
+        )
+        .expect("write DESIGN.md");
+
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+
+        let manifest_path = project_root.join("slate-manager.toml");
+        std::fs::write(
+            &manifest_path,
+            r#"[child]
+name = "slate-manager"
+version = "0.1.0"
+world = "child"
+
+[child.ingress]
+mode = "hybrid"
+
+[child.contract]
+allow = ["patina:slate/control.dispatch"]
+"#,
+        )
+        .expect("write manifest");
+
+        let registry = ChildRegistry::new();
+        registry
+            .register_knowledge_with_paths(
+                Box::new(SlateDispatchChild),
+                std::path::PathBuf::new(),
+                manifest_path,
+            )
+            .expect("register slate child");
+
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry,
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let commands = vec![
+            (
+                "list",
+                patina::spec::SpecCommands::List {
+                    status: None,
+                    target: None,
+                    json: true,
+                },
+            ),
+            ("next", patina::spec::SpecCommands::Next { json: true }),
+            (
+                "show",
+                patina::spec::SpecCommands::Show {
+                    id: "slate-observe-fixture".to_string(),
+                    handoff: false,
+                    json: true,
+                },
+            ),
+            (
+                "check",
+                patina::spec::SpecCommands::Check {
+                    id: "slate-observe-fixture".to_string(),
+                    json: true,
+                },
+            ),
+            (
+                "prompt",
+                patina::spec::SpecCommands::Prompt {
+                    id: "slate-observe-fixture".to_string(),
+                    json: true,
+                },
+            ),
+            (
+                "handoff",
+                patina::spec::SpecCommands::Handoff {
+                    id: "slate-observe-fixture".to_string(),
+                    json: true,
+                },
+            ),
+            (
+                "packet",
+                patina::spec::SpecCommands::Packet {
+                    id: "slate-observe-fixture".to_string(),
+                    json: true,
+                },
+            ),
+        ];
+
+        let mut report = Vec::new();
+
+        for (name, command) in commands {
+            let request = spec_dispatch_request(command, Some("observe"));
+
+            let response =
+                <ServerState as mother_crate::http_api::ApiRuntime>::builtin_spec_dispatch(
+                    &state, request,
+                )
+                .expect("observe mode response");
+
+            let probe = response
+                .get("backend")
+                .and_then(|v| v.get("slate_probe"))
+                .cloned()
+                .expect("slate probe payload");
+
+            assert_eq!(probe.get("status").and_then(|v| v.as_str()), Some("called"));
+            assert!(probe
+                .get("data")
+                .and_then(|v| v.get("project"))
+                .is_some_and(|v| v.is_null()));
+
+            report.push(serde_json::json!({
+                "command": name,
+                "builtin_data_kind": response.get("data").map(|v| if v.is_array() { "array" } else if v.is_object() { "object" } else { "other" }),
+                "probe_status": probe.get("status").cloned(),
+                "probe_command_bytes": probe.get("data").and_then(|v| v.get("command_bytes")).cloned(),
+            }));
+        }
+
+        assert_eq!(report.len(), 7);
+        for row in report {
+            assert!(row.get("command").is_some());
+            assert!(row.get("probe_status").is_some());
+            assert!(row.get("builtin_data_kind").is_some());
+        }
+    });
+}
+
+#[test]
 fn rivet_dispatch_best_effort_skips_primary_error() {
     with_temp_project(|project_root| {
         let runtime_store = patina::mother::MotherRuntimeStore::new(
