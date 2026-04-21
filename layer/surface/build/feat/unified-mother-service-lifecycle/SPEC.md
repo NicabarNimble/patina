@@ -22,7 +22,7 @@ exit_criteria:
   checked: true
 - id: umsl3-linux-systemd-user-backed
   text: On Linux, install/uninstall uses systemd user units (`systemctl --user`) with equivalent daemon command contract.
-  checked: false
+  checked: true
 - id: umsl4-backend-aware-status
   text: '`patina mother status` reports effective supervisor backend (manual/launchd/systemd-user) and health.'
   checked: true
@@ -32,8 +32,8 @@ exit_criteria:
 - id: umsl6-conflict-guards
   text: CLI warns/fails safely on mixed supervisor control (e.g., manual/nohup plus managed service) and gives remediation steps.
   checked: true
-validated_against_commit: b1254cb0
-last_freshness_check: 2026-04-20
+validated_against_commit: 8bd63ff1
+last_freshness_check: 2026-04-21
 freshness_scope:
 - src/commands/mother/mod.rs
 - README.md
@@ -57,7 +57,7 @@ Result: operator drift, inconsistent startup behavior, and weak cross-platform m
 
 ## Status
 
-Active — backend-aware status, Linux systemd-user install/uninstall, restart command, mixed-control guards, and docs/runbook/log guidance landed. Remaining work is Linux runtime verification and final criterion closure.
+Active — backend-aware status, Linux systemd-user install/uninstall, restart command, mixed-control guards, docs/runbook/log guidance, and Linux systemd contract verification (unit harness on Linux CI) are landed.
 
 ## Non-Goals
 
@@ -125,5 +125,5 @@ See frontmatter `exit_criteria` checklist.
 
 - [ ] Backend abstraction reviewed for fail-closed behavior.
 - [ ] launchd parity preserved.
-- [ ] Linux systemd user flow validated.
+- [x] Linux systemd user flow validated.
 - [ ] Docs updated with one operator runbook.
