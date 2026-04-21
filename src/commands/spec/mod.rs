@@ -110,6 +110,19 @@ struct SpecDispatchEnvelope {
     backend_mode: SpecBackendMode,
 }
 
+fn build_spec_dispatch_envelope(
+    command: SpecCommands,
+    project: Option<String>,
+    origin_project: Option<String>,
+) -> SpecDispatchEnvelope {
+    SpecDispatchEnvelope {
+        command,
+        project,
+        origin_project,
+        backend_mode: resolve_spec_backend_mode(),
+    }
+}
+
 pub fn execute(mut command: SpecCommands, project: Option<String>) -> Result<()> {
     if std::env::var("PATINA_SPEC_DIRECT").as_deref() == Ok("1") {
         if let Ok(raw) = std::env::var("PATINA_SPEC_DIRECT_COMMAND_JSON") {
@@ -171,12 +184,7 @@ pub fn execute(mut command: SpecCommands, project: Option<String>) -> Result<()>
         }
     }
 
-    let envelope = SpecDispatchEnvelope {
-        command: command.clone(),
-        project: effective_project,
-        origin_project,
-        backend_mode: resolve_spec_backend_mode(),
-    };
+    let envelope = build_spec_dispatch_envelope(command.clone(), effective_project, origin_project);
 
     let protocol_request = BuiltinChildRequest::new(
         BuiltinChild::SpecManager,
@@ -237,9 +245,30 @@ fn confirm(prompt: &str) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_manifest_spec_backend_mode, parse_spec_backend_mode, SpecBackendMode, SpecCommands,
+        build_spec_dispatch_envelope, parse_manifest_spec_backend_mode, parse_spec_backend_mode,
+        resolve_spec_backend_mode, SpecBackendMode, SpecCommands,
     };
     use clap::Parser;
+    use std::path::Path;
+
+    fn with_temp_patina_project<T>(f: impl FnOnce(&Path) -> T) -> T {
+        let _guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp = tempfile::TempDir::new().expect("temp project");
+        let project_root = temp.path().join("project");
+        std::fs::create_dir_all(project_root.join(".patina")).expect("create .patina");
+        std::fs::create_dir_all(project_root.join("layer")).expect("create layer");
+
+        let old_cwd = std::env::current_dir().expect("cwd");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&project_root)));
+        std::env::set_current_dir(old_cwd).expect("restore cwd");
+
+        match result {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
 
     // Minimal CLI struct for testing SpecCommands parsing
     #[derive(Parser)]
@@ -492,5 +521,72 @@ children = ["spec-manager"]
 "#;
 
         assert!(parse_manifest_spec_backend_mode(manifest).is_none());
+    }
+
+    #[test]
+    fn resolve_backend_mode_reads_manifest_execute_and_envelope_uses_it() {
+        with_temp_patina_project(|project_root| {
+            std::fs::write(
+                project_root.join(".patina/manifest.toml"),
+                r#"
+[project]
+schema = 1
+
+[needs]
+children = ["spec-manager", "slate-manager"]
+
+[spec]
+mode = "execute"
+"#,
+            )
+            .expect("write manifest");
+
+            let old_backend = std::env::var("PATINA_SPEC_BACKEND").ok();
+            std::env::remove_var("PATINA_SPEC_BACKEND");
+            std::env::set_current_dir(project_root.join("layer")).expect("cd project subdir");
+
+            let mode = resolve_spec_backend_mode();
+            assert_eq!(mode, SpecBackendMode::Execute);
+
+            let envelope =
+                build_spec_dispatch_envelope(SpecCommands::Next { json: true }, None, None);
+            assert_eq!(envelope.backend_mode, SpecBackendMode::Execute);
+
+            match old_backend {
+                Some(value) => std::env::set_var("PATINA_SPEC_BACKEND", value),
+                None => std::env::remove_var("PATINA_SPEC_BACKEND"),
+            }
+        });
+    }
+
+    #[test]
+    fn resolve_backend_mode_env_overrides_manifest() {
+        with_temp_patina_project(|project_root| {
+            std::fs::write(
+                project_root.join(".patina/manifest.toml"),
+                r#"
+[project]
+schema = 1
+
+[needs]
+children = ["spec-manager", "slate-manager"]
+
+[spec]
+mode = "execute"
+"#,
+            )
+            .expect("write manifest");
+
+            let old_backend = std::env::var("PATINA_SPEC_BACKEND").ok();
+            std::env::set_var("PATINA_SPEC_BACKEND", "off");
+            std::env::set_current_dir(project_root).expect("cd project root");
+
+            assert_eq!(resolve_spec_backend_mode(), SpecBackendMode::Off);
+
+            match old_backend {
+                Some(value) => std::env::set_var("PATINA_SPEC_BACKEND", value),
+                None => std::env::remove_var("PATINA_SPEC_BACKEND"),
+            }
+        });
     }
 }
