@@ -1075,6 +1075,7 @@ fn handle_complete(
 
     if let Some(bump) = bump {
         let new_version = complete_with_release(root, spec, bump)?;
+        let _ = new_version;
         return Ok(serde_json::json!({
             "command": "complete",
             "spec_id": id,
@@ -1082,10 +1083,6 @@ fn handle_complete(
             "file": spec.path,
             "tag": format!("spec/{}", id),
             "archived": true,
-            "release": {
-                "version": new_version,
-                "tag": format!("v{}", new_version),
-            }
         }));
     }
 
@@ -1127,7 +1124,6 @@ fn handle_archive(
         return Ok(serde_json::json!({
             "stale": true,
             "dry_run": dry_run,
-            "count": stale_specs.len(),
         }));
     }
 

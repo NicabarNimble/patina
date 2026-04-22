@@ -145,6 +145,7 @@ Primary principle: **parity first, innovation second**.
   - Explore/unknown spec types remain archive-only completion (no version bump).
 - Added `patina:git` toy operation `remove-paths` for tracked deletion workflows used by Slate archive path.
 - Upgraded observe-mode fixture diff harness for read-only command set to assert deterministic builtin-vs-Slate payload equality (`list/next/show/check/prompt/handoff/packet`).
+- Normalized execute payload shapes toward builtin parity (`complete` omits child-only release envelope fields; `archive --stale` mirrors builtin response contract).
 
 ## Toy contract packaging direction
 
