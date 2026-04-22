@@ -52,6 +52,173 @@ struct SpecRecord {
     design_body: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ReleaseBump {
+    Patch,
+    Minor,
+    Major,
+}
+
+fn bump_from_spec_type(spec_type: &str) -> Option<ReleaseBump> {
+    match spec_type {
+        "fix" | "refactor" => Some(ReleaseBump::Patch),
+        "feat" => Some(ReleaseBump::Minor),
+        _ => None,
+    }
+}
+
+fn compute_next_version(current: &str, bump: ReleaseBump) -> Result<String, String> {
+    let parts: Vec<u32> = current
+        .split('.')
+        .map(|segment| {
+            segment
+                .parse::<u32>()
+                .map_err(|_| format!("Invalid version component '{}'", segment))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if parts.len() != 3 {
+        return Err(format!("Expected semver format (x.y.z), got '{}'", current));
+    }
+
+    Ok(match bump {
+        ReleaseBump::Patch => format!("{}.{}.{}", parts[0], parts[1], parts[2] + 1),
+        ReleaseBump::Minor => format!("{}.{}.0", parts[0], parts[1] + 1),
+        ReleaseBump::Major => format!("{}.0.0", parts[0] + 1),
+    })
+}
+
+fn read_cargo_version(root: &Path) -> Result<String, String> {
+    let content = fs::read_to_string(root.join("Cargo.toml"))
+        .map_err(|e| format!("failed reading Cargo.toml: {}", e))?;
+    let mut in_package_section = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_package_section = trimmed == "[package]";
+            continue;
+        }
+        if in_package_section && trimmed.starts_with("version") && trimmed.contains('=') {
+            let value = trimmed
+                .split('=')
+                .nth(1)
+                .map(str::trim)
+                .map(|v| v.trim_matches('"').trim_matches('\''))
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| "Could not parse version in Cargo.toml [package]".to_string())?;
+            return Ok(value.to_string());
+        }
+    }
+
+    Err("Could not find version in Cargo.toml [package]".to_string())
+}
+
+fn update_cargo_version(root: &Path, new_version: &str) -> Result<(), String> {
+    let path = root.join("Cargo.toml");
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path.display(), e))?;
+
+    let mut in_package_section = false;
+    let mut version_updated = false;
+    let mut new_content = String::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_package_section = trimmed == "[package]";
+        }
+        if in_package_section && !version_updated && trimmed.starts_with("version") {
+            new_content.push_str(&format!("version = \"{}\"\n", new_version));
+            version_updated = true;
+        } else {
+            new_content.push_str(line);
+            new_content.push('\n');
+        }
+    }
+
+    if !version_updated {
+        return Err("Could not find version field in [package] section of Cargo.toml".to_string());
+    }
+
+    fs::write(&path, new_content).map_err(|e| format!("write {}: {}", path.display(), e))
+}
+
+fn ensure_release_safeguards(root: &Path, new_version: &str) -> Result<(), String> {
+    if !patina::git::git::is_clean_tracked()? {
+        return Err(
+            "Working tree has uncommitted changes. Commit or stash before release.".to_string(),
+        );
+    }
+
+    let behind = patina::git::git::commits_behind_upstream()?;
+    if behind > 0 {
+        return Err(format!(
+            "Branch is {} commits behind remote. Pull changes first.",
+            behind
+        ));
+    }
+
+    if patina::git::git::is_diverged()? {
+        return Err("Branch has diverged from remote. Resolve divergence first.".to_string());
+    }
+
+    let version_tag = format!("v{}", new_version);
+    if patina::git::git::tag_exists(&version_tag)? {
+        return Err(format!("Tag '{}' already exists", version_tag));
+    }
+
+    let index_path = root.join(".patina/local/data/patina.db");
+    if !index_path.exists() {
+        return Err(
+            "No index found. Run 'patina scrape layer' first to build the index.".to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+fn complete_with_release(
+    root: &Path,
+    spec: &SpecRecord,
+    bump: ReleaseBump,
+) -> Result<String, String> {
+    let old_version = read_cargo_version(root)?;
+    let new_version = compute_next_version(&old_version, bump)?;
+    ensure_release_safeguards(root, &new_version)?;
+
+    update_cargo_version(root, &new_version)?;
+
+    let spec_path = Path::new(&spec.path);
+    let remove_target = spec_path
+        .parent()
+        .filter(|parent| parent.file_name().is_some())
+        .map(|dir| to_repo_relative(root, dir))
+        .unwrap_or_else(|| to_repo_relative(root, spec_path));
+
+    patina::git::git::remove_paths(std::slice::from_ref(&remove_target))?;
+
+    let mut stage_paths = vec!["Cargo.toml".to_string()];
+    if root.join("Cargo.lock").exists() {
+        stage_paths.push("Cargo.lock".to_string());
+    }
+    patina::git::git::add_paths(&stage_paths)?;
+
+    let title = extract_title(&spec.body)
+        .or(spec.frontmatter.title.clone())
+        .unwrap_or_else(|| spec.frontmatter.id.clone());
+    let commit_msg = format!("release: v{} — {}", new_version, title);
+    patina::git::git::commit(&commit_msg)?;
+
+    let version_tag = format!("v{}", new_version);
+    patina::git::git::create_tag_at(&version_tag, "HEAD")?;
+
+    let spec_tag = format!("spec/{}", spec.frontmatter.id);
+    patina::git::git::create_tag_at(&spec_tag, "HEAD~1")?;
+
+    Ok(new_version)
+}
+
 fn extract_command_name(payload: &serde_json::Value) -> Option<String> {
     let command = payload.get("command")?.as_object()?;
     let key = command.keys().next()?.to_ascii_lowercase();
@@ -117,6 +284,32 @@ fn resolve_project_root_from_envelope(envelope: &serde_json::Value) -> Result<Pa
     find_project_root()
 }
 
+fn with_project_root_cwd<T>(
+    project_root: &Path,
+    f: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let original = std::env::current_dir().map_err(|e| e.to_string())?;
+    std::env::set_current_dir(project_root).map_err(|e| {
+        format!(
+            "failed to enter project root {}: {}",
+            project_root.display(),
+            e
+        )
+    })?;
+
+    let result = f();
+
+    let restore = std::env::set_current_dir(&original)
+        .map_err(|e| format!("failed to restore cwd {}: {}", original.display(), e));
+
+    match (result, restore) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(restore_error)) => Err(restore_error),
+        (Err(error), Err(_)) => Err(error),
+    }
+}
+
 fn extract_frontmatter_and_body(content: &str) -> Option<(&str, &str)> {
     let mut parts = content.splitn(3, "---");
     let first = parts.next()?;
@@ -170,14 +363,14 @@ fn load_specs(root: &Path) -> Result<Vec<SpecRecord>, String> {
             Some(path) if path.exists() => {
                 let body = fs::read_to_string(&path)
                     .map_err(|e| format!("read {}: {}", path.display(), e))?;
-                (Some(path.to_string_lossy().to_string()), Some(body))
+                (Some(to_repo_relative(root, &path)), Some(body))
             }
             _ => (None, None),
         };
 
         records.push(SpecRecord {
             frontmatter,
-            path: file.to_string_lossy().to_string(),
+            path: to_repo_relative(root, &file),
             body: body.to_string(),
             design_path,
             design_body,
@@ -473,7 +666,7 @@ fn handle_list(root: &Path) -> Result<serde_json::Value, String> {
                 "status": spec.frontmatter.status,
                 "target": spec.frontmatter.target,
                 "title": title,
-                "unscraped": false,
+                "unscraped": true,
             })
         })
         .collect();
@@ -831,6 +1024,7 @@ fn handle_complete(
 ) -> Result<serde_json::Value, String> {
     let id = require_id(args, "complete")?;
     let force = arg_bool(args, "force", false);
+    let major = arg_bool(args, "major", false);
 
     let specs = load_specs(root)?;
     let spec = find_spec(&specs, id)?;
@@ -868,11 +1062,27 @@ fn handle_complete(
         .r#type
         .clone()
         .unwrap_or_else(|| "explore".to_string());
-    if spec_type != "explore" {
-        return Err(format!(
-            "slate execute complete for spec '{}' with type '{}' is not implemented yet (release parity pending)",
-            id, spec_type
-        ));
+
+    let bump = if major {
+        Some(ReleaseBump::Major)
+    } else {
+        bump_from_spec_type(&spec_type)
+    };
+
+    if let Some(bump) = bump {
+        let new_version = complete_with_release(root, spec, bump)?;
+        return Ok(serde_json::json!({
+            "command": "complete",
+            "spec_id": id,
+            "new_status": "complete",
+            "file": spec.path,
+            "tag": format!("spec/{}", id),
+            "archived": true,
+            "release": {
+                "version": new_version,
+                "tag": format!("v{}", new_version),
+            }
+        }));
     }
 
     let mut completed = spec.clone();
@@ -938,29 +1148,22 @@ fn dispatch_data_from_envelope(
     let args = extract_command_args(envelope);
     let project_root = resolve_project_root_from_envelope(envelope)?;
 
-    let data = match command.as_str() {
-        "list" => handle_list(&project_root)?,
-        "next" => handle_next(&project_root)?,
-        "check" => handle_check(&project_root, args)?,
-        "show" => handle_show(&project_root, args)?,
-        "prompt" => handle_prompt(&project_root, args)?,
-        "handoff" => handle_handoff(&project_root, args)?,
-        "packet" => handle_packet(&project_root, args)?,
-        "complete" => handle_complete(&project_root, args)?,
-        "archive" => handle_archive(&project_root, args)?,
-        _ => {
-            return Ok((
-                command.clone(),
-                backend_mode,
-                project_root,
-                serde_json::json!({
-                    "status": "scaffold",
-                    "message": format!("command '{}' not implemented", command),
-                    "command": command,
-                }),
-            ))
-        }
-    };
+    let data = with_project_root_cwd(&project_root, || match command.as_str() {
+        "list" => handle_list(&project_root),
+        "next" => handle_next(&project_root),
+        "check" => handle_check(&project_root, args),
+        "show" => handle_show(&project_root, args),
+        "prompt" => handle_prompt(&project_root, args),
+        "handoff" => handle_handoff(&project_root, args),
+        "packet" => handle_packet(&project_root, args),
+        "complete" => handle_complete(&project_root, args),
+        "archive" => handle_archive(&project_root, args),
+        _ => Ok(serde_json::json!({
+            "status": "scaffold",
+            "message": format!("command '{}' not implemented", command),
+            "command": command,
+        })),
+    })?;
 
     Ok((command, backend_mode, project_root, data))
 }

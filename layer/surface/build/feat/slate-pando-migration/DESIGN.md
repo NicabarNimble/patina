@@ -50,7 +50,8 @@ Initial contract can be a typed envelope with explicit routing mode and structur
      `commits-behind-upstream`, `is-diverged` to WIT + host bindings.
    - Extended with `remove-paths` for tracked deletion/archive workflows.
 3. Execute mutate parity (`complete`/`archive`) in Slate.
-   - Started: git-backed archive path implemented in Slate; `complete` currently fail-closed for non-`explore` type until release/version-bump parity lands.
+   - In progress: git-backed archive path is implemented and `complete` now executes Cargo version-bump release flow for `feat`/`fix`/`refactor` and `--major`.
+   - Remaining parity: tighten safeguards/output equivalence and fixture-lock behavior for all complete/archive variants.
 3. Move git toy toward foldered multi-file WIT package layout (WASI-like structure) with tooling support.
 
 ## Safety
