@@ -27,7 +27,7 @@ This design locks **parity-first** execution:
 
 Add a Slate WIT contract that avoids untyped `handle(action,payload)` and exposes typed command dispatch.
 
-Initial contract can be a typed envelope with explicit routing mode and structured response, then tighten into per-command typed functions once parity fixtures are stable.
+Contract now includes per-command typed functions (`list-specs`, `next-specs`, `check/show/prompt/handoff/packet-spec`, `complete-spec`, `archive-spec`) while keeping `dispatch(command-json)` as transitional compatibility during migration.
 
 ## Slice progress
 
@@ -36,7 +36,8 @@ Initial contract can be a typed envelope with explicit routing mode and structur
 1. Spec activated and indexed.
 2. Backend routing seam added to spec dispatch envelopes (`off|observe|execute`).
 3. Observe mode probe added (builtin result + Slate probe metadata).
-4. Execute mode wired to typed Slate dispatch path with fail-closed behavior.
+4. Execute mode wired to typed Slate call path with fail-closed behavior.
+   - Mother routes known `spec` commands through per-command typed operations.
    - Strict behavior: scaffold/not-implemented execute payload is treated as an error (no builtin fallback).
 5. Manifest opt-in added: `.patina/manifest.toml` `[spec] mode = ...`.
 
