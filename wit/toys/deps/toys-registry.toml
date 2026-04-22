@@ -1,3 +1,12 @@
+# Toy contract registry.
+# Governance policy: sdk/patina-sdk/TOY_GOVERNANCE.md
+# Optional governance metadata per entry (or [preview2] defaults):
+# - state = local|community-experimental|candidate|approved|deprecated|retired
+# - owner = "team-or-group"
+# - upstreamability = candidate|unlikely|unknown|n/a
+# - reviewed_at = "YYYY-MM-DD"
+# - [<entry>.deprecation] status/successor/remove_after/note
+
 [patina-connect]
 file = "patina-connect.wit"
 source = "patina"
@@ -69,6 +78,10 @@ proposals = [
 ]
 source = "https://github.com/WebAssembly/WASI"
 version = "0.2.8"
+state = "approved"
+owner = "wasi-upstream"
+upstreamability = "n/a"
+reviewed_at = "2026-04-22"
 
 [preview2.cli]
 file = "cli.wit"

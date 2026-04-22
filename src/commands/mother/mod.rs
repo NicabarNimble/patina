@@ -183,6 +183,17 @@ pub enum ToysCommands {
     /// Show toy registry status
     Status,
 
+    /// List toy registry entries with optional governance filters
+    List {
+        /// Filter by governance state (local|community-experimental|candidate|approved|deprecated|retired)
+        #[arg(long)]
+        state: Option<String>,
+
+        /// Filter by tier (wasi-preview2|patina)
+        #[arg(long)]
+        tier: Option<String>,
+    },
+
     /// Check local toy WIT files against pinned versions
     Check,
 
@@ -424,6 +435,11 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             let project_root = SessionManager::find_project_root()
                 .context("`patina mother toys status` must run in a Patina project")?;
             toys::toys_status(&project_root)
+        }
+        Some(MotherCommands::Toys(ToysCommands::List { state, tier })) => {
+            let project_root = SessionManager::find_project_root()
+                .context("`patina mother toys list` must run in a Patina project")?;
+            toys::toys_list(&project_root, state.as_deref(), tier.as_deref())
         }
         Some(MotherCommands::Toys(ToysCommands::Check)) => {
             let project_root = SessionManager::find_project_root()
@@ -1358,6 +1374,12 @@ mod tests {
 
         let toys = MotherCommands::Toys(ToysCommands::Status);
         assert!(matches!(toys, MotherCommands::Toys(_)));
+
+        let toys_list = MotherCommands::Toys(ToysCommands::List {
+            state: Some("approved".to_string()),
+            tier: Some("patina".to_string()),
+        });
+        assert!(matches!(toys_list, MotherCommands::Toys(_)));
     }
 
     #[test]
