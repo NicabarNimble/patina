@@ -1,6 +1,7 @@
 use super::*;
 use crate::commands::mother::federation;
 use patina::mother::{Child, ChildHealth, ChildRequest, ChildResponse, MotherHost};
+use patina_ai_child_slate_manager as slate_manager_child;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -96,6 +97,7 @@ struct NotifyingChild {
 
 struct TypedDispatchChild;
 struct SlateDispatchChild;
+struct ParitySlateDispatchChild;
 struct ScaffoldSlateDispatchChild;
 
 fn spec_dispatch_request_with_route(
@@ -211,6 +213,61 @@ impl Child for SlateDispatchChild {
                 ]
             }),
         })
+    }
+}
+
+impl Child for ParitySlateDispatchChild {
+    fn name(&self) -> &str {
+        "slate-manager"
+    }
+
+    fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+        Ok(())
+    }
+
+    fn health(&self) -> ChildHealth {
+        ChildHealth::Healthy
+    }
+
+    fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+        Ok(ChildResponse {
+            payload: serde_json::Value::Null,
+        })
+    }
+
+    fn call(&self, request: &patina::mother::ChildCallRequest) -> Result<ChildResponse> {
+        if request.operation_id != "patina:slate/control.dispatch" {
+            return Err(anyhow::anyhow!(
+                "unexpected operation_id: {}",
+                request.operation_id
+            ));
+        }
+
+        let command_json = request
+            .args
+            .as_array()
+            .and_then(|values| values.first())
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| anyhow::anyhow!("expected slate args[0] command JSON string"))?;
+
+        let payload = match slate_manager_child::dispatch_for_test(command_json) {
+            Ok(data) => serde_json::json!({
+                "results": [
+                    {
+                        "ok": data.to_string(),
+                    }
+                ]
+            }),
+            Err(error) => serde_json::json!({
+                "results": [
+                    {
+                        "err": error,
+                    }
+                ]
+            }),
+        };
+
+        Ok(ChildResponse { payload })
     }
 }
 
@@ -911,7 +968,7 @@ allow = ["patina:slate/control.dispatch"]
         let registry = ChildRegistry::new();
         registry
             .register_knowledge_with_paths(
-                Box::new(SlateDispatchChild),
+                Box::new(ParitySlateDispatchChild),
                 std::path::PathBuf::new(),
                 manifest_path,
             )
@@ -994,24 +1051,26 @@ allow = ["patina:slate/control.dispatch"]
                 .expect("slate probe payload");
 
             assert_eq!(probe.get("status").and_then(|v| v.as_str()), Some("called"));
-            assert!(probe
-                .get("data")
-                .and_then(|v| v.get("project"))
-                .is_some_and(|v| v.is_null()));
+
+            let builtin_data = response.get("data").cloned().expect("builtin data payload");
+            let probe_data = probe.get("data").cloned().expect("probe data payload");
+
+            assert_eq!(
+                builtin_data, probe_data,
+                "observe parity mismatch for command '{}'",
+                name
+            );
 
             report.push(serde_json::json!({
                 "command": name,
-                "builtin_data_kind": response.get("data").map(|v| if v.is_array() { "array" } else if v.is_object() { "object" } else { "other" }),
-                "probe_status": probe.get("status").cloned(),
-                "probe_command_bytes": probe.get("data").and_then(|v| v.get("command_bytes")).cloned(),
+                "parity": "equal",
             }));
         }
 
         assert_eq!(report.len(), 7);
         for row in report {
             assert!(row.get("command").is_some());
-            assert!(row.get("probe_status").is_some());
-            assert!(row.get("builtin_data_kind").is_some());
+            assert_eq!(row.get("parity").and_then(|v| v.as_str()), Some("equal"));
         }
     });
 }

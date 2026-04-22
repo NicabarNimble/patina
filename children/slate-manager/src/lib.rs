@@ -10,21 +10,25 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 struct SlateManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct SpecFrontmatterLite {
     id: String,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     r#type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     blocked_by: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     paused_date: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     blocked_date: Option<String>,
     #[serde(default)]
     exit_criteria: Vec<ExitCriterionLite>,
@@ -1200,4 +1204,5 @@ impl exports::patina::slate::control::Guest for SlateManager {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 export!(SlateManager);

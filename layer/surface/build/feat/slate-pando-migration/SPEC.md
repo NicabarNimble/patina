@@ -144,7 +144,7 @@ Primary principle: **parity first, innovation second**.
   - `complete` now supports release-bump flows (`feat`/`fix`/`refactor` and `--major`) by bumping Cargo version, tagging release, and archiving the spec tag in execute mode.
   - Explore/unknown spec types remain archive-only completion (no version bump).
 - Added `patina:git` toy operation `remove-paths` for tracked deletion workflows used by Slate archive path.
-- Added observe-mode fixture diff harness test covering read-only command set and builtin/probe payload capture.
+- Upgraded observe-mode fixture diff harness for read-only command set to assert deterministic builtin-vs-Slate payload equality (`list/next/show/check/prompt/handoff/packet`).
 
 ## Toy contract packaging direction
 
