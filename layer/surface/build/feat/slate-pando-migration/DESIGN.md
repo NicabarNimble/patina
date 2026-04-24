@@ -27,7 +27,13 @@ This design locks **parity-first** execution:
 
 Add a Slate WIT contract that avoids untyped `handle(action,payload)` and exposes typed command dispatch.
 
-Contract now includes per-command typed functions (`list-specs`, `next-specs`, `check/show/prompt/handoff/packet-spec`, `complete-spec`, `archive-spec`) while keeping `dispatch(command-json)` as transitional compatibility during migration.
+Contract now includes per-command typed functions (`list-specs`, `next-specs`, `check/show/prompt/handoff/packet-spec`, `complete-spec`, `archive-spec`).
+
+Current command ownership split is explicit:
+- Slate-owned now: `list`, `next`, `check`, `show`, `prompt`, `handoff`, `packet`, `complete`, `archive`.
+- Core-owned now: `create`, `ready`, `blocked`, `promote`, `abandon`, `pause`, `resume`, `block`, `split`, `history`, `rename`, `reopen`, `set`.
+
+`dispatch(command-json)` remains only as temporary bridge and should be removed once non-Slate commands fail explicitly in execute mode.
 
 ## Slice progress
 
@@ -47,14 +53,17 @@ Contract now includes per-command typed functions (`list-specs`, `next-specs`, `
    - `list/next/show/check/prompt/handoff/packet` implemented via filesystem/frontmatter/design parsing in Slate child.
    - Observe-mode fixture diff harness now enforces deterministic builtin==slate-probe equality over read-only command set.
    - Execute payload contracts are being normalized to builtin response shapes to avoid child-only output drift.
-2. Expand `patina:git` contract for mutate/release parity.
+2. Remove hidden JSON fallback bridge.
+   - Mother router should return explicit execute-mode errors for non-Slate commands (no `dispatch` tunnel).
+   - Then remove `dispatch` from WIT contract/allowlist and switch Slate ingress to `wit-only`.
+3. Expand `patina:git` contract for mutate/release parity.
    - Started: added `create-tag-at`, `status-porcelain`, `add-paths`, `is-clean-tracked`,
      `commits-behind-upstream`, `is-diverged` to WIT + host bindings.
    - Extended with `remove-paths` for tracked deletion/archive workflows.
-3. Execute mutate parity (`complete`/`archive`) in Slate.
+4. Execute mutate parity (`complete`/`archive`) in Slate.
    - In progress: git-backed archive path is implemented and `complete` now executes Cargo version-bump release flow for `feat`/`fix`/`refactor` and `--major`.
    - Remaining parity: tighten safeguards/output equivalence and fixture-lock behavior for all complete/archive variants.
-3. Move git toy toward foldered multi-file WIT package layout (WASI-like structure) with tooling support.
+5. Move git toy toward foldered multi-file WIT package layout (WASI-like structure) with tooling support.
 
 ## Safety
 
