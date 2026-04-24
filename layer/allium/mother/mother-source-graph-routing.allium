@@ -1,0 +1,688 @@
+-- allium: 3
+-- mother-source-graph-routing.allium
+
+-- Scope: Mother source routing and graph routing behavior
+-- Includes:
+--   - `patina mother run` / `patina mother sources` behavior
+--   - graph sync/link/unlink/search/query behavior
+-- Excludes:
+--   - daemon process lifecycle
+--   - child warmup/reload and toy runtime orchestration
+--   - secrets/session authority behavior
+
+entity InterfaceRuntime {
+    kind: cli | daemon_http | internal
+}
+
+entity SourceRouter {
+    sources: SourceDefinition with router = this
+    runs: SourceRun with router = this
+    cursor_records: BrokerCursorRecord with router = this
+
+    configured_source_count: sources.count
+    orphan_cursors: cursor_records where is_orphan
+    orphan_cursor_count: orphan_cursors.count
+    successful_runs: runs where status = succeeded
+    failed_runs: runs where status = failed
+}
+
+entity SourceDefinition {
+    router: SourceRouter
+    name: String
+    connection: String
+    schedule: manual | on_scrape | daily | hourly
+    destination: project | lake
+    lake_name: String?
+    requested_types: Set<String>
+    normalized_types: Set<String>
+    enabled: Boolean
+    total_facts: Integer
+
+    cursor_record: BrokerCursorRecord with source = this
+
+    has_supported_type: normalized_types.any(t => t in {"issues", "prs"})
+    uses_default_types: requested_types.count = 0
+}
+
+entity SourceRun {
+    router: SourceRouter
+    source: SourceDefinition
+
+    status: running | succeeded | failed
+    inserted_count: Integer
+    dedup_skipped_count: Integer
+    cursor_after: String?
+
+    auth_checked: Boolean
+    domain_scope_valid: Boolean
+
+    started_at: Timestamp
+    finished_at: Timestamp?
+    last_error: String?
+
+    transitions status {
+        running -> succeeded
+        running -> failed
+        terminal: succeeded, failed
+    }
+}
+
+entity BrokerCursorRecord {
+    router: SourceRouter
+    source_name: String
+    source: SourceDefinition?
+    cursor_value: String
+    updated_at: Timestamp
+
+    is_orphan: source = null
+}
+
+entity GraphIndex {
+    sync_state: idle | syncing | ready | failed
+
+    nodes_synced: Integer
+    edges_synced: Integer
+    beliefs_synced: Integer
+    values_synced: Integer
+
+    last_error: String?
+
+    nodes: GraphNode with index = this
+    edges: GraphEdge with index = this
+    beliefs: BeliefRecord with index = this
+    supports: BeliefSupportEdge with index = this
+    attacks: BeliefAttackEdge with index = this
+    provenance_links: BeliefAppliedIn with index = this
+
+    is_empty: nodes.count = 0
+}
+
+entity GraphNode {
+    index: GraphIndex
+    id: String
+    node_type: project | reference
+    path: String
+    domains: Set<String>
+}
+
+entity GraphEdge {
+    index: GraphIndex
+    from_node: GraphNode
+    to_node: GraphNode
+    edge_type: uses | learns_from | tests_with | sibling | domain
+    evidence: String?
+    weight: Decimal
+}
+
+entity BeliefRecord {
+    index: GraphIndex
+    id: String
+    source: String
+    kind: String
+    statement: String
+    status_label: String
+    health_score: Decimal
+}
+
+entity BeliefSupportEdge {
+    index: GraphIndex
+    from_belief_id: String
+    to_belief_id: String
+    source_project: String
+}
+
+entity BeliefAttackEdge {
+    index: GraphIndex
+    from_belief_id: String
+    to_belief_id: String
+    source_project: String
+    defeated: Boolean
+}
+
+entity BeliefAppliedIn {
+    index: GraphIndex
+    belief_id: String
+    project: String
+    originated: Boolean
+}
+
+given {
+    router: SourceRouter
+    graph: GraphIndex
+}
+
+rule RejectRunWhenSourceNameMissingFromConfig {
+    when: OperatorRunsNamedSource(source_name)
+    requires: not router.sources.any(s => s.name = source_name)
+    ensures: SourceRunRejected(source_name: source_name, reason: "source_not_found")
+}
+
+rule ResolveSourceByNameForRun {
+    when: OperatorRunsNamedSource(source_name)
+    for source in router.sources where source.name = source_name:
+        ensures: SourceRunRequested(source: source)
+}
+
+rule RejectRunWhenNoSupportedTypesRemain {
+    when: SourceRunRequested(source)
+    requires: source.normalized_types.count = 0
+    ensures: SourceRunRejected(source_name: source.name, reason: "no_supported_types")
+}
+
+rule StartSourceRun {
+    when: SourceRunRequested(source)
+    requires: source.normalized_types.count > 0
+    ensures: SourceRun.created(
+        router: router,
+        source: source,
+        status: running,
+        inserted_count: 0,
+        dedup_skipped_count: 0,
+        cursor_after: null,
+        auth_checked: false,
+        domain_scope_valid: false,
+        started_at: now,
+        finished_at: null,
+        last_error: null
+    )
+}
+
+rule RequestAuthValidation {
+    when: run: SourceRun.created
+    ensures: SourceAuthValidationRequested(run: run, connection: run.source.connection)
+}
+
+rule FailRunWhenAuthPlanCannotBeResolved {
+    when: SourceAuthValidationFailed(run, reason)
+    requires: run.status = running
+    ensures: run.status = failed
+    ensures: run.last_error = reason
+    ensures: run.finished_at = now
+    ensures: SourceRunCompleted(source_name: run.source.name, status: failed, reason: reason)
+}
+
+rule MarkRunAuthValidated {
+    when: SourceAuthValidated(run)
+    requires: run.status = running
+    ensures: run.auth_checked = true
+    ensures: SourceDomainScopeValidationRequested(run: run, required_domain: "api.github.com")
+}
+
+rule FailRunWhenRequiredDomainNotGranted {
+    when: SourceDomainScopeValidationFailed(run, reason)
+    requires: run.status = running
+    ensures: run.status = failed
+    ensures: run.domain_scope_valid = false
+    ensures: run.last_error = reason
+    ensures: run.finished_at = now
+    ensures: SourceRunCompleted(source_name: run.source.name, status: failed, reason: reason)
+}
+
+rule RequestFetchAfterAuthAndDomainChecks {
+    when: SourceDomainScopeValidated(run)
+    requires: run.status = running
+    requires: run.auth_checked
+    ensures: run.domain_scope_valid = true
+    ensures: SourceFetchRequested(run: run, source_types: run.source.normalized_types)
+}
+
+rule EmitIssueEventTypeMapping {
+    when: SourceFetchTypeSelected(run, data_type)
+    requires: data_type = "issues"
+    ensures: SourceEventTypeMapped(run: run, data_type: data_type, event_type: "github.issue")
+}
+
+rule EmitPullRequestEventTypeMapping {
+    when: SourceFetchTypeSelected(run, data_type)
+    requires: data_type = "prs"
+    ensures: SourceEventTypeMapped(run: run, data_type: data_type, event_type: "github.pr")
+}
+
+rule IgnoreUnsupportedConfiguredType {
+    when: SourceFetchTypeSelected(run, data_type)
+    requires: data_type not in {"issues", "prs"}
+    ensures: SourceTypeIgnored(source_name: run.source.name, data_type: data_type)
+}
+
+rule CompleteRunWhenFetchSucceeds {
+    when: SourceFetchCompleted(run, inserted_count, dedup_skipped_count, cursor_after)
+    requires: run.status = running
+    ensures: run.status = succeeded
+    ensures: run.inserted_count = inserted_count
+    ensures: run.dedup_skipped_count = dedup_skipped_count
+    ensures: run.cursor_after = cursor_after
+    ensures: run.finished_at = now
+    ensures: run.source.total_facts = run.source.total_facts + inserted_count
+    ensures: SourceRunCompleted(source_name: run.source.name, status: succeeded)
+}
+
+rule UpdateExistingCursorRecord {
+    when: SourceFetchCompleted(run, _, _, cursor_after)
+    requires: run.source.cursor_record != null
+    ensures: run.source.cursor_record.cursor_value = cursor_after
+    ensures: run.source.cursor_record.updated_at = now
+}
+
+rule CreateCursorRecordWhenMissing {
+    when: SourceFetchCompleted(run, _, _, cursor_after)
+    requires: run.source.cursor_record = null
+    ensures: BrokerCursorRecord.created(
+        router: router,
+        source_name: run.source.name,
+        source: run.source,
+        cursor_value: cursor_after,
+        updated_at: now
+    )
+}
+
+rule FailRunWhenFetchFails {
+    when: SourceFetchFailed(run, reason)
+    requires: run.status = running
+    ensures: run.status = failed
+    ensures: run.last_error = reason
+    ensures: run.finished_at = now
+    ensures: SourceRunCompleted(source_name: run.source.name, status: failed, reason: reason)
+}
+
+rule ReportNoSourcesConfigured {
+    when: OperatorRequestsSourcesStatus()
+    requires: router.configured_source_count = 0
+    ensures: SourcesStatusReportedEmpty
+}
+
+rule ReportSourceStatusNeverRun {
+    when: OperatorRequestsSourcesStatus()
+    for source in router.sources where source.cursor_record = null:
+        ensures: SourceStatusReported(
+            source_name: source.name,
+            last_run: null,
+            fact_count: source.total_facts,
+            status: "never_run"
+        )
+}
+
+rule ReportSourceStatusRanAtLeastOnce {
+    when: OperatorRequestsSourcesStatus()
+    for source in router.sources where source.cursor_record != null:
+        ensures: SourceStatusReported(
+            source_name: source.name,
+            last_run: source.cursor_record.updated_at,
+            fact_count: source.total_facts,
+            status: "ok"
+        )
+}
+
+rule ReportNoOrphanedCursors {
+    when: OperatorRequestsCursorPrune()
+    requires: router.orphan_cursor_count = 0
+    ensures: CursorPruneReported(outcome: "none")
+}
+
+rule ReportOrphanedCursorSetAndRequestConfirmation {
+    when: OperatorRequestsCursorPrune()
+    requires: router.orphan_cursor_count > 0
+    ensures:
+        for cursor in router.orphan_cursors:
+            OrphanCursorIdentified(source_name: cursor.source_name)
+    ensures: CursorPruneConfirmationRequested(orphan_count: router.orphan_cursor_count)
+}
+
+rule RemoveOrphanedCursorsWhenConfirmed {
+    when: OperatorConfirmsCursorPrune()
+    requires: router.orphan_cursor_count > 0
+    let removed = router.orphan_cursor_count
+    ensures:
+        for cursor in router.orphan_cursors:
+            not exists cursor
+    ensures: CursorPruneReported(outcome: "removed", removed_count: removed)
+}
+
+rule KeepOrphanedCursorsWhenDeclined {
+    when: OperatorDeclinesCursorPrune()
+    requires: router.orphan_cursor_count > 0
+    ensures: CursorPruneReported(outcome: "aborted", remaining_count: router.orphan_cursor_count)
+}
+
+rule RejectGraphSyncWhenAlreadyRunning {
+    when: OperatorRequestsGraphSync()
+    requires: graph.sync_state = syncing
+    ensures: GraphSyncRejected(reason: "operation_in_progress")
+}
+
+rule StartGraphSync {
+    when: OperatorRequestsGraphSync()
+    requires: graph.sync_state != syncing
+    ensures: graph.sync_state = syncing
+    ensures: GraphNodeSyncRequested(index: graph)
+    ensures: GraphBeliefSyncRequested(index: graph)
+    ensures: GraphEdgeSyncRequested(index: graph)
+}
+
+rule RecordGraphNodeSyncResult {
+    when: GraphNodeSyncCompleted(index, nodes_synced)
+    requires: index = graph
+    requires: graph.sync_state = syncing
+    ensures: graph.nodes_synced = nodes_synced
+}
+
+rule RecordGraphBeliefSyncResult {
+    when: GraphBeliefSyncCompleted(index, beliefs_synced, values_synced, synced_sources_count)
+    requires: index = graph
+    requires: graph.sync_state = syncing
+    ensures: graph.beliefs_synced = beliefs_synced
+    ensures: graph.values_synced = values_synced
+    ensures: GraphBeliefSourcesRebuilt(index: graph, synced_sources_count: synced_sources_count)
+}
+
+rule RecordGraphEdgeSyncResult {
+    when: GraphEdgeSyncCompleted(index, edges_synced, dangling_edges_deleted)
+    requires: index = graph
+    requires: graph.sync_state = syncing
+    ensures: graph.edges_synced = edges_synced
+    ensures: GraphDanglingEdgesCleaned(index: graph, count: dangling_edges_deleted)
+}
+
+rule MarkGraphSyncFailed {
+    when: GraphSyncFailed(index, reason)
+    requires: index = graph
+    requires: graph.sync_state = syncing
+    ensures: graph.sync_state = failed
+    ensures: graph.last_error = reason
+}
+
+rule MarkGraphSyncReady {
+    when: GraphSyncSucceeded(index)
+    requires: index = graph
+    requires: graph.sync_state = syncing
+    ensures: graph.sync_state = ready
+    ensures: graph.last_error = null
+}
+
+rule RejectGraphLinkForUnknownType {
+    when: OperatorAddsGraphLink(from_node_id, to_node_id, edge_type, evidence?)
+    requires: edge_type not in {uses, learns_from, tests_with, sibling, domain}
+    ensures: GraphLinkRejected(
+        from_node_id: from_node_id,
+        to_node_id: to_node_id,
+        edge_type: edge_type,
+        reason: "unknown_edge_type"
+    )
+}
+
+rule RejectGraphLinkWhenFromNodeMissing {
+    when: OperatorAddsGraphLink(from_node_id, to_node_id, edge_type, evidence?)
+    requires: edge_type in {uses, learns_from, tests_with, sibling, domain}
+    requires: not graph.nodes.any(n => n.id = from_node_id)
+    ensures: GraphLinkRejected(
+        from_node_id: from_node_id,
+        to_node_id: to_node_id,
+        edge_type: edge_type,
+        reason: "from_node_not_found"
+    )
+}
+
+rule RejectGraphLinkWhenToNodeMissing {
+    when: OperatorAddsGraphLink(from_node_id, to_node_id, edge_type, evidence?)
+    requires: edge_type in {uses, learns_from, tests_with, sibling, domain}
+    requires: graph.nodes.any(n => n.id = from_node_id)
+    requires: not graph.nodes.any(n => n.id = to_node_id)
+    ensures: GraphLinkRejected(
+        from_node_id: from_node_id,
+        to_node_id: to_node_id,
+        edge_type: edge_type,
+        reason: "to_node_not_found"
+    )
+}
+
+rule CreateGraphLinkWhenAbsent {
+    when: OperatorAddsGraphLink(from_node_id, to_node_id, edge_type, evidence?)
+    requires: edge_type in {uses, learns_from, tests_with, sibling, domain}
+    requires: graph.nodes.any(n => n.id = from_node_id)
+    requires: graph.nodes.any(n => n.id = to_node_id)
+    requires: not graph.edges.any(e => e.from_node.id = from_node_id and e.to_node.id = to_node_id and e.edge_type = edge_type)
+    for from_node in graph.nodes where id = from_node_id:
+        for to_node in graph.nodes where id = to_node_id:
+            ensures: GraphEdge.created(
+                index: graph,
+                from_node: from_node,
+                to_node: to_node,
+                edge_type: edge_type,
+                evidence: evidence,
+                weight: 1.0
+            )
+    ensures: GraphLinkAdded(from_node_id: from_node_id, to_node_id: to_node_id, edge_type: edge_type)
+}
+
+rule UpdateGraphLinkEvidenceWhenPresent {
+    when: OperatorAddsGraphLink(from_node_id, to_node_id, edge_type, evidence?)
+    requires: graph.edges.any(e => e.from_node.id = from_node_id and e.to_node.id = to_node_id and e.edge_type = edge_type)
+    for edge in graph.edges where from_node.id = from_node_id and to_node.id = to_node_id and edge_type = edge_type:
+        ensures: edge.evidence = evidence ?? edge.evidence
+    ensures: GraphLinkAdded(from_node_id: from_node_id, to_node_id: to_node_id, edge_type: edge_type)
+}
+
+rule RejectGraphUnlinkForUnknownType {
+    when: OperatorRemovesGraphLink(from_node_id, to_node_id, edge_type)
+    requires: edge_type not in {uses, learns_from, tests_with, sibling, domain}
+    ensures: GraphLinkRejected(
+        from_node_id: from_node_id,
+        to_node_id: to_node_id,
+        edge_type: edge_type,
+        reason: "unknown_edge_type"
+    )
+}
+
+rule RemoveGraphLinkWhenPresent {
+    when: OperatorRemovesGraphLink(from_node_id, to_node_id, edge_type)
+    requires: edge_type in {uses, learns_from, tests_with, sibling, domain}
+    requires: graph.edges.any(e => e.from_node.id = from_node_id and e.to_node.id = to_node_id and e.edge_type = edge_type)
+    ensures:
+        for edge in graph.edges where from_node.id = from_node_id and to_node.id = to_node_id and edge_type = edge_type:
+            not exists edge
+    ensures: GraphLinkRemoved(from_node_id: from_node_id, to_node_id: to_node_id, edge_type: edge_type)
+}
+
+rule ReportGraphLinkMissingOnRemove {
+    when: OperatorRemovesGraphLink(from_node_id, to_node_id, edge_type)
+    requires: edge_type in {uses, learns_from, tests_with, sibling, domain}
+    requires: not graph.edges.any(e => e.from_node.id = from_node_id and e.to_node.id = to_node_id and e.edge_type = edge_type)
+    ensures: GraphLinkNotFound(from_node_id: from_node_id, to_node_id: to_node_id, edge_type: edge_type)
+}
+
+rule RequestSearchQuerySanitization {
+    when: OperatorSearchesBeliefs(query, limit)
+    ensures: SearchQuerySanitizationRequested(raw_query: query, limit: limit)
+}
+
+rule ExecuteSearchUsingSanitizedQuery {
+    when: SearchQuerySanitized(raw_query, sanitized_query, limit)
+    requires: graph.sync_state != syncing
+    ensures: BeliefSearchExecuted(raw_query: raw_query, sanitized_query: sanitized_query, limit: limit)
+}
+
+rule ReportEmptyBeliefSearch {
+    when: BeliefSearchReturned(sanitized_query, result_count)
+    requires: result_count = 0
+    ensures: BeliefSearchReported(query: sanitized_query, status: "empty", result_count: result_count)
+}
+
+rule ReportNonEmptyBeliefSearch {
+    when: BeliefSearchReturned(sanitized_query, result_count)
+    requires: result_count > 0
+    ensures: BeliefSearchReported(query: sanitized_query, status: "ok", result_count: result_count)
+    ensures: BeliefSearchProjectProvenanceRequested(query: sanitized_query)
+}
+
+rule QueryBeliefSupports {
+    when: OperatorQueriesBeliefSupports(belief_id)
+    ensures: BeliefSupportsQueried(belief_id: belief_id)
+}
+
+rule QueryBeliefAttacks {
+    when: OperatorQueriesBeliefAttacks(belief_id)
+    ensures: BeliefAttacksQueried(belief_id: belief_id)
+}
+
+rule QueryBeliefProjects {
+    when: OperatorQueriesBeliefProjects(belief_id)
+    ensures: BeliefProjectsQueried(belief_id: belief_id)
+}
+
+rule ReportGraphStats {
+    when: OperatorRequestsGraphStats()
+    ensures: GraphStatsReported(
+        node_count: graph.nodes.count,
+        edge_count: graph.edges.count,
+        belief_count: graph.beliefs.count,
+        support_edge_count: graph.supports.count,
+        attack_edge_count: graph.attacks.count
+    )
+}
+
+surface MotherSourceRoutingCLI {
+    facing runtime: InterfaceRuntime
+    context router: SourceRouter
+
+    exposes:
+        runtime.kind
+        router.configured_source_count
+        router.orphan_cursor_count
+        router.successful_runs.count
+        router.failed_runs.count
+        router.runs.count
+        router.cursor_records.count
+
+        for source in router.sources:
+            source.name
+            source.router.configured_source_count
+            source.connection
+            source.schedule
+            source.destination
+            source.lake_name
+            source.requested_types
+            source.normalized_types
+            source.enabled
+            source.total_facts
+            source.uses_default_types
+            source.has_supported_type
+            source.cursor_record?.cursor_value
+            source.cursor_record?.updated_at
+
+        for run in router.runs:
+            run.router.configured_source_count
+            run.source.name
+            run.status
+            run.inserted_count
+            run.dedup_skipped_count
+            run.started_at
+            run.finished_at
+            run.last_error
+
+        for cursor in router.cursor_records:
+            cursor.router.configured_source_count
+            cursor.source_name
+            cursor.is_orphan
+            cursor.cursor_value
+            cursor.updated_at
+
+    provides:
+        OperatorRunsNamedSource(source_name)
+        OperatorRequestsSourcesStatus()
+        OperatorRequestsCursorPrune()
+        OperatorConfirmsCursorPrune()
+        OperatorDeclinesCursorPrune()
+}
+
+surface MotherGraphRoutingCLI {
+    facing runtime: InterfaceRuntime
+    context graph: GraphIndex
+
+    exposes:
+        runtime.kind
+        graph.sync_state
+        graph.nodes_synced
+        graph.edges_synced
+        graph.beliefs_synced
+        graph.values_synced
+        graph.last_error
+        graph.is_empty
+        graph.provenance_links.count
+
+        for node in graph.nodes:
+            node.index.sync_state
+            node.id
+            node.node_type
+            node.path
+            node.domains
+
+        for edge in graph.edges:
+            edge.index.sync_state
+            edge.from_node.id
+            edge.to_node.id
+            edge.edge_type
+            edge.weight
+            edge.evidence
+
+        for belief in graph.beliefs:
+            belief.index.sync_state
+            belief.id
+            belief.source
+            belief.kind
+            belief.statement
+            belief.status_label
+            belief.health_score
+
+        for support in graph.supports:
+            support.index.sync_state
+            support.from_belief_id
+            support.to_belief_id
+            support.source_project
+
+        for attack in graph.attacks:
+            attack.index.sync_state
+            attack.from_belief_id
+            attack.to_belief_id
+            attack.source_project
+            attack.defeated
+
+        for link in graph.provenance_links:
+            link.index.sync_state
+            link.belief_id
+            link.project
+            link.originated
+
+    provides:
+        OperatorRequestsGraphSync()
+        OperatorAddsGraphLink(from_node_id, to_node_id, edge_type, evidence?)
+        OperatorRemovesGraphLink(from_node_id, to_node_id, edge_type)
+        OperatorSearchesBeliefs(query, limit)
+        OperatorQueriesBeliefSupports(belief_id)
+        OperatorQueriesBeliefAttacks(belief_id)
+        OperatorQueriesBeliefProjects(belief_id)
+        OperatorRequestsGraphStats()
+}
+
+surface MotherRoutingRuntimeSignals {
+    facing _: InterfaceRuntime
+
+    provides:
+        SourceAuthValidated(run)
+        SourceAuthValidationFailed(run, reason)
+        SourceDomainScopeValidated(run)
+        SourceDomainScopeValidationFailed(run, reason)
+        SourceFetchTypeSelected(run, data_type)
+        SourceFetchCompleted(run, inserted_count, dedup_skipped_count, cursor_after)
+        SourceFetchFailed(run, reason)
+
+        GraphNodeSyncCompleted(index, nodes_synced)
+        GraphBeliefSyncCompleted(index, beliefs_synced, values_synced, synced_sources_count)
+        GraphEdgeSyncCompleted(index, edges_synced, dangling_edges_deleted)
+        GraphSyncFailed(index, reason)
+        GraphSyncSucceeded(index)
+
+        SearchQuerySanitized(raw_query, sanitized_query, limit)
+        BeliefSearchReturned(sanitized_query, result_count)
+}
+
+open question "`patina mother run --no-sandbox` is currently accepted but ignored in broker execution. Should source routing define sandbox mode as a real behavior contract?"
+open question "Should `SourceStatus.fact_count` remain a derived count over eventlog, or become a persisted broker metric to avoid expensive reads on large projects?"

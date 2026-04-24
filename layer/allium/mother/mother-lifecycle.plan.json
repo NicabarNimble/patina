@@ -1,0 +1,942 @@
+{
+  "obligations": [
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on Operator are present with correct types",
+      "detail": {
+        "fields": [
+          "name"
+        ]
+      },
+      "id": "entity-fields.Operator",
+      "source_construct": "Operator",
+      "source_span": {
+        "end": 321,
+        "start": 285
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on HostEnvironment are present with correct types",
+      "detail": {
+        "fields": [
+          "platform",
+          "homebrew_launchd_installed"
+        ]
+      },
+      "id": "entity-fields.HostEnvironment",
+      "source_construct": "HostEnvironment",
+      "source_span": {
+        "end": 425,
+        "start": 323
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on MotherDaemon are present with correct types",
+      "detail": {
+        "fields": [
+          "lifecycle",
+          "transport",
+          "startup_profile",
+          "rivet_integration",
+          "supervisor_backend",
+          "pid_file_state",
+          "control_plane_ready",
+          "warmup_mode",
+          "warmup_state",
+          "last_failure_stage",
+          "last_failure_message",
+          "stop_deadline_at",
+          "is_supervised",
+          "manual_start_blocked"
+        ]
+      },
+      "id": "entity-fields.MotherDaemon",
+      "source_construct": "MotherDaemon",
+      "source_span": {
+        "end": 1203,
+        "start": 427
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field MotherDaemon.last_failure_stage accepts null and non-null values",
+      "id": "entity-optional.MotherDaemon.last_failure_stage",
+      "source_construct": "MotherDaemon.last_failure_stage",
+      "source_span": {
+        "end": 1203,
+        "start": 427
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field MotherDaemon.last_failure_message accepts null and non-null values",
+      "id": "entity-optional.MotherDaemon.last_failure_message",
+      "source_construct": "MotherDaemon.last_failure_message",
+      "source_span": {
+        "end": 1203,
+        "start": 427
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field MotherDaemon.stop_deadline_at accepts null and non-null values",
+      "id": "entity-optional.MotherDaemon.stop_deadline_at",
+      "source_construct": "MotherDaemon.stop_deadline_at",
+      "source_span": {
+        "end": 1203,
+        "start": 427
+      }
+    },
+    {
+      "category": "derived",
+      "description": "Verify derived value MotherDaemon.is_supervised computes correctly",
+      "id": "derived.MotherDaemon.is_supervised",
+      "source_construct": "MotherDaemon.is_supervised",
+      "source_span": {
+        "end": 1203,
+        "start": 427
+      }
+    },
+    {
+      "category": "derived",
+      "description": "Verify derived value MotherDaemon.manual_start_blocked computes correctly",
+      "id": "derived.MotherDaemon.manual_start_blocked",
+      "source_construct": "MotherDaemon.manual_start_blocked",
+      "source_span": {
+        "end": 1203,
+        "start": 427
+      }
+    },
+    {
+      "category": "config_default",
+      "description": "Verify config parameter stop_timeout has its declared default",
+      "id": "config-default.stop_timeout",
+      "source_construct": "config.stop_timeout",
+      "source_span": {
+        "end": 1252,
+        "start": 1218
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStartRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule ManualStartRejectedWhenManagedBySupervisor succeeds when all preconditions are met",
+      "id": "rule-success.ManualStartRejectedWhenManagedBySupervisor",
+      "source_construct": "ManualStartRejectedWhenManagedBySupervisor",
+      "source_span": {
+        "end": 1587,
+        "start": 1318
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStartRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule ManualStartRejectedWhenManagedBySupervisor is rejected when requires clause fails",
+      "id": "rule-failure.ManualStartRejectedWhenManagedBySupervisor.1",
+      "source_construct": "ManualStartRejectedWhenManagedBySupervisor",
+      "source_span": {
+        "end": 1457,
+        "start": 1421
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStartRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule ManualStartRejectedWhenManagedBySupervisor is rejected when requires clause fails",
+      "id": "rule-failure.ManualStartRejectedWhenManagedBySupervisor.2",
+      "source_construct": "ManualStartRejectedWhenManagedBySupervisor",
+      "source_span": {
+        "end": 1499,
+        "start": 1462
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStartupRequested"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule ManualStartAccepted succeeds when all preconditions are met",
+      "id": "rule-success.ManualStartAccepted",
+      "source_construct": "ManualStartAccepted",
+      "source_span": {
+        "end": 1936,
+        "start": 1589
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStartupRequested"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule ManualStartAccepted is rejected when requires clause fails",
+      "id": "rule-failure.ManualStartAccepted.1",
+      "source_construct": "ManualStartAccepted",
+      "source_span": {
+        "end": 1705,
+        "start": 1669
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStartupRequested"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule ManualStartAccepted is rejected when requires clause fails",
+      "id": "rule-failure.ManualStartAccepted.2",
+      "source_construct": "ManualStartAccepted",
+      "source_span": {
+        "end": 1751,
+        "start": 1710
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStartupRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule SupervisedStartAccepted succeeds when all preconditions are met",
+      "id": "rule-success.SupervisedStartAccepted",
+      "source_construct": "SupervisedStartAccepted",
+      "source_span": {
+        "end": 2254,
+        "start": 1938
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStartupRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule SupervisedStartAccepted is rejected when requires clause fails",
+      "id": "rule-failure.SupervisedStartAccepted.1",
+      "source_construct": "SupervisedStartAccepted",
+      "source_span": {
+        "end": 2065,
+        "start": 2029
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_source": "external"
+      },
+      "description": "Verify rule StartupSucceeded succeeds when all preconditions are met",
+      "id": "rule-success.StartupSucceeded",
+      "source_construct": "StartupSucceeded",
+      "source_span": {
+        "end": 2496,
+        "start": 2256
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_source": "external"
+      },
+      "description": "Verify rule StartupSucceeded is rejected when requires clause fails",
+      "id": "rule-failure.StartupSucceeded.1",
+      "source_construct": "StartupSucceeded",
+      "source_span": {
+        "end": 2362,
+        "start": 2325
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_source": "external"
+      },
+      "description": "Verify rule StartupFailed succeeds when all preconditions are met",
+      "id": "rule-success.StartupFailed",
+      "source_construct": "StartupFailed",
+      "source_span": {
+        "end": 2801,
+        "start": 2498
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_source": "external"
+      },
+      "description": "Verify rule StartupFailed is rejected when requires clause fails",
+      "id": "rule-failure.StartupFailed.1",
+      "source_construct": "StartupFailed",
+      "source_span": {
+        "end": 2614,
+        "start": 2577
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStopObserved"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StopWhenNoPidFile succeeds when all preconditions are met",
+      "id": "rule-success.StopWhenNoPidFile",
+      "source_construct": "StopWhenNoPidFile",
+      "source_span": {
+        "end": 3013,
+        "start": 2803
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStopObserved"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StopWhenNoPidFile is rejected when requires clause fails",
+      "id": "rule-failure.StopWhenNoPidFile.1",
+      "source_construct": "StopWhenNoPidFile",
+      "source_span": {
+        "end": 2912,
+        "start": 2872
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStopObserved"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StopWhenStalePidFile succeeds when all preconditions are met",
+      "id": "rule-success.StopWhenStalePidFile",
+      "source_construct": "StopWhenStalePidFile",
+      "source_span": {
+        "end": 3274,
+        "start": 3015
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStopObserved"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StopWhenStalePidFile is rejected when requires clause fails",
+      "id": "rule-failure.StopWhenStalePidFile.1",
+      "source_construct": "StopWhenStalePidFile",
+      "source_span": {
+        "end": 3126,
+        "start": 3087
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSigtermSent"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StopRunningDaemon succeeds when all preconditions are met",
+      "id": "rule-success.StopRunningDaemon",
+      "source_construct": "StopRunningDaemon",
+      "source_span": {
+        "end": 3556,
+        "start": 3276
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSigtermSent"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StopRunningDaemon is rejected when requires clause fails",
+      "id": "rule-failure.StopRunningDaemon.1",
+      "source_construct": "StopRunningDaemon",
+      "source_span": {
+        "end": 3381,
+        "start": 3345
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStopObserved"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule StopCompletes succeeds when all preconditions are met",
+      "id": "rule-success.StopCompletes",
+      "source_construct": "StopCompletes",
+      "source_span": {
+        "end": 3860,
+        "start": 3558
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStopObserved"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule StopCompletes is rejected when requires clause fails",
+      "id": "rule-failure.StopCompletes.1",
+      "source_construct": "StopCompletes",
+      "source_span": {
+        "end": 3658,
+        "start": 3621
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "MotherDaemon"
+        ],
+        "trigger_emissions": [
+          "MotherStopObserved"
+        ],
+        "trigger_source": "temporal"
+      },
+      "description": "Verify rule StopTimesOut succeeds when all preconditions are met",
+      "id": "rule-success.StopTimesOut",
+      "source_construct": "StopTimesOut",
+      "source_span": {
+        "end": 4045,
+        "start": 3862
+      }
+    },
+    {
+      "category": "temporal",
+      "dependencies": {
+        "entities_read": [
+          "MotherDaemon"
+        ],
+        "trigger_emissions": [
+          "MotherStopObserved"
+        ],
+        "trigger_source": "temporal"
+      },
+      "description": "Verify temporal trigger in StopTimesOut fires at deadline, not before, and does not re-fire",
+      "id": "temporal.StopTimesOut",
+      "source_construct": "StopTimesOut",
+      "source_span": {
+        "end": 3931,
+        "start": 3886
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "MotherDaemon"
+        ],
+        "trigger_emissions": [
+          "MotherStopObserved"
+        ],
+        "trigger_source": "temporal"
+      },
+      "description": "Verify rule StopTimesOut is rejected when requires clause fails",
+      "id": "rule-failure.StopTimesOut.1",
+      "source_construct": "StopTimesOut",
+      "source_span": {
+        "end": 3973,
+        "start": 3936
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SupervisorRestartRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule RestartDelegatesToSupervisor succeeds when all preconditions are met",
+      "id": "rule-success.RestartDelegatesToSupervisor",
+      "source_construct": "RestartDelegatesToSupervisor",
+      "source_span": {
+        "end": 4258,
+        "start": 4047
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SupervisorRestartRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule RestartDelegatesToSupervisor is rejected when requires clause fails",
+      "id": "rule-failure.RestartDelegatesToSupervisor.1",
+      "source_construct": "RestartDelegatesToSupervisor",
+      "source_span": {
+        "end": 4160,
+        "start": 4130
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "OperatorStartsMotherManually",
+          "OperatorStopsMother"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule RestartOnManualBackend succeeds when all preconditions are met",
+      "id": "rule-success.RestartOnManualBackend",
+      "source_construct": "RestartOnManualBackend",
+      "source_span": {
+        "end": 4478,
+        "start": 4260
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "OperatorStartsMotherManually",
+          "OperatorStopsMother"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule RestartOnManualBackend is rejected when requires clause fails",
+      "id": "rule-failure.RestartOnManualBackend.1",
+      "source_construct": "RestartOnManualBackend",
+      "source_span": {
+        "end": 4381,
+        "start": 4337
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallRejectedOnUnsupportedPlatform succeeds when all preconditions are met",
+      "id": "rule-success.InstallRejectedOnUnsupportedPlatform",
+      "source_construct": "InstallRejectedOnUnsupportedPlatform",
+      "source_span": {
+        "end": 4701,
+        "start": 4480
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallRejectedOnUnsupportedPlatform is rejected when requires clause fails",
+      "id": "rule-failure.InstallRejectedOnUnsupportedPlatform.1",
+      "source_construct": "InstallRejectedOnUnsupportedPlatform",
+      "source_span": {
+        "end": 4612,
+        "start": 4581
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallRejectedWhenHomebrewOwnsLaunchd succeeds when all preconditions are met",
+      "id": "rule-success.InstallRejectedWhenHomebrewOwnsLaunchd",
+      "source_construct": "InstallRejectedWhenHomebrewOwnsLaunchd",
+      "source_span": {
+        "end": 4971,
+        "start": 4703
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallRejectedWhenHomebrewOwnsLaunchd is rejected when requires clause fails",
+      "id": "rule-failure.InstallRejectedWhenHomebrewOwnsLaunchd.1",
+      "source_construct": "InstallRejectedWhenHomebrewOwnsLaunchd",
+      "source_span": {
+        "end": 4837,
+        "start": 4806
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallRejectedWhenHomebrewOwnsLaunchd is rejected when requires clause fails",
+      "id": "rule-failure.InstallRejectedWhenHomebrewOwnsLaunchd.2",
+      "source_construct": "InstallRejectedWhenHomebrewOwnsLaunchd",
+      "source_span": {
+        "end": 4883,
+        "start": 4842
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSupervisorInstalled"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallLaunchdSupervisor succeeds when all preconditions are met",
+      "id": "rule-success.InstallLaunchdSupervisor",
+      "source_construct": "InstallLaunchdSupervisor",
+      "source_span": {
+        "end": 5280,
+        "start": 4973
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSupervisorInstalled"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallLaunchdSupervisor is rejected when requires clause fails",
+      "id": "rule-failure.InstallLaunchdSupervisor.1",
+      "source_construct": "InstallLaunchdSupervisor",
+      "source_span": {
+        "end": 5093,
+        "start": 5062
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSupervisorInstalled"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallLaunchdSupervisor is rejected when requires clause fails",
+      "id": "rule-failure.InstallLaunchdSupervisor.2",
+      "source_construct": "InstallLaunchdSupervisor",
+      "source_span": {
+        "end": 5143,
+        "start": 5098
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSupervisorInstalled"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallSystemdSupervisor succeeds when all preconditions are met",
+      "id": "rule-success.InstallSystemdSupervisor",
+      "source_construct": "InstallSystemdSupervisor",
+      "source_span": {
+        "end": 5542,
+        "start": 5282
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSupervisorInstalled"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallSystemdSupervisor is rejected when requires clause fails",
+      "id": "rule-failure.InstallSystemdSupervisor.1",
+      "source_construct": "InstallSystemdSupervisor",
+      "source_span": {
+        "end": 5402,
+        "start": 5371
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherUninstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallRejectedOnUnsupportedPlatform succeeds when all preconditions are met",
+      "id": "rule-success.UninstallRejectedOnUnsupportedPlatform",
+      "source_construct": "UninstallRejectedOnUnsupportedPlatform",
+      "source_span": {
+        "end": 5771,
+        "start": 5544
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherUninstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallRejectedOnUnsupportedPlatform is rejected when requires clause fails",
+      "id": "rule-failure.UninstallRejectedOnUnsupportedPlatform.1",
+      "source_construct": "UninstallRejectedOnUnsupportedPlatform",
+      "source_span": {
+        "end": 5680,
+        "start": 5649
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSupervisorUninstalled"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallLaunchdSupervisor succeeds when all preconditions are met",
+      "id": "rule-success.UninstallLaunchdSupervisor",
+      "source_construct": "UninstallLaunchdSupervisor",
+      "source_span": {
+        "end": 6028,
+        "start": 5773
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSupervisorUninstalled"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallLaunchdSupervisor is rejected when requires clause fails",
+      "id": "rule-failure.UninstallLaunchdSupervisor.1",
+      "source_construct": "UninstallLaunchdSupervisor",
+      "source_span": {
+        "end": 5897,
+        "start": 5866
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSupervisorUninstalled"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallSystemdSupervisor succeeds when all preconditions are met",
+      "id": "rule-success.UninstallSystemdSupervisor",
+      "source_construct": "UninstallSystemdSupervisor",
+      "source_span": {
+        "end": 6290,
+        "start": 6030
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSupervisorUninstalled"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallSystemdSupervisor is rejected when requires clause fails",
+      "id": "rule-failure.UninstallSystemdSupervisor.1",
+      "source_construct": "UninstallSystemdSupervisor",
+      "source_span": {
+        "end": 6154,
+        "start": 6123
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStatusReported"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule StatusWhenRunning succeeds when all preconditions are met",
+      "id": "rule-success.StatusWhenRunning",
+      "source_construct": "StatusWhenRunning",
+      "source_span": {
+        "end": 6942,
+        "start": 6292
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStatusReported"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule StatusWhenRunning is rejected when requires clause fails",
+      "id": "rule-failure.StatusWhenRunning.1",
+      "source_construct": "StatusWhenRunning",
+      "source_span": {
+        "end": 6406,
+        "start": 6370
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStatusReported"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule StatusWhenStoppedOrFailed succeeds when all preconditions are met",
+      "id": "rule-success.StatusWhenStoppedOrFailed",
+      "source_construct": "StatusWhenStoppedOrFailed",
+      "source_span": {
+        "end": 7728,
+        "start": 6944
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherStatusReported"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule StatusWhenStoppedOrFailed is rejected when requires clause fails",
+      "id": "rule-failure.StatusWhenStoppedOrFailed.1",
+      "source_construct": "StatusWhenStoppedOrFailed",
+      "source_span": {
+        "end": 7077,
+        "start": 7030
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface MotherLifecycleCLI is accessible only to the specified actor",
+      "id": "surface-actor.MotherLifecycleCLI",
+      "source_construct": "MotherLifecycleCLI",
+      "source_span": {
+        "end": 8631,
+        "start": 7730
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on MotherLifecycleCLI is accessible",
+      "detail": {
+        "items": [
+          "name",
+          "lifecycle",
+          "transport",
+          "startup_profile",
+          "rivet_integration",
+          "supervisor_backend",
+          "pid_file_state",
+          "control_plane_ready",
+          "warmup_mode",
+          "warmup_state",
+          "last_failure_stage",
+          "last_failure_message"
+        ],
+        "surface": "MotherLifecycleCLI"
+      },
+      "id": "surface-exposure.MotherLifecycleCLI",
+      "source_construct": "MotherLifecycleCLI",
+      "source_span": {
+        "end": 8195,
+        "start": 7827
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on MotherLifecycleCLI appear/hide based on when conditions",
+      "id": "surface-provides.MotherLifecycleCLI",
+      "source_construct": "MotherLifecycleCLI",
+      "source_span": {
+        "end": 8629,
+        "start": 8201
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface MotherRuntimeSignals is accessible only to the specified actor",
+      "id": "surface-actor.MotherRuntimeSignals",
+      "source_construct": "MotherRuntimeSignals",
+      "source_span": {
+        "end": 9005,
+        "start": 8633
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on MotherRuntimeSignals appear/hide based on when conditions",
+      "id": "surface-provides.MotherRuntimeSignals",
+      "source_construct": "MotherRuntimeSignals",
+      "source_span": {
+        "end": 9003,
+        "start": 8732
+      }
+    }
+  ],
+  "version": 3
+}

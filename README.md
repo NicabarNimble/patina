@@ -1,6 +1,8 @@
 # Patina
 
 > Context management for AI-assisted development
+>
+> ⚠️ **Experimental:** Patina is an active experiment; proceed with caution in production workflows.
 
 Patina is a local-first Rust CLI that turns a repository into a reusable knowledge system for humans and AI tools. It scrapes code, git history, layer artifacts, and optional external sources into a local store, builds semantic indices, and exposes commands for retrieval, structure queries, workflow tracking, and cross-project knowledge.
 
