@@ -134,16 +134,19 @@ Primary principle: **parity first, innovation second**.
 - `patina spec` now resolves backend mode from env or project manifest (`[spec] mode = off|observe|execute`).
 - Observe mode preserves builtin output and appends `backend.slate_probe` metadata.
 - Execute mode routes through typed `slate-manager` call path and fails closed if child is missing/unavailable.
+- Mother now maps supported `spec` commands onto per-command typed Slate operations (`patina:slate/control.*-specs|*-spec`) instead of always tunneling command JSON through `dispatch`.
 - Execute mode is strict fail-closed: when Slate reports scaffold/not-implemented (or any execute-path error), Mother returns an error instead of silently falling back.
 - Added routing smoke coverage in `src/commands/spec/mod.rs` and daemon dispatch tests in `src/commands/mother/daemon/tests/mod.rs`.
 - Started Option A git-toy expansion for Slate mutate/release parity (`create-tag-at`, `status-porcelain`, `add-paths`, `is-clean-tracked`, `commits-behind-upstream`, `is-diverged`) in WIT + host bindings.
-- Slate child dispatch is command-aware (parses envelope command + backend mode).
+- Slate child dispatch is command-aware (parses envelope command + backend mode) and remains as transitional compatibility while typed per-command operations are active.
 - Slate now implements initial read-only command handlers in-child (`list`, `next`, `show`, `check`, `prompt`, `handoff`, `packet`) from filesystem/frontmatter parsing; outputs are still early parity and need fixture-level equivalence checks.
 - Execute dispatch now binds Slate reads to envelope project root (and fails closed on invalid project roots) for per-project isolation.
 - Added execute handlers for `complete` and `archive` with git-backed archiving path inside Slate child.
-  - Current guardrail: `complete` fails closed for non-`explore` specs until release/version-bump parity is implemented.
+  - `complete` now supports release-bump flows (`feat`/`fix`/`refactor` and `--major`) by bumping Cargo version, tagging release, and archiving the spec tag in execute mode.
+  - Explore/unknown spec types remain archive-only completion (no version bump).
 - Added `patina:git` toy operation `remove-paths` for tracked deletion workflows used by Slate archive path.
-- Added observe-mode fixture diff harness test covering read-only command set and builtin/probe payload capture.
+- Upgraded observe-mode fixture diff harness for read-only command set to assert deterministic builtin-vs-Slate payload equality (`list/next/show/check/prompt/handoff/packet`).
+- Normalized execute payload shapes toward builtin parity (`complete` omits child-only release envelope fields; `archive --stale` mirrors builtin response contract).
 
 ## Toy contract packaging direction
 

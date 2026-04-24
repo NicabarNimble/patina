@@ -1,0 +1,412 @@
+-- allium: 3
+-- mother-child-toy-orchestration.allium
+
+-- Scope: Mother child and toy orchestration behavior
+-- Includes: child manifest admission, warmup/reload orchestration,
+--   handle vs typed ingress policy, toy grant enforcement, typed call observations
+-- Excludes:
+--   - daemon process lifecycle (start/stop/install/status)
+--   - cross-project source/graph routing
+--   - secrets/session authority behavior
+
+entity InterfaceRuntime {
+    kind: cli | http | rivet | internal
+}
+
+entity ChildOrchestrator {
+    warmup_mode: auto | manual
+    warmup_state: pending | running | complete | failed
+    children_total: Integer
+    children_ready_count: Integer
+    degraded_children: Set<ChildRuntime>
+    refresh_state: idle | running
+}
+
+entity ChildRuntime {
+    name: String
+    kind: child | pipeline
+    ingress_mode: handle | hybrid | wit_only
+
+    lifecycle_state: discovered | loading | active | reloading | degraded | unloaded
+    health_status: healthy | degraded | unhealthy
+    reload_lock_state: idle | held
+
+    needs_toys: Set<String>
+    granted_toys: Set<String>
+    granted_event_streams: Set<String>
+    granted_task_intents: Set<String>
+
+    filesystem_scope_requested: Boolean
+
+    declared_operations: Set<String>
+    exported_operations: Set<String>
+    typed_allowlist: Set<String>
+
+    last_error: String?
+
+    typed_calls_denied: Integer
+    typed_calls_succeeded: Integer
+    typed_calls_failed: Integer
+    handle_calls_succeeded: Integer
+    handle_calls_failed: Integer
+
+    typed_call_observations: TypedCallObservation with child = this
+
+    typed_contract_present: ingress_mode != handle or declared_operations.count > 0
+    has_export_mismatch: declared_operations.any(op => op not in exported_operations)
+}
+
+entity TypedCallObservation {
+    child: ChildRuntime
+    operation_id: String
+    outcome: success | denied | error
+    deny_reason: String?
+    error: String?
+    correlation_run_id: String?
+}
+
+rule RejectManifestWhenFilesystemScopeHasNoToyGrant {
+    when: ChildManifestSubmitted(child)
+    requires: child.filesystem_scope_requested
+    requires: "filesystem" not in child.needs_toys
+    ensures: child.lifecycle_state = degraded
+    ensures: child.last_error = "filesystem_scope_without_filesystem_toy"
+    ensures: ChildManifestRejected(child: child, reason: "filesystem_scope_without_filesystem_toy")
+}
+
+rule RejectManifestWhenTypedContractOperationsAreNotExported {
+    when: ChildManifestSubmitted(child)
+    requires: child.typed_contract_present
+    requires: child.has_export_mismatch
+    ensures: child.lifecycle_state = degraded
+    ensures: child.last_error = "contract_export_mismatch"
+    ensures: ChildManifestRejected(child: child, reason: "contract_export_mismatch")
+}
+
+rule AcceptManifestAndResolveToyGrants {
+    when: ChildManifestSubmitted(child)
+    requires: not child.filesystem_scope_requested or "filesystem" in child.needs_toys
+    requires: not child.has_export_mismatch
+    ensures: child.lifecycle_state = discovered
+    ensures: child.granted_toys = child.needs_toys
+    ensures: ChildManifestAccepted(child: child)
+}
+
+rule RejectWarmupWhenAlreadyRunning {
+    when: OperatorRequestsChildWarmup(orchestrator)
+    requires: orchestrator.warmup_state = running
+    ensures: ChildWarmupRejected(reason: "operation_in_progress")
+}
+
+rule StartWarmup {
+    when: OperatorRequestsChildWarmup(orchestrator)
+    requires: orchestrator.warmup_state != running
+    ensures: orchestrator.warmup_state = running
+    ensures: orchestrator.children_ready_count = 0
+    ensures: ChildWarmupStarted(orchestrator: orchestrator)
+}
+
+rule MarkChildActivatedDuringWarmup {
+    when: ChildOnLoadSucceeded(child, orchestrator)
+    requires: orchestrator.warmup_state = running
+    ensures: child.lifecycle_state = active
+    ensures: child.health_status = healthy
+    ensures: orchestrator.children_ready_count = orchestrator.children_ready_count + 1
+    ensures: orchestrator.degraded_children = orchestrator.degraded_children - {child}
+}
+
+rule MarkChildDegradedDuringWarmup {
+    when: ChildOnLoadFailed(child, orchestrator, reason)
+    requires: orchestrator.warmup_state = running
+    ensures: child.lifecycle_state = degraded
+    ensures: child.last_error = reason
+    ensures: orchestrator.degraded_children = orchestrator.degraded_children + {child}
+}
+
+rule FinishWarmupWithoutFailures {
+    when: ChildWarmupFinished(orchestrator, failed_count)
+    requires: orchestrator.warmup_state = running
+    requires: failed_count = 0
+    ensures: orchestrator.warmup_state = complete
+    ensures: ChildWarmupReported(orchestrator: orchestrator, status: "warmed", failed_count: failed_count)
+}
+
+rule FinishWarmupWithFailures {
+    when: ChildWarmupFinished(orchestrator, failed_count)
+    requires: orchestrator.warmup_state = running
+    requires: failed_count > 0
+    ensures: orchestrator.warmup_state = failed
+    ensures: ChildWarmupReported(orchestrator: orchestrator, status: "warmed_with_failures", failed_count: failed_count)
+}
+
+rule RejectReloadWhenOperationInProgress {
+    when: OperatorRequestsChildReload(child)
+    requires: child.reload_lock_state = held
+    ensures: ChildReloadRejected(child: child, reason: "operation_in_progress")
+}
+
+rule StartChildReload {
+    when: OperatorRequestsChildReload(child)
+    requires: child.reload_lock_state = idle
+    ensures: child.reload_lock_state = held
+    ensures: child.lifecycle_state = reloading
+    ensures: ChildReloadSwapRequested(child: child)
+}
+
+rule CompleteReloadWithFailure {
+    when: ChildReloadSwapFailed(child, reason)
+    requires: child.lifecycle_state = reloading
+    ensures: child.reload_lock_state = idle
+    ensures: child.lifecycle_state = degraded
+    ensures: child.last_error = reason
+    ensures: ChildReloadReported(child: child, status: "reload_failed", reason: reason)
+}
+
+rule CompleteReloadWithSuccess {
+    when: ChildReloadSwapSucceeded(child)
+    requires: child.lifecycle_state = reloading
+    ensures: child.reload_lock_state = idle
+    ensures: child.lifecycle_state = active
+    ensures: child.health_status = healthy
+    ensures: ChildReloadReported(child: child, status: "reloaded")
+}
+
+rule DenyBusinessHandleWhenChildIsWitOnly {
+    when: ChildHandleRequested(_, child, action_kind, action_name)
+    requires: child.ingress_mode = wit_only
+    requires: action_kind = business
+    ensures: child.handle_calls_failed = child.handle_calls_failed + 1
+    ensures: ChildHandleDenied(child: child, action: action_name, reason: "ingress_wit_only")
+}
+
+rule DispatchHandleRequest {
+    when: ChildHandleRequested(_, child, action_kind, action_name)
+    requires: child.ingress_mode = handle or child.ingress_mode = hybrid or action_kind = lifecycle
+    ensures: ChildHandleDispatched(child: child, action: action_name)
+}
+
+rule RecordHandleSuccess {
+    when: ChildHandleSucceeded(child, action_name)
+    ensures: child.handle_calls_succeeded = child.handle_calls_succeeded + 1
+    ensures: ChildHandleObserved(child: child, action: action_name, outcome: "success")
+}
+
+rule RecordHandleFailure {
+    when: ChildHandleFailed(child, action_name, error)
+    ensures: child.handle_calls_failed = child.handle_calls_failed + 1
+    ensures: child.last_error = error
+    ensures: ChildHandleObserved(child: child, action: action_name, outcome: "error")
+}
+
+rule DenyTypedCallWhenIngressModeIsHandle {
+    when: ChildTypedCallRequested(_, child, operation_id, correlation_run_id)
+    requires: child.ingress_mode = handle
+    ensures: child.typed_calls_denied = child.typed_calls_denied + 1
+    ensures: TypedCallObservation.created(
+        child: child,
+        operation_id: operation_id,
+        outcome: denied,
+        deny_reason: "ingress_handle_mode",
+        correlation_run_id: correlation_run_id
+    )
+}
+
+rule DenyTypedCallWhenWitOnlyAllowlistIsEmpty {
+    when: ChildTypedCallRequested(_, child, operation_id, correlation_run_id)
+    requires: child.ingress_mode = wit_only
+    requires: child.typed_allowlist.count = 0
+    ensures: child.typed_calls_denied = child.typed_calls_denied + 1
+    ensures: TypedCallObservation.created(
+        child: child,
+        operation_id: operation_id,
+        outcome: denied,
+        deny_reason: "wit_only_empty_allowlist",
+        correlation_run_id: correlation_run_id
+    )
+}
+
+rule DenyTypedCallWhenOperationIsNotAllowlisted {
+    when: ChildTypedCallRequested(_, child, operation_id, correlation_run_id)
+    requires: child.typed_allowlist.count > 0
+    requires: operation_id not in child.typed_allowlist
+    ensures: child.typed_calls_denied = child.typed_calls_denied + 1
+    ensures: TypedCallObservation.created(
+        child: child,
+        operation_id: operation_id,
+        outcome: denied,
+        deny_reason: "operation_not_allowlisted",
+        correlation_run_id: correlation_run_id
+    )
+}
+
+rule DispatchTypedCallWhenHybridAllowsOperation {
+    when: ChildTypedCallRequested(_, child, operation_id, correlation_run_id)
+    requires: child.ingress_mode = hybrid
+    requires: child.typed_allowlist.count = 0 or operation_id in child.typed_allowlist
+    ensures: ChildTypedCallDispatched(
+        child: child,
+        operation_id: operation_id,
+        correlation_run_id: correlation_run_id
+    )
+}
+
+rule DispatchTypedCallWhenWitOnlyAllowsOperation {
+    when: ChildTypedCallRequested(_, child, operation_id, correlation_run_id)
+    requires: child.ingress_mode = wit_only
+    requires: child.typed_allowlist.count > 0
+    requires: operation_id in child.typed_allowlist
+    ensures: ChildTypedCallDispatched(
+        child: child,
+        operation_id: operation_id,
+        correlation_run_id: correlation_run_id
+    )
+}
+
+rule RecordTypedCallSuccess {
+    when: ChildTypedCallSucceeded(child, operation_id, correlation_run_id)
+    ensures: child.typed_calls_succeeded = child.typed_calls_succeeded + 1
+    ensures: TypedCallObservation.created(
+        child: child,
+        operation_id: operation_id,
+        outcome: success,
+        correlation_run_id: correlation_run_id
+    )
+}
+
+rule RecordTypedCallFailure {
+    when: ChildTypedCallFailed(child, operation_id, correlation_run_id, error)
+    ensures: child.typed_calls_failed = child.typed_calls_failed + 1
+    ensures: child.last_error = error
+    ensures: TypedCallObservation.created(
+        child: child,
+        operation_id: operation_id,
+        outcome: error,
+        error: error,
+        correlation_run_id: correlation_run_id
+    )
+}
+
+rule DenyToyInvocationWhenToyNotGranted {
+    when: ToyInvocationRequested(_, child, toy_name, target_name)
+    requires: toy_name not in child.granted_toys
+    ensures: ToyInvocationDenied(
+        child: child,
+        toy_name: toy_name,
+        target_name: target_name,
+        reason: "toy_not_granted"
+    )
+}
+
+rule DenyEventInvocationWhenStreamNotGranted {
+    when: ToyInvocationRequested(_, child, toy_name, target_name)
+    requires: toy_name = "events"
+    requires: toy_name in child.granted_toys
+    requires: target_name not in child.granted_event_streams
+    ensures: ToyInvocationDenied(
+        child: child,
+        toy_name: toy_name,
+        target_name: target_name,
+        reason: "event_stream_not_granted"
+    )
+}
+
+rule DenyTaskInvocationWhenIntentNotGranted {
+    when: ToyInvocationRequested(_, child, toy_name, target_name)
+    requires: toy_name = "task"
+    requires: toy_name in child.granted_toys
+    requires: target_name not in child.granted_task_intents
+    ensures: ToyInvocationDenied(
+        child: child,
+        toy_name: toy_name,
+        target_name: target_name,
+        reason: "task_intent_not_granted"
+    )
+}
+
+rule DispatchToyInvocationWhenGranted {
+    when: ToyInvocationRequested(_, child, toy_name, target_name)
+    requires: toy_name in child.granted_toys
+    requires:
+        (
+            toy_name != "events"
+            and toy_name != "task"
+        )
+        or (toy_name = "events" and target_name in child.granted_event_streams)
+        or (toy_name = "task" and target_name in child.granted_task_intents)
+    ensures: ToyInvocationDispatched(child: child, toy_name: toy_name, target_name: target_name)
+}
+
+surface MotherChildInvocationAPI {
+    facing runtime: InterfaceRuntime
+    context child: ChildRuntime
+
+    exposes:
+        runtime.kind
+        child.name
+        child.kind
+        child.ingress_mode
+        child.lifecycle_state
+        child.health_status
+        child.declared_operations
+        child.exported_operations
+        child.typed_allowlist
+        child.granted_toys
+        child.granted_event_streams
+        child.granted_task_intents
+        child.typed_call_observations.count
+
+    provides:
+        ChildHandleRequested(runtime, child, action_kind, action_name)
+        ChildTypedCallRequested(runtime, child, operation_id, correlation_run_id)
+        ToyInvocationRequested(runtime, child, toy_name, target_name)
+}
+
+surface MotherChildOrchestrationAPI {
+    facing _: InterfaceRuntime
+
+    provides:
+        ChildManifestSubmitted(child)
+        OperatorRequestsChildWarmup(orchestrator)
+        OperatorRequestsChildReload(child)
+
+        ChildOnLoadSucceeded(child, orchestrator)
+        ChildOnLoadFailed(child, orchestrator, reason)
+        ChildWarmupFinished(orchestrator, failed_count)
+
+        ChildReloadSwapFailed(child, reason)
+        ChildReloadSwapSucceeded(child)
+
+        ChildHandleSucceeded(child, action_name)
+        ChildHandleFailed(child, action_name, error)
+
+        ChildTypedCallSucceeded(child, operation_id, correlation_run_id)
+        ChildTypedCallFailed(child, operation_id, correlation_run_id, error)
+}
+
+surface MotherChildReadinessAPI {
+    facing _: InterfaceRuntime
+    context orchestrator: ChildOrchestrator
+
+    exposes:
+        orchestrator.warmup_mode
+        orchestrator.warmup_state
+        orchestrator.children_total
+        orchestrator.children_ready_count
+        orchestrator.degraded_children
+        orchestrator.refresh_state
+}
+
+rule EmitTypedCallAuditSignal {
+    when: observation: TypedCallObservation.created
+    ensures: TypedCallObserved(
+        child: observation.child,
+        operation_id: observation.operation_id,
+        outcome: observation.outcome,
+        deny_reason: observation.deny_reason,
+        error: observation.error,
+        correlation_run_id: observation.correlation_run_id
+    )
+}
+
+open question "Should typed call history eviction (limit 512) be specified as a strict behavioral guarantee or as an implementation policy?"
+open question "For hybrid ingress mode, should empty allowlist continue to mean allow-all typed calls, or become explicit-deny by default?"

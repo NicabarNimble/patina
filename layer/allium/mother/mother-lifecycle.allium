@@ -1,0 +1,269 @@
+-- allium: 3
+-- mother-lifecycle.allium
+
+-- Scope: Mother daemon lifecycle command behavior
+-- Includes: start/stop/restart/status/install/uninstall semantics
+-- Excludes:
+--   - child and toy orchestration details
+--   - source/graph routing behavior
+--   - secrets/session behavior
+
+entity Operator {
+    name: String
+}
+
+entity HostEnvironment {
+    platform: macos | linux | other
+    homebrew_launchd_installed: Boolean
+}
+
+entity MotherDaemon {
+    lifecycle: stopped | starting | running | stopping | failed
+    transport: uds_http | tcp_http
+    startup_profile: full | core
+    rivet_integration: enabled | disabled
+    supervisor_backend: manual | launchd_patina | launchd_homebrew | systemd_user
+    pid_file_state: absent | present | stale
+    control_plane_ready: Boolean
+    warmup_mode: auto | manual
+    warmup_state: pending | running | complete | failed
+    last_failure_stage: String?
+    last_failure_message: String?
+    stop_deadline_at: Timestamp?
+
+    is_supervised: supervisor_backend = launchd_patina or supervisor_backend = systemd_user or supervisor_backend = launchd_homebrew
+    manual_start_blocked: supervisor_backend = launchd_patina or supervisor_backend = systemd_user
+}
+
+config {
+    stop_timeout: Duration = 5.seconds
+}
+
+given {
+    daemon: MotherDaemon
+    host: HostEnvironment
+}
+
+rule ManualStartRejectedWhenManagedBySupervisor {
+    when: OperatorStartsMotherManually(operator)
+    requires: daemon.lifecycle = stopped
+    requires: daemon.manual_start_blocked
+    ensures: MotherStartRejected(operator: operator, reason: "managed-by-supervisor")
+}
+
+rule ManualStartAccepted {
+    when: OperatorStartsMotherManually(operator)
+    requires: daemon.lifecycle = stopped
+    requires: not daemon.manual_start_blocked
+    ensures: daemon.lifecycle = starting
+    ensures: daemon.control_plane_ready = false
+    ensures: MotherStartupRequested(daemon: daemon, operator: operator, invocation: "manual")
+}
+
+rule SupervisedStartAccepted {
+    when: OperatorStartsMotherUnderSupervisor(operator)
+    requires: daemon.lifecycle = stopped
+    ensures: daemon.lifecycle = starting
+    ensures: daemon.control_plane_ready = false
+    ensures: MotherStartupRequested(daemon: daemon, operator: operator, invocation: "supervised")
+}
+
+rule StartupSucceeded {
+    when: MotherStartupCompleted(daemon)
+    requires: daemon.lifecycle = starting
+    ensures: daemon.lifecycle = running
+    ensures: daemon.control_plane_ready = true
+    ensures: daemon.pid_file_state = present
+}
+
+rule StartupFailed {
+    when: MotherStartupFailed(daemon, stage, message)
+    requires: daemon.lifecycle = starting
+    ensures: daemon.lifecycle = failed
+    ensures: daemon.control_plane_ready = false
+    ensures: daemon.last_failure_stage = stage
+    ensures: daemon.last_failure_message = message
+}
+
+rule StopWhenNoPidFile {
+    when: OperatorStopsMother(operator)
+    requires: daemon.pid_file_state = absent
+    ensures: MotherStopObserved(operator: operator, daemon: daemon, outcome: "not_running_no_pid")
+}
+
+rule StopWhenStalePidFile {
+    when: OperatorStopsMother(operator)
+    requires: daemon.pid_file_state = stale
+    ensures: daemon.pid_file_state = absent
+    ensures: MotherStopObserved(operator: operator, daemon: daemon, outcome: "not_running_stale_pid")
+}
+
+rule StopRunningDaemon {
+    when: OperatorStopsMother(operator)
+    requires: daemon.lifecycle = running
+    ensures: daemon.lifecycle = stopping
+    ensures: daemon.stop_deadline_at = now + config.stop_timeout
+    ensures: MotherSigtermSent(operator: operator, daemon: daemon)
+}
+
+rule StopCompletes {
+    when: MotherProcessExited(daemon)
+    requires: daemon.lifecycle = stopping
+    ensures: daemon.lifecycle = stopped
+    ensures: daemon.pid_file_state = absent
+    ensures: daemon.control_plane_ready = false
+    ensures: MotherStopObserved(daemon: daemon, outcome: "stopped")
+}
+
+rule StopTimesOut {
+    when: _: MotherDaemon.stop_deadline_at <= now
+    requires: daemon.lifecycle = stopping
+    ensures: MotherStopObserved(daemon: daemon, outcome: "timed_out")
+}
+
+rule RestartDelegatesToSupervisor {
+    when: OperatorRestartsMother(operator)
+    requires: daemon.is_supervised
+    ensures: SupervisorRestartRequested(operator: operator, backend: daemon.supervisor_backend)
+}
+
+rule RestartOnManualBackend {
+    when: OperatorRestartsMother(operator)
+    requires: daemon.supervisor_backend = manual
+    ensures: OperatorStopsMother(operator)
+    ensures: OperatorStartsMotherManually(operator)
+}
+
+rule InstallRejectedOnUnsupportedPlatform {
+    when: OperatorInstallsMotherSupervisor(operator)
+    requires: host.platform = other
+    ensures: MotherInstallRejected(operator: operator, reason: "unsupported-platform")
+}
+
+rule InstallRejectedWhenHomebrewOwnsLaunchd {
+    when: OperatorInstallsMotherSupervisor(operator)
+    requires: host.platform = macos
+    requires: host.homebrew_launchd_installed
+    ensures: MotherInstallRejected(operator: operator, reason: "managed-by-homebrew")
+}
+
+rule InstallLaunchdSupervisor {
+    when: OperatorInstallsMotherSupervisor(operator)
+    requires: host.platform = macos
+    requires: not host.homebrew_launchd_installed
+    ensures: daemon.supervisor_backend = launchd_patina
+    ensures: MotherSupervisorInstalled(operator: operator, backend: "launchd")
+}
+
+rule InstallSystemdSupervisor {
+    when: OperatorInstallsMotherSupervisor(operator)
+    requires: host.platform = linux
+    ensures: daemon.supervisor_backend = systemd_user
+    ensures: MotherSupervisorInstalled(operator: operator, backend: "systemd-user")
+}
+
+rule UninstallRejectedOnUnsupportedPlatform {
+    when: OperatorUninstallsMotherSupervisor(operator)
+    requires: host.platform = other
+    ensures: MotherUninstallRejected(operator: operator, reason: "unsupported-platform")
+}
+
+rule UninstallLaunchdSupervisor {
+    when: OperatorUninstallsMotherSupervisor(operator)
+    requires: host.platform = macos
+    ensures: daemon.supervisor_backend = manual
+    ensures: MotherSupervisorUninstalled(operator: operator, backend: "launchd")
+}
+
+rule UninstallSystemdSupervisor {
+    when: OperatorUninstallsMotherSupervisor(operator)
+    requires: host.platform = linux
+    ensures: daemon.supervisor_backend = manual
+    ensures: MotherSupervisorUninstalled(operator: operator, backend: "systemd-user")
+}
+
+rule StatusWhenRunning {
+    when: OperatorRequestsMotherStatus(operator)
+    requires: daemon.lifecycle = running
+    ensures: MotherStatusReported(
+        operator: operator,
+        daemon: daemon,
+        running: true,
+        lifecycle: daemon.lifecycle,
+        transport: daemon.transport,
+        startup_profile: daemon.startup_profile,
+        rivet_integration: daemon.rivet_integration,
+        supervisor_backend: daemon.supervisor_backend,
+        pid_file_state: daemon.pid_file_state,
+        control_plane_ready: daemon.control_plane_ready,
+        warmup_mode: daemon.warmup_mode,
+        warmup_state: daemon.warmup_state
+    )
+}
+
+rule StatusWhenStoppedOrFailed {
+    when: OperatorRequestsMotherStatus(operator)
+    requires: daemon.lifecycle in {stopped, failed}
+    ensures: MotherStatusReported(
+        operator: operator,
+        daemon: daemon,
+        running: false,
+        lifecycle: daemon.lifecycle,
+        transport: daemon.transport,
+        startup_profile: daemon.startup_profile,
+        rivet_integration: daemon.rivet_integration,
+        supervisor_backend: daemon.supervisor_backend,
+        pid_file_state: daemon.pid_file_state,
+        control_plane_ready: daemon.control_plane_ready,
+        warmup_mode: daemon.warmup_mode,
+        warmup_state: daemon.warmup_state,
+        last_failure_stage: daemon.last_failure_stage,
+        last_failure_message: daemon.last_failure_message
+    )
+}
+
+surface MotherLifecycleCLI {
+    facing operator: Operator
+    context daemon: MotherDaemon
+
+    exposes:
+        operator.name
+        daemon.lifecycle
+        daemon.transport
+        daemon.startup_profile
+        daemon.rivet_integration
+        daemon.supervisor_backend
+        daemon.pid_file_state
+        daemon.control_plane_ready
+        daemon.warmup_mode
+        daemon.warmup_state
+        daemon.last_failure_stage
+        daemon.last_failure_message
+
+    provides:
+        OperatorStartsMotherManually(operator)
+            when daemon.lifecycle = stopped
+        OperatorStartsMotherUnderSupervisor(operator)
+            when daemon.lifecycle = stopped
+        OperatorStopsMother(operator)
+        OperatorRestartsMother(operator)
+        OperatorInstallsMotherSupervisor(operator)
+        OperatorUninstallsMotherSupervisor(operator)
+        OperatorRequestsMotherStatus(operator)
+}
+
+surface MotherRuntimeSignals {
+    facing _: HostEnvironment
+    context daemon: MotherDaemon
+
+    provides:
+        MotherStartupCompleted(daemon)
+            when daemon.lifecycle = starting
+        MotherStartupFailed(daemon, stage, message)
+            when daemon.lifecycle = starting
+        MotherProcessExited(daemon)
+            when daemon.lifecycle = stopping
+}
+
+open question "Should status expose supervisor-specific diagnostics (launchd label/systemd unit/homebrew conflict) as structured fields or human guidance only?"
+open question "Should restart on manual backend be modeled as an atomic outcome or as sequential stop then start with visible intermediate failure modes?"

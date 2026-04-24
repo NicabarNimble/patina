@@ -3,6 +3,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 const TOYS_REGISTRY_PATH: &str = "wit/toys/deps/toys-registry.toml";
@@ -18,6 +19,7 @@ const PREVIEW2_PROPOSALS: [&str; 7] = [
     "cli",
     "http",
 ];
+static SNAPSHOT_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone)]
 pub struct ToyEntry {
@@ -30,12 +32,35 @@ pub struct ToyEntry {
     pub path: Option<String>,
     pub registry_key: String,
     pub tier: ToyTier,
+    pub governance_state: ToyGovernanceState,
+    pub owner: Option<String>,
+    pub upstreamability: Option<String>,
+    pub reviewed_at: Option<String>,
+    pub deprecation: Option<ToyDeprecation>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToyTier {
     Preview2,
     Patina,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToyGovernanceState {
+    Local,
+    CommunityExperimental,
+    Candidate,
+    Approved,
+    Deprecated,
+    Retired,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToyDeprecation {
+    pub status: String,
+    pub successor: Option<String>,
+    pub remove_after: Option<String>,
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -110,20 +135,106 @@ struct UpstreamFile {
 
 impl ToyEntry {
     pub fn tier_label(&self) -> &'static str {
-        match self.tier {
+        self.tier.as_str()
+    }
+}
+
+impl ToyTier {
+    fn as_str(self) -> &'static str {
+        match self {
             ToyTier::Preview2 => "wasi-preview2",
             ToyTier::Patina => "patina",
         }
     }
+
+    fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "wasi-preview2" | "preview2" | "wasi-p2" | "p2" => Some(Self::Preview2),
+            "patina" => Some(Self::Patina),
+            _ => None,
+        }
+    }
+}
+
+impl ToyGovernanceState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::CommunityExperimental => "community-experimental",
+            Self::Candidate => "candidate",
+            Self::Approved => "approved",
+            Self::Deprecated => "deprecated",
+            Self::Retired => "retired",
+        }
+    }
+
+    fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "local" => Some(Self::Local),
+            "community-experimental" | "community" | "experimental" => {
+                Some(Self::CommunityExperimental)
+            }
+            "candidate" => Some(Self::Candidate),
+            "approved" => Some(Self::Approved),
+            "deprecated" => Some(Self::Deprecated),
+            "retired" => Some(Self::Retired),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ToyListFilter {
+    pub state: Option<ToyGovernanceState>,
+    pub tier: Option<ToyTier>,
+}
+
+fn parse_state_filter(raw: Option<&str>) -> Result<Option<ToyGovernanceState>> {
+    match raw {
+        None => Ok(None),
+        Some(value) => ToyGovernanceState::parse(value)
+            .map(Some)
+            .ok_or_else(|| anyhow::anyhow!("unknown toy governance state '{}'", value)),
+    }
+}
+
+fn parse_tier_filter(raw: Option<&str>) -> Result<Option<ToyTier>> {
+    match raw {
+        None => Ok(None),
+        Some(value) => ToyTier::parse(value)
+            .map(Some)
+            .ok_or_else(|| anyhow::anyhow!("unknown toy tier '{}'", value)),
+    }
+}
+
+pub fn toys_list(project_root: &Path, state: Option<&str>, tier: Option<&str>) -> Result<()> {
+    let filter = ToyListFilter {
+        state: parse_state_filter(state)?,
+        tier: parse_tier_filter(tier)?,
+    };
+    render_toys_status(project_root, filter)
 }
 
 pub fn toys_status(project_root: &Path) -> Result<()> {
+    render_toys_status(project_root, ToyListFilter::default())
+}
+
+fn render_toys_status(project_root: &Path, filter: ToyListFilter) -> Result<()> {
     let registry = load_registry(project_root)?;
     let entries = registry.entries;
     let preview2_count = entries
         .iter()
         .filter(|entry| entry.tier == ToyTier::Preview2)
         .count();
+    let filtered: Vec<&ToyEntry> = entries
+        .iter()
+        .filter(|entry| {
+            filter
+                .state
+                .is_none_or(|state| entry.governance_state == state)
+        })
+        .filter(|entry| filter.tier.is_none_or(|tier| entry.tier == tier))
+        .collect();
 
     println!(
         "Toy Registry: {}",
@@ -139,16 +250,55 @@ pub fn toys_status(project_root: &Path) -> Result<()> {
         "Patina toys: {}",
         entries.len().saturating_sub(preview2_count)
     );
+    if let Some(state) = filter.state {
+        println!("State filter: {}", state.as_str());
+    }
+    if let Some(tier) = filter.tier {
+        println!("Tier filter: {}", tier.as_str());
+    }
+    println!("Visible entries: {} / {}", filtered.len(), entries.len());
     println!();
     println!(
-        "{:<22} {:<8} {:<10} {:<14}",
-        "name", "version", "source", "tier"
+        "{:<22} {:<8} {:<10} {:<14} {:<22} {:<14} {:<12} {:<12} {:<12}",
+        "name",
+        "version",
+        "source",
+        "tier",
+        "state",
+        "owner",
+        "upstream",
+        "reviewed",
+        "deprecation"
     );
-    println!("{:-<22} {:-<8} {:-<10} {:-<14}", "", "", "", "");
+    println!(
+        "{:-<22} {:-<8} {:-<10} {:-<14} {:-<22} {:-<14} {:-<12} {:-<12} {:-<12}",
+        "", "", "", "", "", "", "", "", ""
+    );
 
-    for entry in entries {
+    for entry in filtered {
+        let reviewed = entry
+            .reviewed_at
+            .as_deref()
+            .map(|value| value.chars().take(10).collect::<String>())
+            .unwrap_or_else(|| "-".to_string());
+        let deprecation = entry
+            .deprecation
+            .as_ref()
+            .map(|meta| {
+                if let Some(remove_after) = meta.remove_after.as_deref() {
+                    format!("{}@{}", meta.status, remove_after)
+                } else if let Some(successor) = meta.successor.as_deref() {
+                    format!("{}->{}", meta.status, successor)
+                } else if let Some(note) = meta.note.as_deref() {
+                    format!("{} ({})", meta.status, note)
+                } else {
+                    meta.status.clone()
+                }
+            })
+            .unwrap_or_else(|| "-".to_string());
+
         println!(
-            "{:<22} {:<8} {:<10} {:<14}",
+            "{:<22} {:<8} {:<10} {:<14} {:<22} {:<14} {:<12} {:<12} {:<12}",
             entry.id,
             entry.version,
             if entry.tier == ToyTier::Preview2 {
@@ -156,7 +306,12 @@ pub fn toys_status(project_root: &Path) -> Result<()> {
             } else {
                 "patina"
             },
-            entry.tier_label()
+            entry.tier_label(),
+            entry.governance_state.as_str(),
+            entry.owner.as_deref().unwrap_or("-"),
+            entry.upstreamability.as_deref().unwrap_or("-"),
+            reviewed,
+            deprecation
         );
     }
 
@@ -474,6 +629,14 @@ pub fn load_registry(project_root: &Path) -> Result<RegistryData> {
     let preview2_source = string_field(preview2, "preview2", "source")?;
     let preview2_version = string_field(preview2, "preview2", "version")?;
     let preview2_proposals = string_array_field(preview2, "proposals");
+    let preview2_default_state =
+        parse_state_field(preview2, "preview2")?.unwrap_or(ToyGovernanceState::Approved);
+    let preview2_default_owner =
+        optional_string_field(preview2, "owner").or(Some("wasi-upstream".to_string()));
+    let preview2_default_upstreamability =
+        optional_string_field(preview2, "upstreamability").or(Some("n/a".to_string()));
+    let preview2_default_reviewed_at = optional_string_field(preview2, "reviewed_at");
+    let preview2_default_deprecation = parse_deprecation_field(preview2, "preview2")?;
     if preview2_proposals.is_empty() {
         bail!("[preview2] must declare proposals");
     }
@@ -511,6 +674,15 @@ pub fn load_registry(project_root: &Path) -> Result<RegistryData> {
             path,
             registry_key: proposal.to_string(),
             tier: ToyTier::Preview2,
+            governance_state: parse_state_field(entry_table, &format!("preview2.{}", proposal))?
+                .unwrap_or(preview2_default_state),
+            owner: optional_string_field(entry_table, "owner").or(preview2_default_owner.clone()),
+            upstreamability: optional_string_field(entry_table, "upstreamability")
+                .or(preview2_default_upstreamability.clone()),
+            reviewed_at: optional_string_field(entry_table, "reviewed_at")
+                .or(preview2_default_reviewed_at.clone()),
+            deprecation: parse_deprecation_field(entry_table, &format!("preview2.{}", proposal))?
+                .or(preview2_default_deprecation.clone()),
         });
     }
 
@@ -543,6 +715,13 @@ pub fn load_registry(project_root: &Path) -> Result<RegistryData> {
             path: optional_string_field(entry_table, "path"),
             registry_key: id.to_string(),
             tier: ToyTier::Patina,
+            governance_state: parse_state_field(entry_table, id)?
+                .unwrap_or(ToyGovernanceState::Approved),
+            owner: optional_string_field(entry_table, "owner").or(Some("patina-core".to_string())),
+            upstreamability: optional_string_field(entry_table, "upstreamability")
+                .or(Some("unknown".to_string())),
+            reviewed_at: optional_string_field(entry_table, "reviewed_at"),
+            deprecation: parse_deprecation_field(entry_table, id)?,
         });
     }
 
@@ -682,13 +861,15 @@ fn pull_entry_without_compile(
 }
 
 fn create_snapshot(project_root: &Path, targets: &[PathBuf]) -> Result<PathBuf> {
+    let counter = SNAPSHOT_COUNTER.fetch_add(1, Ordering::Relaxed);
     let snapshot_root = std::env::temp_dir().join(format!(
-        "patina-toys-snapshot-{}-{}",
+        "patina-toys-snapshot-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|duration| duration.as_nanos())
-            .unwrap_or(0)
+            .unwrap_or(0),
+        counter
     ));
     std::fs::create_dir_all(&snapshot_root)
         .with_context(|| format!("creating {}", snapshot_root.display()))?;
@@ -792,6 +973,71 @@ fn string_array_field(table: &toml::value::Table, field: &str) -> Vec<String> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+fn parse_state_field(
+    table: &toml::value::Table,
+    entry_id: &str,
+) -> Result<Option<ToyGovernanceState>> {
+    match optional_string_field(table, "state") {
+        None => Ok(None),
+        Some(raw) => ToyGovernanceState::parse(&raw).map(Some).ok_or_else(|| {
+            anyhow::anyhow!(
+                "entry '{}' has invalid governance state '{}': expected one of local, community-experimental, candidate, approved, deprecated, retired",
+                entry_id,
+                raw
+            )
+        }),
+    }
+}
+
+fn parse_deprecation_field(
+    table: &toml::value::Table,
+    entry_id: &str,
+) -> Result<Option<ToyDeprecation>> {
+    let Some(value) = table.get("deprecation") else {
+        return Ok(None);
+    };
+
+    match value {
+        toml::Value::String(status) => Ok(Some(ToyDeprecation {
+            status: status.to_string(),
+            successor: None,
+            remove_after: None,
+            note: None,
+        })),
+        toml::Value::Table(details) => {
+            let status = details
+                .get("status")
+                .and_then(toml::Value::as_str)
+                .unwrap_or("deprecated")
+                .to_string();
+            let successor = details
+                .get("successor")
+                .and_then(toml::Value::as_str)
+                .map(ToString::to_string);
+            let remove_after = details
+                .get("remove_after")
+                .and_then(toml::Value::as_str)
+                .map(ToString::to_string);
+            let note = details
+                .get("note")
+                .and_then(toml::Value::as_str)
+                .map(ToString::to_string);
+
+            Ok(Some(ToyDeprecation {
+                status,
+                successor,
+                remove_after,
+                note,
+            }))
+        }
+        other => bail!(
+            "entry '{}' has invalid deprecation field type '{}': expected string or table",
+            entry_id,
+            other.type_str()
+        ),
+    }
 }
 
 pub fn require_upstream(entry: &ToyEntry) -> Result<()> {
@@ -1232,9 +1478,40 @@ mod tests {
             path: None,
             registry_key: "patina-connect".to_string(),
             tier: ToyTier::Patina,
+            governance_state: ToyGovernanceState::Approved,
+            owner: Some("patina-core".to_string()),
+            upstreamability: Some("unknown".to_string()),
+            reviewed_at: None,
+            deprecation: None,
         };
 
         assert!(require_upstream(&entry).is_err());
+    }
+
+    #[test]
+    fn load_registry_parses_governance_metadata_fields() {
+        let registry = "[preview2]\nsource = \"https://github.com/WebAssembly/WASI\"\nversion = \"0.2.8\"\nproposals = [\"io\", \"clocks\", \"random\", \"filesystem\", \"sockets\", \"cli\", \"http\"]\nstate = \"approved\"\nowner = \"wasi-upstream\"\n\n[preview2.io]\npath = \"wasip2/io\"\nupstream_files = [\"error.wit\", \"poll.wit\", \"streams.wit\"]\nfile = \"io.wit\"\nstate = \"candidate\"\nreviewed_at = \"2026-04-22\"\n\n[preview2.clocks]\npath = \"wasip2/clocks\"\nupstream_files = [\"monotonic-clock.wit\", \"wall-clock.wit\", \"timezone.wit\"]\nfile = \"clocks.wit\"\n\n[preview2.random]\npath = \"wasip2/random\"\nupstream_files = [\"random.wit\", \"insecure.wit\", \"insecure-seed.wit\"]\nfile = \"random.wit\"\n\n[preview2.filesystem]\npath = \"wasip2/filesystem\"\nupstream_files = [\"types.wit\", \"preopens.wit\"]\nfile = \"filesystem.wit\"\n\n[preview2.sockets]\npath = \"wasip2/sockets\"\nupstream_files = [\"network.wit\", \"tcp.wit\", \"udp.wit\", \"ip-name-lookup.wit\"]\nfile = \"sockets.wit\"\n\n[preview2.cli]\npath = \"wasip2/cli\"\nupstream_files = [\"command.wit\", \"environment.wit\", \"exit.wit\", \"run.wit\", \"stdio.wit\", \"terminal.wit\"]\nfile = \"cli.wit\"\n\n[preview2.http]\npath = \"wasip2/http\"\nupstream_files = [\"types.wit\", \"handler.wit\"]\nfile = \"http.wit\"\n\n[patina-connect]\nsource = \"patina\"\nversion = \"0.2.0\"\nfile = \"patina-connect.wit\"\nstate = \"deprecated\"\nowner = \"patina-core\"\nupstreamability = \"unlikely\"\n\n[patina-connect.deprecation]\nstatus = \"deprecated\"\nsuccessor = \"patina-connect-v2\"\nremove_after = \"2026-12-31\"\nnote = \"replaced by v2\"\n";
+        let temp = setup_project(registry, &[]);
+        let entries = load_registry(temp.path()).expect("load registry").entries;
+
+        let io = entries
+            .iter()
+            .find(|entry| entry.id == "wasi-io")
+            .expect("wasi-io entry");
+        assert_eq!(io.governance_state, ToyGovernanceState::Candidate);
+        assert_eq!(io.owner.as_deref(), Some("wasi-upstream"));
+        assert_eq!(io.reviewed_at.as_deref(), Some("2026-04-22"));
+
+        let connect = entries
+            .iter()
+            .find(|entry| entry.id == "patina-connect")
+            .expect("patina-connect entry");
+        assert_eq!(connect.governance_state, ToyGovernanceState::Deprecated);
+        assert_eq!(connect.upstreamability.as_deref(), Some("unlikely"));
+        let deprecation = connect.deprecation.as_ref().expect("deprecation metadata");
+        assert_eq!(deprecation.status, "deprecated");
+        assert_eq!(deprecation.successor.as_deref(), Some("patina-connect-v2"));
+        assert_eq!(deprecation.remove_after.as_deref(), Some("2026-12-31"));
     }
 
     #[test]

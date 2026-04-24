@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Install Rust toolchain
       run: rustup show
@@ -50,6 +52,12 @@ jobs:
           ${{ runner.os }}-cargo-lint-
           ${{ runner.os }}-cargo-
 
+    - name: Install Allium CLI
+      run: |
+        if ! command -v allium >/dev/null 2>&1; then
+          cargo install --locked allium-cli
+        fi
+
     - name: Check crate naming policy
       run: bash resources/scripts/check-crate-names.sh
     - name: Check single SDK surface
@@ -62,6 +70,12 @@ jobs:
       run: bash resources/scripts/check-layer-output-contract.sh
     - name: Check retired MCP surface invariants
       run: bash resources/scripts/check-retired-mcp-surface.sh
+
+    - name: Validate Allium Mother specs and refresh plans
+      run: layer/allium/mother/regenerate-artifacts.sh
+
+    - name: Ensure Allium plans are committed
+      run: git diff --exit-code -- layer/allium/mother/*.plan.json
 
     - name: Check Rust formatting
       run: cargo fmt --all -- --check

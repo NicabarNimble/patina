@@ -130,6 +130,7 @@ libc = "0.2"
 # Testing utilities
 tempfile = "3.14"
 approx = "0.5"  # Testing similarity scores
+patina-ai-child-slate-manager = { path = "children/slate-manager" }
 
 [[bin]]
 name = "patina"

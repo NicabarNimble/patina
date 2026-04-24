@@ -10,21 +10,25 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 struct SlateManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct SpecFrontmatterLite {
     id: String,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     r#type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     blocked_by: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     paused_date: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     blocked_date: Option<String>,
     #[serde(default)]
     exit_criteria: Vec<ExitCriterionLite>,
@@ -50,6 +54,173 @@ struct SpecRecord {
     body: String,
     design_path: Option<String>,
     design_body: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ReleaseBump {
+    Patch,
+    Minor,
+    Major,
+}
+
+fn bump_from_spec_type(spec_type: &str) -> Option<ReleaseBump> {
+    match spec_type {
+        "fix" | "refactor" => Some(ReleaseBump::Patch),
+        "feat" => Some(ReleaseBump::Minor),
+        _ => None,
+    }
+}
+
+fn compute_next_version(current: &str, bump: ReleaseBump) -> Result<String, String> {
+    let parts: Vec<u32> = current
+        .split('.')
+        .map(|segment| {
+            segment
+                .parse::<u32>()
+                .map_err(|_| format!("Invalid version component '{}'", segment))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if parts.len() != 3 {
+        return Err(format!("Expected semver format (x.y.z), got '{}'", current));
+    }
+
+    Ok(match bump {
+        ReleaseBump::Patch => format!("{}.{}.{}", parts[0], parts[1], parts[2] + 1),
+        ReleaseBump::Minor => format!("{}.{}.0", parts[0], parts[1] + 1),
+        ReleaseBump::Major => format!("{}.0.0", parts[0] + 1),
+    })
+}
+
+fn read_cargo_version(root: &Path) -> Result<String, String> {
+    let content = fs::read_to_string(root.join("Cargo.toml"))
+        .map_err(|e| format!("failed reading Cargo.toml: {}", e))?;
+    let mut in_package_section = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_package_section = trimmed == "[package]";
+            continue;
+        }
+        if in_package_section && trimmed.starts_with("version") && trimmed.contains('=') {
+            let value = trimmed
+                .split('=')
+                .nth(1)
+                .map(str::trim)
+                .map(|v| v.trim_matches('"').trim_matches('\''))
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| "Could not parse version in Cargo.toml [package]".to_string())?;
+            return Ok(value.to_string());
+        }
+    }
+
+    Err("Could not find version in Cargo.toml [package]".to_string())
+}
+
+fn update_cargo_version(root: &Path, new_version: &str) -> Result<(), String> {
+    let path = root.join("Cargo.toml");
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path.display(), e))?;
+
+    let mut in_package_section = false;
+    let mut version_updated = false;
+    let mut new_content = String::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_package_section = trimmed == "[package]";
+        }
+        if in_package_section && !version_updated && trimmed.starts_with("version") {
+            new_content.push_str(&format!("version = \"{}\"\n", new_version));
+            version_updated = true;
+        } else {
+            new_content.push_str(line);
+            new_content.push('\n');
+        }
+    }
+
+    if !version_updated {
+        return Err("Could not find version field in [package] section of Cargo.toml".to_string());
+    }
+
+    fs::write(&path, new_content).map_err(|e| format!("write {}: {}", path.display(), e))
+}
+
+fn ensure_release_safeguards(root: &Path, new_version: &str) -> Result<(), String> {
+    if !patina::git::git::is_clean_tracked()? {
+        return Err(
+            "Working tree has uncommitted changes. Commit or stash before release.".to_string(),
+        );
+    }
+
+    let behind = patina::git::git::commits_behind_upstream()?;
+    if behind > 0 {
+        return Err(format!(
+            "Branch is {} commits behind remote. Pull changes first.",
+            behind
+        ));
+    }
+
+    if patina::git::git::is_diverged()? {
+        return Err("Branch has diverged from remote. Resolve divergence first.".to_string());
+    }
+
+    let version_tag = format!("v{}", new_version);
+    if patina::git::git::tag_exists(&version_tag)? {
+        return Err(format!("Tag '{}' already exists", version_tag));
+    }
+
+    let index_path = root.join(".patina/local/data/patina.db");
+    if !index_path.exists() {
+        return Err(
+            "No index found. Run 'patina scrape layer' first to build the index.".to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+fn complete_with_release(
+    root: &Path,
+    spec: &SpecRecord,
+    bump: ReleaseBump,
+) -> Result<String, String> {
+    let old_version = read_cargo_version(root)?;
+    let new_version = compute_next_version(&old_version, bump)?;
+    ensure_release_safeguards(root, &new_version)?;
+
+    update_cargo_version(root, &new_version)?;
+
+    let spec_path = Path::new(&spec.path);
+    let remove_target = spec_path
+        .parent()
+        .filter(|parent| parent.file_name().is_some())
+        .map(|dir| to_repo_relative(root, dir))
+        .unwrap_or_else(|| to_repo_relative(root, spec_path));
+
+    patina::git::git::remove_paths(std::slice::from_ref(&remove_target))?;
+
+    let mut stage_paths = vec!["Cargo.toml".to_string()];
+    if root.join("Cargo.lock").exists() {
+        stage_paths.push("Cargo.lock".to_string());
+    }
+    patina::git::git::add_paths(&stage_paths)?;
+
+    let title = extract_title(&spec.body)
+        .or(spec.frontmatter.title.clone())
+        .unwrap_or_else(|| spec.frontmatter.id.clone());
+    let commit_msg = format!("release: v{} — {}", new_version, title);
+    patina::git::git::commit(&commit_msg)?;
+
+    let version_tag = format!("v{}", new_version);
+    patina::git::git::create_tag_at(&version_tag, "HEAD")?;
+
+    let spec_tag = format!("spec/{}", spec.frontmatter.id);
+    patina::git::git::create_tag_at(&spec_tag, "HEAD~1")?;
+
+    Ok(new_version)
 }
 
 fn extract_command_name(payload: &serde_json::Value) -> Option<String> {
@@ -92,8 +263,8 @@ fn find_project_root() -> Result<PathBuf, String> {
     }
 }
 
-fn resolve_project_root_from_envelope(envelope: &serde_json::Value) -> Result<PathBuf, String> {
-    if let Some(project) = envelope.get("project").and_then(|value| value.as_str()) {
+fn resolve_project_root_from_hint(project: Option<&str>) -> Result<PathBuf, String> {
+    if let Some(project) = project {
         let trimmed = project.trim();
         if !trimmed.is_empty() {
             let candidate = PathBuf::from(trimmed);
@@ -115,6 +286,36 @@ fn resolve_project_root_from_envelope(envelope: &serde_json::Value) -> Result<Pa
     }
 
     find_project_root()
+}
+
+fn resolve_project_root_from_envelope(envelope: &serde_json::Value) -> Result<PathBuf, String> {
+    resolve_project_root_from_hint(envelope.get("project").and_then(|value| value.as_str()))
+}
+
+fn with_project_root_cwd<T>(
+    project_root: &Path,
+    f: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let original = std::env::current_dir().map_err(|e| e.to_string())?;
+    std::env::set_current_dir(project_root).map_err(|e| {
+        format!(
+            "failed to enter project root {}: {}",
+            project_root.display(),
+            e
+        )
+    })?;
+
+    let result = f();
+
+    let restore = std::env::set_current_dir(&original)
+        .map_err(|e| format!("failed to restore cwd {}: {}", original.display(), e));
+
+    match (result, restore) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(restore_error)) => Err(restore_error),
+        (Err(error), Err(_)) => Err(error),
+    }
 }
 
 fn extract_frontmatter_and_body(content: &str) -> Option<(&str, &str)> {
@@ -170,14 +371,14 @@ fn load_specs(root: &Path) -> Result<Vec<SpecRecord>, String> {
             Some(path) if path.exists() => {
                 let body = fs::read_to_string(&path)
                     .map_err(|e| format!("read {}: {}", path.display(), e))?;
-                (Some(path.to_string_lossy().to_string()), Some(body))
+                (Some(to_repo_relative(root, &path)), Some(body))
             }
             _ => (None, None),
         };
 
         records.push(SpecRecord {
             frontmatter,
-            path: file.to_string_lossy().to_string(),
+            path: to_repo_relative(root, &file),
             body: body.to_string(),
             design_path,
             design_body,
@@ -460,10 +661,25 @@ fn slugify(text: &str) -> String {
     }
 }
 
-fn handle_list(root: &Path) -> Result<serde_json::Value, String> {
+fn handle_list(
+    root: &Path,
+    args: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Result<serde_json::Value, String> {
+    let status_filter = arg_string(args, "status");
+    let target_filter = arg_string(args, "target");
+
     let specs = load_specs(root)?;
     let data: Vec<serde_json::Value> = specs
         .into_iter()
+        .filter(|spec| {
+            let status_ok = status_filter
+                .as_deref()
+                .is_none_or(|expected| spec.frontmatter.status.as_deref() == Some(expected));
+            let target_ok = target_filter
+                .as_deref()
+                .is_none_or(|expected| spec.frontmatter.target.as_deref() == Some(expected));
+            status_ok && target_ok
+        })
         .map(|spec| {
             let title = extract_title(&spec.body)
                 .or(spec.frontmatter.title.clone())
@@ -473,7 +689,7 @@ fn handle_list(root: &Path) -> Result<serde_json::Value, String> {
                 "status": spec.frontmatter.status,
                 "target": spec.frontmatter.target,
                 "title": title,
-                "unscraped": false,
+                "unscraped": true,
             })
         })
         .collect();
@@ -831,6 +1047,7 @@ fn handle_complete(
 ) -> Result<serde_json::Value, String> {
     let id = require_id(args, "complete")?;
     let force = arg_bool(args, "force", false);
+    let major = arg_bool(args, "major", false);
 
     let specs = load_specs(root)?;
     let spec = find_spec(&specs, id)?;
@@ -868,11 +1085,24 @@ fn handle_complete(
         .r#type
         .clone()
         .unwrap_or_else(|| "explore".to_string());
-    if spec_type != "explore" {
-        return Err(format!(
-            "slate execute complete for spec '{}' with type '{}' is not implemented yet (release parity pending)",
-            id, spec_type
-        ));
+
+    let bump = if major {
+        Some(ReleaseBump::Major)
+    } else {
+        bump_from_spec_type(&spec_type)
+    };
+
+    if let Some(bump) = bump {
+        let new_version = complete_with_release(root, spec, bump)?;
+        let _ = new_version;
+        return Ok(serde_json::json!({
+            "command": "complete",
+            "spec_id": id,
+            "new_status": "complete",
+            "file": spec.path,
+            "tag": format!("spec/{}", id),
+            "archived": true,
+        }));
     }
 
     let mut completed = spec.clone();
@@ -913,7 +1143,6 @@ fn handle_archive(
         return Ok(serde_json::json!({
             "stale": true,
             "dry_run": dry_run,
-            "count": stale_specs.len(),
         }));
     }
 
@@ -938,29 +1167,22 @@ fn dispatch_data_from_envelope(
     let args = extract_command_args(envelope);
     let project_root = resolve_project_root_from_envelope(envelope)?;
 
-    let data = match command.as_str() {
-        "list" => handle_list(&project_root)?,
-        "next" => handle_next(&project_root)?,
-        "check" => handle_check(&project_root, args)?,
-        "show" => handle_show(&project_root, args)?,
-        "prompt" => handle_prompt(&project_root, args)?,
-        "handoff" => handle_handoff(&project_root, args)?,
-        "packet" => handle_packet(&project_root, args)?,
-        "complete" => handle_complete(&project_root, args)?,
-        "archive" => handle_archive(&project_root, args)?,
-        _ => {
-            return Ok((
-                command.clone(),
-                backend_mode,
-                project_root,
-                serde_json::json!({
-                    "status": "scaffold",
-                    "message": format!("command '{}' not implemented", command),
-                    "command": command,
-                }),
-            ))
-        }
-    };
+    let data = with_project_root_cwd(&project_root, || match command.as_str() {
+        "list" => handle_list(&project_root, args),
+        "next" => handle_next(&project_root),
+        "check" => handle_check(&project_root, args),
+        "show" => handle_show(&project_root, args),
+        "prompt" => handle_prompt(&project_root, args),
+        "handoff" => handle_handoff(&project_root, args),
+        "packet" => handle_packet(&project_root, args),
+        "complete" => handle_complete(&project_root, args),
+        "archive" => handle_archive(&project_root, args),
+        _ => Ok(serde_json::json!({
+            "status": "scaffold",
+            "message": format!("command '{}' not implemented", command),
+            "command": command,
+        })),
+    })?;
 
     Ok((command, backend_mode, project_root, data))
 }
@@ -973,6 +1195,479 @@ pub fn dispatch_for_test(command_json: &str) -> Result<serde_json::Value, String
 }
 
 impl exports::patina::slate::control::Guest for SlateManager {
+    fn list_specs(
+        req: exports::patina::slate::control::ListRequest,
+    ) -> Result<Vec<exports::patina::slate::control::SpecSummary>, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let specs = load_specs(&project_root)?;
+            let rows = specs
+                .into_iter()
+                .filter(|spec| {
+                    let status_ok = req.status.as_deref().is_none_or(|expected| {
+                        spec.frontmatter.status.as_deref() == Some(expected)
+                    });
+                    let target_ok = req.target.as_deref().is_none_or(|expected| {
+                        spec.frontmatter.target.as_deref() == Some(expected)
+                    });
+                    status_ok && target_ok
+                })
+                .map(|spec| {
+                    let title = extract_title(&spec.body)
+                        .or(spec.frontmatter.title.clone())
+                        .unwrap_or_else(|| spec.frontmatter.id.clone());
+                    exports::patina::slate::control::SpecSummary {
+                        id: spec.frontmatter.id,
+                        status: spec.frontmatter.status,
+                        target: spec.frontmatter.target,
+                        title,
+                        unscraped: true,
+                    }
+                })
+                .collect::<Vec<_>>();
+            Ok(rows)
+        })
+    }
+
+    fn next_specs(
+        req: exports::patina::slate::control::NextRequest,
+    ) -> Result<Vec<exports::patina::slate::control::NextRecommendation>, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let value = handle_next(&project_root)?;
+            let rows = value
+                .as_array()
+                .ok_or_else(|| "next result must be an array".to_string())?
+                .iter()
+                .map(|item| {
+                    let obj = item
+                        .as_object()
+                        .ok_or_else(|| "next item must be an object".to_string())?;
+                    let id = obj
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| "next item missing id".to_string())?
+                        .to_string();
+                    let status = obj
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| "next item missing status".to_string())?
+                        .to_string();
+                    let reason = obj
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| "next item missing reason".to_string())?
+                        .to_string();
+                    let priority = obj
+                        .get("priority")
+                        .and_then(|v| v.as_u64())
+                        .ok_or_else(|| "next item missing priority".to_string())?;
+                    let impact = obj.get("impact").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let queue_position = obj.get("queue_position").and_then(|v| v.as_u64());
+                    Ok(exports::patina::slate::control::NextRecommendation {
+                        id,
+                        status,
+                        reason,
+                        priority: u32::try_from(priority)
+                            .map_err(|_| "priority exceeds u32".to_string())?,
+                        impact: u32::try_from(impact)
+                            .map_err(|_| "impact exceeds u32".to_string())?,
+                        queue_position: queue_position
+                            .map(|value| {
+                                u32::try_from(value)
+                                    .map_err(|_| "queue_position exceeds u32".to_string())
+                            })
+                            .transpose()?,
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok(rows)
+        })
+    }
+
+    fn check_spec(
+        req: exports::patina::slate::control::SpecIdRequest,
+    ) -> Result<exports::patina::slate::control::CheckResult, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let value = handle_check(
+                &project_root,
+                Some(&serde_json::Map::from_iter([(
+                    "id".to_string(),
+                    serde_json::Value::String(req.id.clone()),
+                )])),
+            )?;
+            let obj = value
+                .as_object()
+                .ok_or_else(|| "check result must be an object".to_string())?;
+
+            let unchecked = obj
+                .get("unchecked")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| "check result missing unchecked list".to_string())?
+                .iter()
+                .map(|item| {
+                    let row = item
+                        .as_object()
+                        .ok_or_else(|| "unchecked item must be an object".to_string())?;
+                    Ok(exports::patina::slate::control::UncheckedCriterion {
+                        id: row
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| "unchecked item missing id".to_string())?
+                            .to_string(),
+                        text: row
+                            .get("text")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| "unchecked item missing text".to_string())?
+                            .to_string(),
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+
+            Ok(exports::patina::slate::control::CheckResult {
+                spec_id: obj
+                    .get("spec_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "check result missing spec_id".to_string())?
+                    .to_string(),
+                total: u32::try_from(
+                    obj.get("total")
+                        .and_then(|v| v.as_u64())
+                        .ok_or_else(|| "check result missing total".to_string())?,
+                )
+                .map_err(|_| "check total exceeds u32".to_string())?,
+                checked: u32::try_from(
+                    obj.get("checked")
+                        .and_then(|v| v.as_u64())
+                        .ok_or_else(|| "check result missing checked".to_string())?,
+                )
+                .map_err(|_| "check checked exceeds u32".to_string())?,
+                unchecked,
+                passed: obj
+                    .get("passed")
+                    .and_then(|v| v.as_bool())
+                    .ok_or_else(|| "check result missing passed".to_string())?,
+            })
+        })
+    }
+
+    fn show_spec(
+        req: exports::patina::slate::control::SpecIdRequest,
+    ) -> Result<exports::patina::slate::control::ShowResult, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let value = handle_show(
+                &project_root,
+                Some(&serde_json::Map::from_iter([(
+                    "id".to_string(),
+                    serde_json::Value::String(req.id.clone()),
+                )])),
+            )?;
+            let obj = value
+                .as_object()
+                .ok_or_else(|| "show result must be an object".to_string())?;
+
+            let parse_string_vec = |key: &str| -> Result<Vec<String>, String> {
+                obj.get(key)
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| format!("show result missing {}", key))?
+                    .iter()
+                    .map(|v| {
+                        v.as_str()
+                            .ok_or_else(|| format!("show {} element must be string", key))
+                            .map(|s| s.to_string())
+                    })
+                    .collect::<Result<Vec<_>, String>>()
+            };
+
+            let design_outline = obj
+                .get("design_outline")
+                .and_then(|v| v.as_array())
+                .map(|values| {
+                    values
+                        .iter()
+                        .map(|v| {
+                            v.as_str()
+                                .ok_or_else(|| {
+                                    "show design_outline element must be string".to_string()
+                                })
+                                .map(|s| s.to_string())
+                        })
+                        .collect::<Result<Vec<_>, String>>()
+                })
+                .transpose()?;
+
+            let frontmatter_json = serde_json::to_string(
+                obj.get("frontmatter")
+                    .ok_or_else(|| "show result missing frontmatter".to_string())?,
+            )
+            .map_err(|error| format!("serialize frontmatter: {}", error))?;
+
+            Ok(exports::patina::slate::control::ShowResult {
+                id: obj
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "show result missing id".to_string())?
+                    .to_string(),
+                frontmatter_json,
+                outline: parse_string_vec("outline")?,
+                design_outline,
+                files: parse_string_vec("files")?,
+                direct_code_targets: parse_string_vec("direct_code_targets")?,
+                resolved_decisions: parse_string_vec("resolved_decisions")?,
+                implementation_order: parse_string_vec("implementation_order")?,
+                verification_points: parse_string_vec("verification_points")?,
+                open_questions: parse_string_vec("open_questions")?,
+                path: obj
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "show result missing path".to_string())?
+                    .to_string(),
+                design_path: obj
+                    .get("design_path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            })
+        })
+    }
+
+    fn prompt_spec(
+        req: exports::patina::slate::control::SpecIdRequest,
+    ) -> Result<exports::patina::slate::control::PromptResult, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let specs = load_specs(&project_root)?;
+            let spec = find_spec(&specs, &req.id)?;
+            let packet = build_prompt_packet(spec);
+            let obj = packet
+                .as_object()
+                .ok_or_else(|| "prompt packet must be object".to_string())?;
+
+            let parse_vec = |key: &str| -> Result<Vec<String>, String> {
+                obj.get(key)
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| format!("prompt missing {}", key))?
+                    .iter()
+                    .map(|v| {
+                        v.as_str()
+                            .ok_or_else(|| format!("prompt {} element must be string", key))
+                            .map(|s| s.to_string())
+                    })
+                    .collect::<Result<Vec<_>, String>>()
+            };
+
+            Ok(exports::patina::slate::control::PromptResult {
+                spec_id: obj
+                    .get("spec_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "prompt missing spec_id".to_string())?
+                    .to_string(),
+                status: obj
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "prompt missing status".to_string())?
+                    .to_string(),
+                title: obj
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "prompt missing title".to_string())?
+                    .to_string(),
+                goal: obj
+                    .get("goal")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "prompt missing goal".to_string())?
+                    .to_string(),
+                read_first: parse_vec("read_first")?,
+                spec_path: obj
+                    .get("spec_path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "prompt missing spec_path".to_string())?
+                    .to_string(),
+                design_path: obj
+                    .get("design_path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                direct_code_targets: parse_vec("direct_code_targets")?,
+                execution_order: parse_vec("execution_order")?,
+                constraints: parse_vec("constraints")?,
+                verification: parse_vec("verification")?,
+                definition_of_done: parse_vec("definition_of_done")?,
+                session_workflow: parse_vec("session_workflow")?,
+            })
+        })
+    }
+
+    fn handoff_spec(
+        req: exports::patina::slate::control::SpecIdRequest,
+    ) -> Result<exports::patina::slate::control::HandoffResult, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let specs = load_specs(&project_root)?;
+            let spec = find_spec(&specs, &req.id)?;
+            let packet = build_handoff_packet(spec);
+            let obj = packet
+                .as_object()
+                .ok_or_else(|| "handoff packet must be object".to_string())?;
+
+            let parse_vec = |key: &str| -> Result<Vec<String>, String> {
+                obj.get(key)
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(|| format!("handoff missing {}", key))?
+                    .iter()
+                    .map(|v| {
+                        v.as_str()
+                            .ok_or_else(|| format!("handoff {} element must be string", key))
+                            .map(|s| s.to_string())
+                    })
+                    .collect::<Result<Vec<_>, String>>()
+            };
+
+            let progress = obj
+                .get("progress")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| "handoff missing progress".to_string())?;
+
+            Ok(exports::patina::slate::control::HandoffResult {
+                spec_id: obj
+                    .get("spec_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "handoff missing spec_id".to_string())?
+                    .to_string(),
+                status: obj
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "handoff missing status".to_string())?
+                    .to_string(),
+                title: obj
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "handoff missing title".to_string())?
+                    .to_string(),
+                progress: exports::patina::slate::control::ProgressSummary {
+                    checked: u32::try_from(
+                        progress
+                            .get("checked")
+                            .and_then(|v| v.as_u64())
+                            .ok_or_else(|| "handoff progress missing checked".to_string())?,
+                    )
+                    .map_err(|_| "handoff progress checked exceeds u32".to_string())?,
+                    total: u32::try_from(
+                        progress
+                            .get("total")
+                            .and_then(|v| v.as_u64())
+                            .ok_or_else(|| "handoff progress missing total".to_string())?,
+                    )
+                    .map_err(|_| "handoff progress total exceeds u32".to_string())?,
+                },
+                resolved_decisions: parse_vec("resolved_decisions")?,
+                completed_items: parse_vec("completed_items")?,
+                open_items: parse_vec("open_items")?,
+                next_steps: parse_vec("next_steps")?,
+                verification: parse_vec("verification")?,
+                spec_path: obj
+                    .get("spec_path")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "handoff missing spec_path".to_string())?
+                    .to_string(),
+                design_path: obj
+                    .get("design_path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            })
+        })
+    }
+
+    fn packet_spec(
+        req: exports::patina::slate::control::SpecIdRequest,
+    ) -> Result<exports::patina::slate::control::PacketResult, String> {
+        let prompt = Self::prompt_spec(exports::patina::slate::control::SpecIdRequest {
+            project: req.project.clone(),
+            id: req.id.clone(),
+        })?;
+        let handoff = Self::handoff_spec(req)?;
+        Ok(exports::patina::slate::control::PacketResult { prompt, handoff })
+    }
+
+    fn complete_spec(
+        req: exports::patina::slate::control::CompleteRequest,
+    ) -> Result<exports::patina::slate::control::CompleteResult, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let args = serde_json::Map::from_iter([
+                ("id".to_string(), serde_json::Value::String(req.id.clone())),
+                ("major".to_string(), serde_json::Value::Bool(req.major)),
+                ("force".to_string(), serde_json::Value::Bool(req.force)),
+            ]);
+            let value = handle_complete(&project_root, Some(&args))?;
+            let obj = value
+                .as_object()
+                .ok_or_else(|| "complete result must be an object".to_string())?;
+            Ok(exports::patina::slate::control::CompleteResult {
+                command: obj
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "complete result missing command".to_string())?
+                    .to_string(),
+                spec_id: obj
+                    .get("spec_id")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "complete result missing spec_id".to_string())?
+                    .to_string(),
+                new_status: obj
+                    .get("new_status")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "complete result missing new_status".to_string())?
+                    .to_string(),
+                file: obj
+                    .get("file")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "complete result missing file".to_string())?
+                    .to_string(),
+                tag: obj
+                    .get("tag")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| "complete result missing tag".to_string())?
+                    .to_string(),
+                archived: obj
+                    .get("archived")
+                    .and_then(|v| v.as_bool())
+                    .ok_or_else(|| "complete result missing archived".to_string())?,
+            })
+        })
+    }
+
+    fn archive_spec(
+        req: exports::patina::slate::control::ArchiveRequest,
+    ) -> Result<exports::patina::slate::control::ArchiveResult, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let mut args = serde_json::Map::new();
+            if let Some(id) = req.id.clone() {
+                args.insert("id".to_string(), serde_json::Value::String(id));
+            }
+            args.insert("stale".to_string(), serde_json::Value::Bool(req.stale));
+            args.insert("dry_run".to_string(), serde_json::Value::Bool(req.dry_run));
+
+            let value = handle_archive(&project_root, Some(&args))?;
+            let obj = value
+                .as_object()
+                .ok_or_else(|| "archive result must be an object".to_string())?;
+
+            Ok(exports::patina::slate::control::ArchiveResult {
+                id: obj
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.to_string()),
+                stale: obj.get("stale").and_then(|v| v.as_bool()).unwrap_or(false),
+                dry_run: obj
+                    .get("dry_run")
+                    .and_then(|v| v.as_bool())
+                    .ok_or_else(|| "archive result missing dry_run".to_string())?,
+            })
+        })
+    }
+
     fn dispatch(command_json: String) -> Result<String, String> {
         toys::measure::counter("slate_dispatch_calls", 1.0)?;
 
@@ -997,4 +1692,5 @@ impl exports::patina::slate::control::Guest for SlateManager {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 export!(SlateManager);

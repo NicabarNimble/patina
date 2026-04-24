@@ -381,7 +381,7 @@ impl ApiRuntime for ServerState {
             }
         }
 
-        #[derive(serde::Deserialize)]
+        #[derive(serde::Deserialize, serde::Serialize)]
         struct SpecDispatchEnvelope {
             command: patina::spec::SpecCommands,
             #[serde(default)]
@@ -398,17 +398,110 @@ impl ApiRuntime for ServerState {
             let backend_mode = SpecBackendMode::parse(envelope.backend_mode.as_deref());
 
             let dispatch_to_slate =
-                |command_payload: &serde_json::Value| -> anyhow::Result<(serde_json::Value, serde_json::Value)> {
-                    let command_json = serde_json::to_string(command_payload).context(
-                        "Failed to serialize spec dispatch envelope for slate dispatch",
-                    )?;
+                |command: &patina::spec::SpecCommands,
+                 project: Option<&str>|
+                 -> anyhow::Result<(serde_json::Value, serde_json::Value, String)> {
+                    let project_value = project.map(|value| value.to_string());
+
+                    let typed_operation = match command {
+                        patina::spec::SpecCommands::List { status, target, .. } => Some((
+                            "patina:slate/control.list-specs".to_string(),
+                            serde_json::json!([{
+                                "project": project_value,
+                                "status": status,
+                                "target": target,
+                            }]),
+                        )),
+                        patina::spec::SpecCommands::Next { .. } => Some((
+                            "patina:slate/control.next-specs".to_string(),
+                            serde_json::json!([{
+                                "project": project_value,
+                            }]),
+                        )),
+                        patina::spec::SpecCommands::Check { id, .. } => Some((
+                            "patina:slate/control.check-spec".to_string(),
+                            serde_json::json!([{
+                                "project": project_value,
+                                "id": id,
+                            }]),
+                        )),
+                        patina::spec::SpecCommands::Show { id, .. } => Some((
+                            "patina:slate/control.show-spec".to_string(),
+                            serde_json::json!([{
+                                "project": project_value,
+                                "id": id,
+                            }]),
+                        )),
+                        patina::spec::SpecCommands::Prompt { id, .. } => Some((
+                            "patina:slate/control.prompt-spec".to_string(),
+                            serde_json::json!([{
+                                "project": project_value,
+                                "id": id,
+                            }]),
+                        )),
+                        patina::spec::SpecCommands::Handoff { id, .. } => Some((
+                            "patina:slate/control.handoff-spec".to_string(),
+                            serde_json::json!([{
+                                "project": project_value,
+                                "id": id,
+                            }]),
+                        )),
+                        patina::spec::SpecCommands::Packet { id, .. } => Some((
+                            "patina:slate/control.packet-spec".to_string(),
+                            serde_json::json!([{
+                                "project": project_value,
+                                "id": id,
+                            }]),
+                        )),
+                        patina::spec::SpecCommands::Complete {
+                            id, major, force, ..
+                        } => Some((
+                            "patina:slate/control.complete-spec".to_string(),
+                            serde_json::json!([{
+                                "project": project_value,
+                                "id": id,
+                                "major": major,
+                                "force": force,
+                            }]),
+                        )),
+                        patina::spec::SpecCommands::Archive { id, dry_run, stale } => Some((
+                            "patina:slate/control.archive-spec".to_string(),
+                            serde_json::json!([{
+                                "project": project_value,
+                                "id": id,
+                                "stale": stale,
+                                "dry-run": dry_run,
+                            }]),
+                        )),
+                        _ => None,
+                    };
+
+                    let (operation_id, args) = if let Some((operation_id, args)) = typed_operation {
+                        (operation_id, args)
+                    } else {
+                        let command_payload = serde_json::to_value(SpecDispatchEnvelope {
+                            command: command.clone(),
+                            project: project_value,
+                            origin_project: envelope.origin_project.clone(),
+                            backend_mode: envelope.backend_mode.clone(),
+                        })
+                        .context("Failed to serialize fallback spec dispatch envelope")?;
+                        let command_json = serde_json::to_string(&command_payload).context(
+                            "Failed to serialize fallback spec dispatch envelope as string",
+                        )?;
+                        (
+                            "patina:slate/control.dispatch".to_string(),
+                            serde_json::json!([command_json]),
+                        )
+                    };
+
                     let response = self
                         .registry
                         .call(
                             "slate-manager",
                             &patina::mother::ChildCallRequest {
-                                operation_id: "patina:slate/control.dispatch".to_string(),
-                                args: serde_json::json!([command_json]),
+                                operation_id: operation_id.clone(),
+                                args,
                                 correlation: None,
                             },
                         )
@@ -448,13 +541,15 @@ impl ApiRuntime for ServerState {
                         ok_value.clone()
                     };
 
-                    Ok((data, response.payload))
+                    Ok((data, response.payload, operation_id))
                 };
 
             if backend_mode == SpecBackendMode::Execute {
                 let json_mode = envelope.command.wants_json();
-                let (slate_data, slate_payload) = dispatch_to_slate(&request.command)
-                    .map_err(|error| anyhow::anyhow!("slate execute dispatch failed: {}", error))?;
+                let (slate_data, slate_payload, slate_operation_id) =
+                    dispatch_to_slate(&envelope.command, envelope.project.as_deref()).map_err(
+                        |error| anyhow::anyhow!("slate execute dispatch failed: {}", error),
+                    )?;
 
                 let scaffold_only = slate_data
                     .get("status")
@@ -476,25 +571,26 @@ impl ApiRuntime for ServerState {
                     "backend": {
                         "mode": backend_mode.as_str(),
                         "engine": "slate-manager",
-                        "operation_id": "patina:slate/control.dispatch",
+                        "operation_id": slate_operation_id,
                         "slate_payload": slate_payload,
                     }
                 }));
             }
 
             let mut payload = patina::spec::execute_command_value_with_route_backend(
-                envelope.command,
-                envelope.project,
-                envelope.origin_project,
-                envelope.backend_mode,
+                envelope.command.clone(),
+                envelope.project.clone(),
+                envelope.origin_project.clone(),
+                envelope.backend_mode.clone(),
             )?;
 
             if backend_mode == SpecBackendMode::Observe {
-                let probe = match dispatch_to_slate(&request.command) {
-                    Ok((data, raw_payload)) => serde_json::json!({
+                let probe = match dispatch_to_slate(&envelope.command, envelope.project.as_deref())
+                {
+                    Ok((data, raw_payload, operation_id)) => serde_json::json!({
                         "status": "called",
                         "child": "slate-manager",
-                        "operation_id": "patina:slate/control.dispatch",
+                        "operation_id": operation_id,
                         "data": data,
                         "payload": raw_payload,
                     }),

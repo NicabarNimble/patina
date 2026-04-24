@@ -21,6 +21,17 @@ SDK provides ergonomic outside toy helpers and convenience type exports.
 - `toys::measure::{counter,gauge}`
 - `toys::config::get`
 - `prelude` and root exports for shared SDK-facing types
+- Toy governance canon for MCT authoring: `TOY_GOVERNANCE.md`
+
+## Toy lanes (MCT)
+
+The SDK recognizes three practical lanes for capability contracts:
+
+- **WASI-approved** (`wasi:*`): preferred baseline where standards exist.
+- **Patina-approved** (`patina:*`): first-party deltas for real capability gaps.
+- **Community/local toys**: allowed for experimentation; promotion into approved lane requires governance review.
+
+See `TOY_GOVERNANCE.md` for lifecycle states, promotion gates, and compatibility expectations.
 
 ## Backend-neutral contract (required)
 
