@@ -3,7 +3,7 @@ type: feat
 id: slate-pando-migration
 status: active
 created: 2026-04-07
-updated: 2026-04-21
+updated: 2026-04-22
 beliefs:
   - "[[spec-driven-design]]"
   - "[[safety-boundaries]]"
@@ -25,7 +25,11 @@ related:
   - layer/surface/build/feat/spec-release-pr-automation/SPEC.md
 exit_criteria:
   - id: sp1-parity-command-surface
-    text: "Slate exposes a 1:1 parity command surface for current `patina spec` flows (`list`, `next`, `show`, `check`, `prompt`, `handoff`, `packet`, `complete`, `archive`) with equivalent outputs for existing fixtures."
+    text: "Slate exposes a 1:1 parity command surface for current routed `patina spec` flows (`list`, `next`, `show`, `check`, `prompt`, `handoff`, `packet`, `complete`, `archive`) with equivalent outputs for existing fixtures."
+    checked: false
+
+  - id: sp1b-command-gap-contract
+    text: "For `spec` commands not yet owned by Slate (`create`, `ready`, `blocked`, `promote`, `abandon`, `pause`, `resume`, `block`, `split`, `history`, `rename`, `reopen`, `set`), behavior is explicit and fail-closed in Slate execute mode (no hidden JSON fallback)."
     checked: false
 
   - id: sp2-full-wit-child
@@ -134,7 +138,10 @@ Primary principle: **parity first, innovation second**.
 - `patina spec` now resolves backend mode from env or project manifest (`[spec] mode = off|observe|execute`).
 - Observe mode preserves builtin output and appends `backend.slate_probe` metadata.
 - Execute mode routes through typed `slate-manager` call path and fails closed if child is missing/unavailable.
-- Mother now maps supported `spec` commands onto per-command typed Slate operations (`patina:slate/control.*-specs|*-spec`) instead of always tunneling command JSON through `dispatch`.
+- Mother maps supported `spec` commands onto per-command typed Slate operations (`patina:slate/control.*-specs|*-spec`) instead of always tunneling command JSON through `dispatch`.
+- Command-surface delta is now explicit:
+  - Routed to typed Slate today: `list`, `next`, `check`, `show`, `prompt`, `handoff`, `packet`, `complete`, `archive`.
+  - Still core-owned (not Slate-owned): `create`, `ready`, `blocked`, `promote`, `abandon`, `pause`, `resume`, `block`, `split`, `history`, `rename`, `reopen`, `set`.
 - Execute mode is strict fail-closed: when Slate reports scaffold/not-implemented (or any execute-path error), Mother returns an error instead of silently falling back.
 - Added routing smoke coverage in `src/commands/spec/mod.rs` and daemon dispatch tests in `src/commands/mother/daemon/tests/mod.rs`.
 - Started Option A git-toy expansion for Slate mutate/release parity (`create-tag-at`, `status-porcelain`, `add-paths`, `is-clean-tracked`, `commits-behind-upstream`, `is-diverged`) in WIT + host bindings.
@@ -171,16 +178,20 @@ Defaults must replicate current core behavior so projects can opt in without ext
 ## Execution order (implementation slices)
 
 1. **Parity contract freeze**
-   - Lock command/JSON/output fixtures for current `spec` flows.
+   - Lock command/JSON/output fixtures for current routed `spec` flows.
 2. **Full-WIT Slate child scaffold**
    - Add child contract + runtime wiring + minimal toy grants.
 3. **Observe mode routing**
    - `patina spec` can run Slate shadow path and diff outputs.
 4. **Execute mode routing**
    - Enable side effects behind opt-in.
-5. **Per-project policy mapping**
+5. **Command-gap contract hardening**
+   - Make non-Slate `spec` commands explicit in execute mode (clear error contract).
+   - Remove hidden fallback path (`patina:slate/control.dispatch`) once Mother/router behavior is explicit.
+   - Flip `children/slate-manager/child.toml` to `wit-only` after fallback removal.
+6. **Per-project policy mapping**
    - Add CI/PR customization knobs.
-6. **Default-switch readiness review**
+7. **Default-switch readiness review**
    - Keep `spec` compat path until parity criteria stay green across fixtures.
 
 ## Verification
