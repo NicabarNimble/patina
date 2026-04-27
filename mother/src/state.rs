@@ -197,6 +197,40 @@ pub struct ProjectRegistration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectBeliefStateRecord {
+    pub project_uid: String,
+    pub project_id: Option<String>,
+    pub source_commit_sha: Option<String>,
+    pub source_belief_count: Option<i64>,
+    pub source_value_count: Option<i64>,
+    pub source_fingerprint: Option<String>,
+    pub source_last_activity: Option<String>,
+    pub indexed_belief_count: Option<i64>,
+    pub indexed_value_count: Option<i64>,
+    pub indexed_fingerprint: Option<String>,
+    pub status: String,
+    pub last_error: Option<String>,
+    pub last_verified_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectBeliefStateUpdate {
+    pub project_uid: String,
+    pub project_id: Option<String>,
+    pub source_commit_sha: Option<String>,
+    pub source_belief_count: Option<i64>,
+    pub source_value_count: Option<i64>,
+    pub source_fingerprint: Option<String>,
+    pub source_last_activity: Option<String>,
+    pub indexed_belief_count: Option<i64>,
+    pub indexed_value_count: Option<i64>,
+    pub indexed_fingerprint: Option<String>,
+    pub status: String,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartupAttemptRecord {
     pub stage: String,
     pub status: String,
@@ -393,8 +427,211 @@ impl MotherRuntimeStore {
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS mother_users (
+                user_id TEXT PRIMARY KEY,
+                user_handle TEXT NOT NULL UNIQUE,
+                display_name TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (status IN ('active', 'suspended', 'revoked'))
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_nodes (
+                node_id TEXT PRIMARY KEY,
+                node_slug TEXT NOT NULL UNIQUE,
+                hostname TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (status IN ('active', 'maintenance', 'retired'))
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_node_memberships (
+                node_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (node_id, user_id),
+                CHECK (role IN ('full_admin', 'admin', 'member')),
+                CHECK (status IN ('active', 'disabled')),
+                FOREIGN KEY (node_id) REFERENCES mother_nodes(node_id),
+                FOREIGN KEY (user_id) REFERENCES mother_users(user_id)
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mother_node_single_full_admin
+            ON mother_node_memberships(node_id)
+            WHERE role = 'full_admin' AND status = 'active';
+
+            CREATE TABLE IF NOT EXISTS mother_visions (
+                vision_id TEXT PRIMARY KEY,
+                vision_slug TEXT NOT NULL UNIQUE,
+                owner_user_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (status IN ('active', 'archived')),
+                FOREIGN KEY (owner_user_id) REFERENCES mother_users(user_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_vision_memberships (
+                vision_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (vision_id, user_id),
+                CHECK (role IN ('admin', 'member')),
+                CHECK (status IN ('active', 'disabled')),
+                FOREIGN KEY (vision_id) REFERENCES mother_visions(vision_id),
+                FOREIGN KEY (user_id) REFERENCES mother_users(user_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_node_visions (
+                node_id TEXT NOT NULL,
+                vision_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (node_id, vision_id),
+                CHECK (status IN ('active', 'disabled')),
+                FOREIGN KEY (node_id) REFERENCES mother_nodes(node_id),
+                FOREIGN KEY (vision_id) REFERENCES mother_visions(vision_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_project_identities (
+                project_uid TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL UNIQUE,
+                user_id TEXT NOT NULL,
+                vision_id TEXT NOT NULL,
+                node_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                project_path TEXT NOT NULL,
+                registered_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (status IN ('active', 'archived')),
+                FOREIGN KEY (project_uid) REFERENCES project_registry(project_uid),
+                FOREIGN KEY (user_id) REFERENCES mother_users(user_id),
+                FOREIGN KEY (vision_id) REFERENCES mother_visions(vision_id),
+                FOREIGN KEY (node_id) REFERENCES mother_nodes(node_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mother_project_identities_vision
+            ON mother_project_identities(vision_id, status, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS mother_project_belief_state (
+                project_uid TEXT PRIMARY KEY,
+                project_id TEXT,
+                source_commit_sha TEXT,
+                source_belief_count INTEGER,
+                source_value_count INTEGER,
+                source_fingerprint TEXT,
+                source_last_activity TEXT,
+                indexed_belief_count INTEGER,
+                indexed_value_count INTEGER,
+                indexed_fingerprint TEXT,
+                status TEXT NOT NULL DEFAULT 'unknown',
+                last_error TEXT,
+                last_verified_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_uid) REFERENCES project_registry(project_uid),
+                FOREIGN KEY (project_id) REFERENCES mother_project_identities(project_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mother_project_belief_state_status
+            ON mother_project_belief_state(status, updated_at DESC);
+
             CREATE INDEX IF NOT EXISTS idx_project_registry_updated_at
             ON project_registry (updated_at DESC);
+
+            CREATE TRIGGER IF NOT EXISTS trg_node_full_admin_guard_delete
+            BEFORE DELETE ON mother_node_memberships
+            WHEN OLD.role = 'full_admin' AND OLD.status = 'active'
+            BEGIN
+              SELECT CASE
+                WHEN (
+                  SELECT COUNT(*)
+                  FROM mother_node_memberships
+                  WHERE node_id = OLD.node_id AND role = 'full_admin' AND status = 'active'
+                ) <= 1
+                THEN RAISE(ABORT, 'node must retain at least one active full_admin')
+              END;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_node_full_admin_guard_update
+            BEFORE UPDATE ON mother_node_memberships
+            WHEN OLD.role = 'full_admin' AND OLD.status = 'active'
+              AND NOT (NEW.role = 'full_admin' AND NEW.status = 'active')
+            BEGIN
+              SELECT CASE
+                WHEN (
+                  SELECT COUNT(*)
+                  FROM mother_node_memberships
+                  WHERE node_id = OLD.node_id AND role = 'full_admin' AND status = 'active'
+                ) <= 1
+                THEN RAISE(ABORT, 'node must retain at least one active full_admin')
+              END;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_node_vision_guard_delete
+            BEFORE DELETE ON mother_node_visions
+            WHEN OLD.status = 'active'
+            BEGIN
+              SELECT CASE
+                WHEN (
+                  SELECT COUNT(*)
+                  FROM mother_node_visions
+                  WHERE node_id = OLD.node_id AND status = 'active'
+                ) <= 1
+                THEN RAISE(ABORT, 'node must retain at least one active vision')
+              END;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_node_vision_guard_update
+            BEFORE UPDATE ON mother_node_visions
+            WHEN OLD.status = 'active' AND NEW.status <> 'active'
+            BEGIN
+              SELECT CASE
+                WHEN (
+                  SELECT COUNT(*)
+                  FROM mother_node_visions
+                  WHERE node_id = OLD.node_id AND status = 'active'
+                ) <= 1
+                THEN RAISE(ABORT, 'node must retain at least one active vision')
+              END;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_vision_admin_guard_delete
+            BEFORE DELETE ON mother_vision_memberships
+            WHEN OLD.role = 'admin' AND OLD.status = 'active'
+            BEGIN
+              SELECT CASE
+                WHEN (
+                  SELECT COUNT(*)
+                  FROM mother_vision_memberships
+                  WHERE vision_id = OLD.vision_id AND role = 'admin' AND status = 'active'
+                ) <= 1
+                THEN RAISE(ABORT, 'vision must retain at least one active admin')
+              END;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_vision_admin_guard_update
+            BEFORE UPDATE ON mother_vision_memberships
+            WHEN OLD.role = 'admin' AND OLD.status = 'active'
+              AND NOT (NEW.role = 'admin' AND NEW.status = 'active')
+            BEGIN
+              SELECT CASE
+                WHEN (
+                  SELECT COUNT(*)
+                  FROM mother_vision_memberships
+                  WHERE vision_id = OLD.vision_id AND role = 'admin' AND status = 'active'
+                ) <= 1
+                THEN RAISE(ABORT, 'vision must retain at least one active admin')
+              END;
+            END;
             "#,
         )?;
 
@@ -497,16 +734,126 @@ impl MotherRuntimeStore {
         let canonical =
             std::fs::canonicalize(project_path).unwrap_or_else(|_| project_path.to_path_buf());
         let path_text = canonical.to_string_lossy().to_string();
+
+        let existing_path: Option<String> = conn
+            .query_row(
+                "SELECT project_path FROM project_registry WHERE project_uid = ?1",
+                params![project_uid.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if let Some(existing_path) = existing_path {
+            let existing_canonical = std::fs::canonicalize(&existing_path)
+                .unwrap_or_else(|_| PathBuf::from(&existing_path));
+            if existing_canonical != canonical {
+                anyhow::bail!(
+                    "project_uid collision: {} already registered to {} (attempted {})",
+                    project_uid.as_str(),
+                    existing_path,
+                    path_text
+                );
+            }
+        }
+
         conn.execute(
             r#"
             INSERT INTO project_registry (project_uid, project_path, registered_at, updated_at)
             VALUES (?1, ?2, ?3, ?4)
             ON CONFLICT(project_uid) DO UPDATE SET
-                project_path = excluded.project_path,
                 updated_at = excluded.updated_at
             "#,
             params![project_uid.as_str(), path_text, now, now],
         )?;
+
+        self.seed_project_identity_if_possible(&conn, project_uid, &path_text, &now)?;
+        Ok(())
+    }
+
+    fn seed_project_identity_if_possible(
+        &self,
+        conn: &Connection,
+        project_uid: &ProjectUid,
+        project_path: &str,
+        now: &str,
+    ) -> Result<()> {
+        let assignment = conn
+            .query_row(
+                r#"
+                SELECT n.node_id, nm.user_id, nv.vision_id
+                FROM mother_nodes n
+                JOIN mother_node_memberships nm
+                  ON nm.node_id = n.node_id
+                 AND nm.role = 'full_admin'
+                 AND nm.status = 'active'
+                JOIN mother_node_visions nv
+                  ON nv.node_id = n.node_id
+                 AND nv.status = 'active'
+                JOIN mother_vision_memberships vm
+                  ON vm.vision_id = nv.vision_id
+                 AND vm.user_id = nm.user_id
+                 AND vm.role = 'admin'
+                 AND vm.status = 'active'
+                WHERE n.status = 'active'
+                ORDER BY n.updated_at DESC, nv.updated_at DESC
+                LIMIT 1
+                "#,
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .optional()?;
+
+        let Some((node_id, user_id, vision_id)) = assignment else {
+            return Ok(());
+        };
+
+        let project_id = conn
+            .query_row(
+                "SELECT project_id FROM mother_project_identities WHERE project_uid = ?1",
+                params![project_uid.as_str()],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .unwrap_or_else(|| {
+                format!(
+                    "prj_{}",
+                    uuid::Uuid::new_v4().simple().to_string().to_lowercase()
+                )
+            });
+
+        conn.execute(
+            r#"
+            INSERT INTO mother_project_identities (
+                project_uid, project_id, user_id, vision_id, node_id, status,
+                project_path, registered_at, updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?7, ?7)
+            ON CONFLICT(project_uid) DO UPDATE SET
+                project_id = excluded.project_id,
+                user_id = excluded.user_id,
+                vision_id = excluded.vision_id,
+                node_id = excluded.node_id,
+                status = excluded.status,
+                project_path = excluded.project_path,
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                project_uid.as_str(),
+                project_id,
+                user_id,
+                vision_id,
+                node_id,
+                project_path,
+                now,
+            ],
+        )?;
+
         Ok(())
     }
 
@@ -583,6 +930,104 @@ impl MotherRuntimeStore {
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    pub fn upsert_project_belief_state(&self, update: &ProjectBeliefStateUpdate) -> Result<()> {
+        let conn = self.open()?;
+        let now = Utc::now().to_rfc3339();
+
+        conn.execute(
+            r#"
+            INSERT INTO mother_project_belief_state (
+                project_uid,
+                project_id,
+                source_commit_sha,
+                source_belief_count,
+                source_value_count,
+                source_fingerprint,
+                source_last_activity,
+                indexed_belief_count,
+                indexed_value_count,
+                indexed_fingerprint,
+                status,
+                last_error,
+                last_verified_at,
+                updated_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)
+            ON CONFLICT(project_uid) DO UPDATE SET
+                project_id = excluded.project_id,
+                source_commit_sha = excluded.source_commit_sha,
+                source_belief_count = excluded.source_belief_count,
+                source_value_count = excluded.source_value_count,
+                source_fingerprint = excluded.source_fingerprint,
+                source_last_activity = excluded.source_last_activity,
+                indexed_belief_count = excluded.indexed_belief_count,
+                indexed_value_count = excluded.indexed_value_count,
+                indexed_fingerprint = excluded.indexed_fingerprint,
+                status = excluded.status,
+                last_error = excluded.last_error,
+                last_verified_at = excluded.last_verified_at,
+                updated_at = excluded.updated_at
+            "#,
+            params![
+                &update.project_uid,
+                update.project_id.as_deref(),
+                update.source_commit_sha.as_deref(),
+                update.source_belief_count,
+                update.source_value_count,
+                update.source_fingerprint.as_deref(),
+                update.source_last_activity.as_deref(),
+                update.indexed_belief_count,
+                update.indexed_value_count,
+                update.indexed_fingerprint.as_deref(),
+                &update.status,
+                update.last_error.as_deref(),
+                now,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    pub fn get_project_belief_state(
+        &self,
+        project_uid: &str,
+    ) -> Result<Option<ProjectBeliefStateRecord>> {
+        let conn = self.open()?;
+        conn.query_row(
+            r#"
+            SELECT project_uid, project_id, source_commit_sha,
+                   source_belief_count, source_value_count,
+                   source_fingerprint, source_last_activity,
+                   indexed_belief_count, indexed_value_count,
+                   indexed_fingerprint,
+                   status, last_error, last_verified_at, updated_at
+            FROM mother_project_belief_state
+            WHERE project_uid = ?1
+            "#,
+            params![project_uid],
+            |row| {
+                Ok(ProjectBeliefStateRecord {
+                    project_uid: row.get(0)?,
+                    project_id: row.get(1)?,
+                    source_commit_sha: row.get(2)?,
+                    source_belief_count: row.get(3)?,
+                    source_value_count: row.get(4)?,
+                    source_fingerprint: row.get(5)?,
+                    source_last_activity: row.get(6)?,
+                    indexed_belief_count: row.get(7)?,
+                    indexed_value_count: row.get(8)?,
+                    indexed_fingerprint: row.get(9)?,
+                    status: row.get(10)?,
+                    last_error: row.get(11)?,
+                    last_verified_at: row.get(12)?,
+                    updated_at: row.get(13)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(Into::into)
     }
 
     pub fn get_state(&self, plugin_name: &str, key: &str) -> Result<Option<String>> {
@@ -1493,7 +1938,7 @@ mod tests {
     }
 
     #[test]
-    fn project_registration_roundtrips_and_is_idempotent() {
+    fn project_registration_roundtrips_and_rejects_uid_path_collisions() {
         let store = temp_store();
         let uid = ProjectUid::new("2bdc808e").unwrap();
 
@@ -1509,16 +1954,122 @@ mod tests {
 
         let first_registered_at = listed[0].registered_at.clone();
 
-        let second_dir = tempfile::tempdir().unwrap();
-        store.register_project(&uid, second_dir.path()).unwrap();
-
+        // Re-registering the same path is idempotent.
+        store.register_project(&uid, first_dir.path()).unwrap();
         let listed = store.list_registered_projects().unwrap();
         assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].project_uid, "2bdc808e");
-        assert!(listed[0]
-            .project_path
-            .contains(second_dir.path().to_string_lossy().as_ref()));
         assert_eq!(listed[0].registered_at, first_registered_at);
+
+        // Registering a different path with the same UID is a hard error.
+        let second_dir = tempfile::tempdir().unwrap();
+        let collision = store.register_project(&uid, second_dir.path());
+        assert!(collision.is_err());
+        assert!(collision
+            .unwrap_err()
+            .to_string()
+            .contains("project_uid collision"));
+    }
+
+    #[test]
+    fn project_belief_state_roundtrip() {
+        let store = temp_store();
+        let uid = ProjectUid::new("2bdc808e").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        store.register_project(&uid, dir.path()).unwrap();
+
+        let update = ProjectBeliefStateUpdate {
+            project_uid: "2bdc808e".to_string(),
+            project_id: None,
+            source_commit_sha: Some("deadbeef".to_string()),
+            source_belief_count: Some(12),
+            source_value_count: Some(3),
+            source_fingerprint: Some("abc123".to_string()),
+            source_last_activity: Some("2026-04-24".to_string()),
+            indexed_belief_count: Some(12),
+            indexed_value_count: Some(3),
+            indexed_fingerprint: Some("abc123".to_string()),
+            status: "fresh".to_string(),
+            last_error: None,
+        };
+
+        store.upsert_project_belief_state(&update).unwrap();
+        let record = store
+            .get_project_belief_state("2bdc808e")
+            .unwrap()
+            .expect("belief state should exist");
+        assert_eq!(record.project_uid, "2bdc808e");
+        assert_eq!(record.status, "fresh");
+        assert_eq!(record.source_belief_count, Some(12));
+        assert_eq!(record.indexed_belief_count, Some(12));
+        assert_eq!(record.source_commit_sha.as_deref(), Some("deadbeef"));
+    }
+
+    #[test]
+    fn identity_plane_guardrails_prevent_orphaned_authority_rows() {
+        let store = temp_store();
+        let conn = store.open().unwrap();
+        let now = Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO mother_users (user_id, user_handle, display_name, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'active', ?4, ?4)",
+            rusqlite::params!["usr_test", "nicabar", "nicabar", now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO mother_nodes (node_id, node_slug, hostname, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'active', ?4, ?4)",
+            rusqlite::params!["nod_test", "node-a", "node-a", now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO mother_visions (vision_id, vision_slug, owner_user_id, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'active', ?4, ?4)",
+            rusqlite::params!["vis_test", "vision", "usr_test", now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO mother_node_memberships (node_id, user_id, role, status, created_at, updated_at)
+             VALUES (?1, ?2, 'full_admin', 'active', ?3, ?3)",
+            rusqlite::params!["nod_test", "usr_test", now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO mother_vision_memberships (vision_id, user_id, role, status, created_at, updated_at)
+             VALUES (?1, ?2, 'admin', 'active', ?3, ?3)",
+            rusqlite::params!["vis_test", "usr_test", now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO mother_node_visions (node_id, vision_id, status, created_at, updated_at)
+             VALUES (?1, ?2, 'active', ?3, ?3)",
+            rusqlite::params!["nod_test", "vis_test", now],
+        )
+        .unwrap();
+
+        let demote_admin = conn.execute(
+            "UPDATE mother_node_memberships
+             SET role = 'admin'
+             WHERE node_id = 'nod_test' AND user_id = 'usr_test'",
+            [],
+        );
+        assert!(demote_admin.is_err());
+
+        let disable_vision = conn.execute(
+            "UPDATE mother_node_visions
+             SET status = 'disabled'
+             WHERE node_id = 'nod_test' AND vision_id = 'vis_test'",
+            [],
+        );
+        assert!(disable_vision.is_err());
+
+        let demote_vision_admin = conn.execute(
+            "UPDATE mother_vision_memberships
+             SET role = 'member'
+             WHERE vision_id = 'vis_test' AND user_id = 'usr_test'",
+            [],
+        );
+        assert!(demote_vision_admin.is_err());
     }
 
     #[test]
