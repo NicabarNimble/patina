@@ -4,9 +4,12 @@
 //! Supports migration from legacy config.json format.
 
 use anyhow::{Context, Result};
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 // =============================================================================
 // Config Types - Unified Schema
@@ -403,7 +406,8 @@ pub fn get_uid(project_path: &Path) -> Option<String> {
 pub fn register_with_mother(project_path: &Path) -> Result<String> {
     let uid = create_uid_if_missing(project_path)?;
     let uid_typed = crate::mother::ProjectUid::new(uid.clone())?;
-    crate::mother::MotherRuntimeStore::default().register_project(&uid_typed, project_path)?;
+    let store = crate::mother::MotherRuntimeStore::default();
+    store.register_project(&uid_typed, project_path)?;
 
     // Ensure default voice store structure exists (GMDP-G9).
     let _voice_dir =
@@ -413,7 +417,375 @@ pub fn register_with_mother(project_path: &Path) -> Result<String> {
     rusqlite::Connection::open(&beliefs_db)
         .with_context(|| format!("initializing voice store at {}", beliefs_db.display()))?;
 
+    if let Err(error) = verify_project_belief_state(&store, project_path, &uid) {
+        eprintln!(
+            "⚠️  mother belief verification failed for {}: {}",
+            project_path.display(),
+            error
+        );
+    }
+
     Ok(uid)
+}
+
+#[derive(Debug, Clone)]
+struct BeliefInventory {
+    belief_count: i64,
+    value_count: i64,
+    fingerprint: String,
+    last_activity: Option<String>,
+}
+
+fn verify_project_belief_state(
+    store: &crate::mother::MotherRuntimeStore,
+    project_path: &Path,
+    project_uid: &str,
+) -> Result<()> {
+    let project_id = lookup_project_id(store.path(), project_uid)?;
+    let source_commit_sha = resolve_project_head_sha(project_path);
+
+    let source_inventory =
+        read_source_belief_inventory(&crate::eventlog::resolve_patina_db_path(project_path));
+    let indexed_inventory = read_indexed_belief_inventory(project_uid, project_path);
+
+    let mut update = crate::mother::ProjectBeliefStateUpdate {
+        project_uid: project_uid.to_string(),
+        project_id,
+        source_commit_sha,
+        source_belief_count: None,
+        source_value_count: None,
+        source_fingerprint: None,
+        source_last_activity: None,
+        indexed_belief_count: None,
+        indexed_value_count: None,
+        indexed_fingerprint: None,
+        status: "unknown".to_string(),
+        last_error: None,
+    };
+
+    match source_inventory {
+        Ok(Some(source)) => {
+            update.source_belief_count = Some(source.belief_count);
+            update.source_value_count = Some(source.value_count);
+            update.source_fingerprint = Some(source.fingerprint.clone());
+            update.source_last_activity = source.last_activity.clone();
+
+            match indexed_inventory {
+                Ok(Some(indexed)) => {
+                    update.indexed_belief_count = Some(indexed.belief_count);
+                    update.indexed_value_count = Some(indexed.value_count);
+                    update.indexed_fingerprint = Some(indexed.fingerprint.clone());
+
+                    let counts_match = source.belief_count == indexed.belief_count
+                        && source.value_count == indexed.value_count;
+                    let fingerprint_match = source.fingerprint == indexed.fingerprint;
+                    update.status = if counts_match && fingerprint_match {
+                        "fresh".to_string()
+                    } else {
+                        "drifted".to_string()
+                    };
+                }
+                Ok(None) => {
+                    update.status = "index_missing".to_string();
+                }
+                Err(error) => {
+                    update.status = "error".to_string();
+                    update.last_error = Some(format!("indexed inventory failed: {error}"));
+                }
+            }
+        }
+        Ok(None) => {
+            update.status = "source_missing".to_string();
+        }
+        Err(error) => {
+            update.status = "error".to_string();
+            update.last_error = Some(format!("source inventory failed: {error}"));
+        }
+    }
+
+    store.upsert_project_belief_state(&update)?;
+    Ok(())
+}
+
+fn lookup_project_id(state_path: &Path, project_uid: &str) -> Result<Option<String>> {
+    let conn = rusqlite::Connection::open(state_path)
+        .with_context(|| format!("opening mother state db {}", state_path.display()))?;
+    conn.query_row(
+        "SELECT project_id FROM mother_project_identities WHERE project_uid = ?1",
+        rusqlite::params![project_uid],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+fn resolve_project_head_sha(project_path: &Path) -> Option<String> {
+    Command::new("git")
+        .arg("-C")
+        .arg(project_path)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                String::from_utf8(output.stdout)
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            } else {
+                None
+            }
+        })
+}
+
+fn read_source_belief_inventory(db_path: &Path) -> Result<Option<BeliefInventory>> {
+    if !db_path.exists() {
+        return Ok(None);
+    }
+
+    let conn = rusqlite::Connection::open(db_path)
+        .with_context(|| format!("opening project db {}", db_path.display()))?;
+
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='beliefs'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        return Ok(None);
+    }
+
+    let has_kind = conn.prepare("SELECT kind FROM beliefs LIMIT 0").is_ok();
+    let has_status = conn.prepare("SELECT status FROM beliefs LIMIT 0").is_ok();
+    let has_last_activity = conn
+        .prepare("SELECT last_activity FROM beliefs LIMIT 0")
+        .is_ok();
+
+    let status_filter = if has_status {
+        "COALESCE(status, 'active') <> 'archived'"
+    } else {
+        "1=1"
+    };
+    let belief_kind_filter = if has_kind {
+        "(kind IS NULL OR kind <> 'value')"
+    } else {
+        "1=1"
+    };
+    let value_kind_filter = if has_kind { "kind = 'value'" } else { "0=1" };
+
+    let source_belief_count: i64 = conn.query_row(
+        &format!(
+            "SELECT COUNT(*) FROM beliefs WHERE {} AND {}",
+            status_filter, belief_kind_filter
+        ),
+        [],
+        |row| row.get(0),
+    )?;
+    let source_value_count: i64 = conn.query_row(
+        &format!(
+            "SELECT COUNT(*) FROM beliefs WHERE {} AND {}",
+            status_filter, value_kind_filter
+        ),
+        [],
+        |row| row.get(0),
+    )?;
+
+    let kind_select = if has_kind {
+        "COALESCE(kind, 'belief')"
+    } else {
+        "'belief'"
+    };
+    let status_select = if has_status {
+        "COALESCE(status, 'active')"
+    } else {
+        "'active'"
+    };
+    let last_activity_select = if has_last_activity {
+        "COALESCE(last_activity, '')"
+    } else {
+        "''"
+    };
+
+    let mut hasher = Sha256::new();
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, {}, {}, {} FROM beliefs WHERE {} ORDER BY id",
+        kind_select, status_select, last_activity_select, status_filter
+    ))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let id: String = row.get(0)?;
+        let kind: String = row.get(1)?;
+        let status: String = row.get(2)?;
+        let last_activity: String = row.get(3)?;
+        hasher.update(id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(kind.as_bytes());
+        hasher.update(b"|");
+        hasher.update(status.as_bytes());
+        hasher.update(b"|");
+        hasher.update(last_activity.as_bytes());
+        hasher.update(b"\n");
+    }
+    let source_fingerprint = format!("{:x}", hasher.finalize());
+
+    let source_last_activity = if has_last_activity {
+        conn.query_row(
+            &format!(
+                "SELECT MAX(last_activity) FROM beliefs WHERE {}",
+                status_filter
+            ),
+            [],
+            |row| row.get::<_, Option<String>>(0),
+        )?
+    } else {
+        None
+    };
+
+    Ok(Some(BeliefInventory {
+        belief_count: source_belief_count,
+        value_count: source_value_count,
+        fingerprint: source_fingerprint,
+        last_activity: source_last_activity,
+    }))
+}
+
+fn read_indexed_belief_inventory(
+    project_uid: &str,
+    project_path: &Path,
+) -> Result<Option<BeliefInventory>> {
+    let db_path = crate::paths::mother::graph_db();
+    if !db_path.exists() {
+        return Ok(None);
+    }
+
+    let conn = rusqlite::Connection::open(&db_path)
+        .with_context(|| format!("opening mother graph db {}", db_path.display()))?;
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='beliefs'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        return Ok(None);
+    }
+
+    let has_uid = conn
+        .prepare("SELECT source_project_uid FROM beliefs LIMIT 0")
+        .is_ok();
+    let has_kind = conn.prepare("SELECT kind FROM beliefs LIMIT 0").is_ok();
+    let has_status = conn.prepare("SELECT status FROM beliefs LIMIT 0").is_ok();
+    let has_last_activity = conn
+        .prepare("SELECT last_activity FROM beliefs LIMIT 0")
+        .is_ok();
+
+    let fallback_source = project_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let (source_filter, source_value) = if has_uid {
+        ("source_project_uid", project_uid.to_string())
+    } else {
+        ("source", fallback_source)
+    };
+
+    let status_filter = if has_status {
+        "COALESCE(status, 'active') <> 'archived'"
+    } else {
+        "1=1"
+    };
+    let belief_kind_filter = if has_kind {
+        "(kind IS NULL OR kind <> 'value')"
+    } else {
+        "1=1"
+    };
+    let value_kind_filter = if has_kind { "kind = 'value'" } else { "0=1" };
+
+    let indexed_belief_count: i64 = conn.query_row(
+        &format!(
+            "SELECT COUNT(*) FROM beliefs WHERE {} = ?1 AND {} AND {}",
+            source_filter, status_filter, belief_kind_filter
+        ),
+        rusqlite::params![&source_value],
+        |row| row.get(0),
+    )?;
+    let indexed_value_count: i64 = conn.query_row(
+        &format!(
+            "SELECT COUNT(*) FROM beliefs WHERE {} = ?1 AND {} AND {}",
+            source_filter, status_filter, value_kind_filter
+        ),
+        rusqlite::params![&source_value],
+        |row| row.get(0),
+    )?;
+
+    if indexed_belief_count == 0 && indexed_value_count == 0 {
+        return Ok(None);
+    }
+
+    let kind_select = if has_kind {
+        "COALESCE(kind, 'belief')"
+    } else {
+        "'belief'"
+    };
+    let status_select = if has_status {
+        "COALESCE(status, 'active')"
+    } else {
+        "'active'"
+    };
+    let last_activity_select = if has_last_activity {
+        "COALESCE(last_activity, '')"
+    } else {
+        "''"
+    };
+
+    let mut hasher = Sha256::new();
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, {}, {}, {} FROM beliefs
+         WHERE {} = ?1 AND {}
+         ORDER BY id",
+        kind_select, status_select, last_activity_select, source_filter, status_filter
+    ))?;
+    let mut rows = stmt.query(rusqlite::params![&source_value])?;
+    while let Some(row) = rows.next()? {
+        let id: String = row.get(0)?;
+        let kind: String = row.get(1)?;
+        let status: String = row.get(2)?;
+        let last_activity: String = row.get(3)?;
+        hasher.update(id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(kind.as_bytes());
+        hasher.update(b"|");
+        hasher.update(status.as_bytes());
+        hasher.update(b"|");
+        hasher.update(last_activity.as_bytes());
+        hasher.update(b"\n");
+    }
+
+    let indexed_last_activity = if has_last_activity {
+        conn.query_row(
+            &format!(
+                "SELECT MAX(last_activity) FROM beliefs WHERE {} = ?1 AND {}",
+                source_filter, status_filter
+            ),
+            rusqlite::params![&source_value],
+            |row| row.get::<_, Option<String>>(0),
+        )?
+    } else {
+        None
+    };
+
+    Ok(Some(BeliefInventory {
+        belief_count: indexed_belief_count,
+        value_count: indexed_value_count,
+        fingerprint: format!("{:x}", hasher.finalize()),
+        last_activity: indexed_last_activity,
+    }))
 }
 
 // =============================================================================

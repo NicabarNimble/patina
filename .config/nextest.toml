@@ -21,3 +21,13 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 [[profile.ci.overrides]]
 filter = 'binary_id(patina-ai::wasm_integration) | binary_id(patina-ai::pando_parity) | binary_id(patina-ai::pando_execution)'
 slow-timeout = { period = "120s", terminate-after = 3 }
+
+# typed seam-lock contract test can exceed 3 minutes on loaded CI runners
+# when wasmtime component metadata extraction is cold.
+[[profile.default.overrides]]
+filter = 'binary_id(patina-ai::interface_lock)'
+slow-timeout = { period = "120s", terminate-after = 3 }
+
+[[profile.ci.overrides]]
+filter = 'binary_id(patina-ai::interface_lock)'
+slow-timeout = { period = "120s", terminate-after = 3 }

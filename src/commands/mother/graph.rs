@@ -2,8 +2,11 @@
 //!
 //! Syncs graph from registry, manages edges.
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
+use rusqlite::OptionalExtension;
+use std::collections::HashSet;
 use std::path::Path;
+use std::process::Command;
 
 use patina::mother::{BeliefEntry, BeliefStatus, EdgeType, Graph, NodeType, MIN_SAMPLES};
 use patina::paths;
@@ -26,7 +29,49 @@ fn sync_from_registry_with(
 ) -> Result<()> {
     println!("🔄 Syncing graph from registry...\n");
 
-    let registry = registry_backend.load_snapshot()?;
+    let mut registry = registry_backend.load_snapshot()?;
+
+    // Include Mother checked-in projects even if they are not in registry.yaml.
+    // Project check-in is the canonical node-local discovery mechanism.
+    let store = patina::mother::MotherRuntimeStore::default();
+    if let Ok(checked_in_projects) = store.list_registered_projects() {
+        let mut known_paths: HashSet<String> = registry
+            .projects
+            .iter()
+            .map(|entry| {
+                std::fs::canonicalize(&entry.path)
+                    .unwrap_or_else(|_| Path::new(&entry.path).to_path_buf())
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect();
+
+        for project in checked_in_projects {
+            let canonical = std::fs::canonicalize(&project.project_path)
+                .unwrap_or_else(|_| Path::new(&project.project_path).to_path_buf())
+                .to_string_lossy()
+                .to_string();
+            if !known_paths.insert(canonical.clone()) {
+                continue;
+            }
+            let canonical_path = Path::new(&canonical).to_path_buf();
+            if !canonical_path.exists() {
+                continue;
+            }
+            let name = canonical_path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or(project.project_uid.as_str())
+                .to_string();
+            let domains = detect_project_domains(&canonical_path);
+            registry.projects.push(adapters::RegistryProject {
+                name,
+                path: canonical,
+                domains,
+            });
+        }
+    }
+
     let graph = Graph::open()?;
 
     let mut projects_added = 0;
@@ -85,7 +130,7 @@ fn sync_from_registry_with(
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
         let db_path = patina::eventlog::resolve_patina_db_path(project_root);
-        match collect_project_beliefs(project_name, &db_path) {
+        match collect_project_beliefs(project_name, project_root, &db_path) {
             Ok(entries) => {
                 let b = entries.iter().filter(|e| e.kind != "value").count();
                 let v = entries.iter().filter(|e| e.kind == "value").count();
@@ -122,7 +167,7 @@ fn sync_from_registry_with(
             }
         }
         let db_path = patina::eventlog::resolve_patina_db_path(registry_path);
-        match collect_project_beliefs(&entry.name, &db_path) {
+        match collect_project_beliefs(&entry.name, registry_path, &db_path) {
             Ok(entries) => {
                 let b = entries.iter().filter(|e| e.kind != "value").count();
                 let v = entries.iter().filter(|e| e.kind == "value").count();
@@ -282,18 +327,72 @@ fn detect_project_domains(project_root: &Path) -> Vec<String> {
     domains
 }
 
+#[derive(Debug, Clone, Default)]
+struct SourceProvenance {
+    project_uid: Option<String>,
+    project_id: Option<String>,
+    commit_sha: Option<String>,
+    revision: Option<String>,
+}
+
+fn resolve_source_provenance(project_root: &Path) -> SourceProvenance {
+    let project_uid = patina::project::get_uid(project_root);
+
+    let project_id = project_uid.as_ref().and_then(|uid| {
+        let store = patina::mother::MotherRuntimeStore::default();
+        let conn = rusqlite::Connection::open(store.path()).ok()?;
+        conn.query_row(
+            "SELECT project_id FROM mother_project_identities WHERE project_uid = ?1",
+            rusqlite::params![uid],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .ok()?
+    });
+
+    let commit_sha = Command::new("git")
+        .arg("-C")
+        .arg(project_root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                String::from_utf8(output.stdout)
+                    .ok()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty())
+            } else {
+                None
+            }
+        });
+
+    SourceProvenance {
+        revision: commit_sha.clone(),
+        project_uid,
+        project_id,
+        commit_sha,
+    }
+}
+
 /// Collect beliefs from a project's patina.db
 ///
 /// Opens the project's patina.db and reads the beliefs table (23 columns).
 /// Returns empty vec with warning on missing db or missing table.
-fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<BeliefEntry>> {
+fn collect_project_beliefs(
+    project_name: &str,
+    project_root: &Path,
+    db_path: &Path,
+) -> Result<Vec<BeliefEntry>> {
     use rusqlite::Connection;
 
     if !db_path.exists() {
         anyhow::bail!("no patina.db (not yet scraped)");
     }
 
-    let conn = Connection::open(db_path)?;
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("opening project belief db {}", db_path.display()))?;
+    let provenance = resolve_source_provenance(project_root);
 
     // Check if beliefs table exists (might be legacy schema)
     let table_exists: bool = conn
@@ -354,6 +453,10 @@ fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<Bel
             Ok(BeliefEntry {
                 id: row.get(0)?,
                 source: project_name.to_string(),
+                source_project_uid: provenance.project_uid.clone(),
+                source_project_id: provenance.project_id.clone(),
+                source_commit_sha: provenance.commit_sha.clone(),
+                source_revision: provenance.revision.clone(),
                 kind: row
                     .get::<_, Option<String>>(13)?
                     .unwrap_or_else(|| "belief".to_string()),
@@ -569,6 +672,10 @@ fn parse_persona_value(path: &Path) -> Result<BeliefEntry> {
     Ok(BeliefEntry {
         id,
         source: "persona".to_string(),
+        source_project_uid: None,
+        source_project_id: None,
+        source_commit_sha: None,
+        source_revision: None,
         kind: "value".to_string(),
         statement,
         entrenchment,

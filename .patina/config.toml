@@ -10,7 +10,7 @@ allowed = [
     "gemini",
     "pi",
 ]
-default = "claude"
+default = "pi"
 
 [upstream]
 repo = "NicabarNimble/patina"

@@ -34,6 +34,7 @@ pub use runtime::{
 };
 pub use state::{
     LakeCursorUpdate, MotherRuntimeStore, MotherSessionParticipant, MotherSessionRecord,
-    MotherSessionStatus, QueuedTask, RunStatus, StartupAttemptRecord, TaskStatus,
+    MotherSessionStatus, ProjectBeliefStateRecord, ProjectBeliefStateUpdate, QueuedTask, RunStatus,
+    StartupAttemptRecord, TaskStatus,
 };
 pub use toys::{GrantedIngressSource, GrantedToys};

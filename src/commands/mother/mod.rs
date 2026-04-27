@@ -53,11 +53,13 @@ pub(crate) mod toys;
 pub(crate) use mother_crate::registry;
 
 use anyhow::{bail, Context, Result};
+use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use std::io::IsTerminal;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
+use walkdir::{DirEntry, WalkDir};
 
 use patina::paths;
 use patina::session::SessionManager;
@@ -176,6 +178,10 @@ pub enum MotherCommands {
     /// Lifecycle operations
     #[command(subcommand)]
     Lifecycle(LifecycleCommands),
+
+    /// Project registration operations (check-in/sync/list)
+    #[command(subcommand)]
+    Projects(ProjectsCommands),
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -257,6 +263,29 @@ pub enum LifecycleCommands {
         /// Optional pando name (defaults to all installed pandos)
         #[arg(long)]
         pando: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum ProjectsCommands {
+    /// List projects Mother knows on this node (registry + identity bindings)
+    List,
+
+    /// Check in a single project (current directory by default)
+    CheckIn {
+        /// Project path or any sub-path inside a Patina project
+        path: Option<String>,
+    },
+
+    /// Discover and check in Patina projects under a root directory
+    Sync {
+        /// Root directory to scan (default: ~/Projects)
+        #[arg(long)]
+        root: Option<String>,
+
+        /// Maximum traversal depth from root
+        #[arg(long, default_value_t = 6)]
+        max_depth: usize,
     },
 }
 
@@ -393,6 +422,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("  patina mother toys     Toy registry operations");
             println!("  patina mother federation Federation query surface");
             println!("  patina mother lifecycle Lifecycle operations");
+            println!("  patina mother projects Project check-in/list/sync");
             println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
             Ok(())
@@ -471,6 +501,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
         }
         Some(MotherCommands::Federation(command)) => execute_federation(command),
         Some(MotherCommands::Lifecycle(command)) => execute_lifecycle(command),
+        Some(MotherCommands::Projects(command)) => execute_projects(command),
     }
 }
 
@@ -1336,6 +1367,335 @@ fn load_project_manifest(project_root: &Path) -> Result<ProjectManifest> {
     Ok(manifest)
 }
 
+#[derive(Debug)]
+struct ProjectIdentityBinding {
+    project_uid: String,
+    project_id: String,
+    user_id: String,
+    vision_id: String,
+    node_id: String,
+    status: String,
+}
+
+#[derive(Debug)]
+struct ProjectBeliefBinding {
+    project_uid: String,
+    status: String,
+    source_belief_count: Option<i64>,
+    source_value_count: Option<i64>,
+    indexed_belief_count: Option<i64>,
+    indexed_value_count: Option<i64>,
+    source_commit_sha: Option<String>,
+    last_verified_at: String,
+}
+
+fn execute_projects(command: ProjectsCommands) -> Result<()> {
+    match command {
+        ProjectsCommands::List => list_projects_cli(),
+        ProjectsCommands::CheckIn { path } => check_in_project_cli(path.as_deref()),
+        ProjectsCommands::Sync { root, max_depth } => sync_projects_cli(root.as_deref(), max_depth),
+    }
+}
+
+fn list_projects_cli() -> Result<()> {
+    let store = patina::mother::MotherRuntimeStore::default();
+    let mut projects = store.list_registered_projects()?;
+    projects.sort_by(|a, b| a.project_path.cmp(&b.project_path));
+
+    let conn = rusqlite::Connection::open(store.path()).with_context(|| {
+        format!(
+            "opening mother state db for project identity list: {}",
+            store.path().display()
+        )
+    })?;
+
+    let mut stmt = conn.prepare(
+        "SELECT project_uid, project_id, user_id, vision_id, node_id, status
+         FROM mother_project_identities",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(ProjectIdentityBinding {
+            project_uid: row.get(0)?,
+            project_id: row.get(1)?,
+            user_id: row.get(2)?,
+            vision_id: row.get(3)?,
+            node_id: row.get(4)?,
+            status: row.get(5)?,
+        })
+    })?;
+
+    let mut bindings = std::collections::HashMap::new();
+    for row in rows {
+        let binding = row?;
+        bindings.insert(binding.project_uid.clone(), binding);
+    }
+
+    let mut belief_stmt = conn.prepare(
+        "SELECT project_uid, status, source_belief_count, source_value_count,
+                indexed_belief_count, indexed_value_count, source_commit_sha, last_verified_at
+         FROM mother_project_belief_state",
+    )?;
+    let belief_rows = belief_stmt.query_map([], |row| {
+        Ok(ProjectBeliefBinding {
+            project_uid: row.get(0)?,
+            status: row.get(1)?,
+            source_belief_count: row.get(2)?,
+            source_value_count: row.get(3)?,
+            indexed_belief_count: row.get(4)?,
+            indexed_value_count: row.get(5)?,
+            source_commit_sha: row.get(6)?,
+            last_verified_at: row.get(7)?,
+        })
+    })?;
+
+    let mut belief_bindings = std::collections::HashMap::new();
+    for row in belief_rows {
+        let binding = row?;
+        belief_bindings.insert(binding.project_uid.clone(), binding);
+    }
+
+    println!(
+        "Mother registered projects: {} (identity-bound: {}, belief-verified: {})",
+        projects.len(),
+        bindings.len(),
+        belief_bindings.len()
+    );
+    println!();
+
+    for project in projects {
+        if let Some(binding) = bindings.get(&project.project_uid) {
+            println!(
+                "- {}\n    uid={} project_id={} status={} checked_in={}\n    user={} vision={} node={}",
+                project.project_path,
+                project.project_uid,
+                binding.project_id,
+                binding.status,
+                project.updated_at,
+                binding.user_id,
+                binding.vision_id,
+                binding.node_id
+            );
+        } else {
+            println!(
+                "- {}\n    uid={} project_id=<missing> status=<unbound> checked_in={}",
+                project.project_path, project.project_uid, project.updated_at
+            );
+        }
+
+        if let Some(beliefs) = belief_bindings.get(&project.project_uid) {
+            println!(
+                "    beliefs: status={} source={}/{} indexed={}/{} verified={} commit={}",
+                beliefs.status,
+                beliefs.source_belief_count.unwrap_or(0),
+                beliefs.source_value_count.unwrap_or(0),
+                beliefs.indexed_belief_count.unwrap_or(0),
+                beliefs.indexed_value_count.unwrap_or(0),
+                beliefs.last_verified_at,
+                beliefs.source_commit_sha.as_deref().unwrap_or("<none>")
+            );
+        } else {
+            println!("    beliefs: status=<unverified>");
+        }
+    }
+
+    Ok(())
+}
+
+fn check_in_project_cli(path: Option<&str>) -> Result<()> {
+    let candidate = match path {
+        Some(value) => PathBuf::from(value),
+        None => std::env::current_dir()?,
+    };
+    let root = resolve_project_root_from_path(&candidate)?;
+    let uid = patina::project::register_with_mother(&root)?;
+
+    let store = patina::mother::MotherRuntimeStore::default();
+    let conn = rusqlite::Connection::open(store.path())?;
+    let identity = conn
+        .query_row(
+            "SELECT project_id, user_id, vision_id, node_id, status
+             FROM mother_project_identities WHERE project_uid = ?1",
+            rusqlite::params![&uid],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            },
+        )
+        .optional()?;
+
+    let belief_state = conn
+        .query_row(
+            "SELECT status, source_belief_count, source_value_count,
+                    indexed_belief_count, indexed_value_count, last_verified_at, source_commit_sha
+             FROM mother_project_belief_state WHERE project_uid = ?1",
+            rusqlite::params![&uid],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<i64>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                ))
+            },
+        )
+        .optional()?;
+
+    println!("✓ Checked in: {}", root.display());
+    println!("  project_uid: {}", uid);
+    if let Some((project_id, user_id, vision_id, node_id, status)) = identity {
+        println!("  project_id: {}", project_id);
+        println!("  user_id: {}", user_id);
+        println!("  vision_id: {}", vision_id);
+        println!("  node_id: {}", node_id);
+        println!("  status: {}", status);
+    } else {
+        println!("  identity binding: missing (configure mother user/node/vision tables)");
+    }
+
+    if let Some((
+        status,
+        source_beliefs,
+        source_values,
+        indexed_beliefs,
+        indexed_values,
+        verified_at,
+        commit_sha,
+    )) = belief_state
+    {
+        println!(
+            "  beliefs: status={} source={}/{} indexed={}/{} verified={} commit={}",
+            status,
+            source_beliefs.unwrap_or(0),
+            source_values.unwrap_or(0),
+            indexed_beliefs.unwrap_or(0),
+            indexed_values.unwrap_or(0),
+            verified_at,
+            commit_sha.as_deref().unwrap_or("<none>")
+        );
+    } else {
+        println!("  beliefs: status=<unverified>");
+    }
+
+    Ok(())
+}
+
+fn sync_projects_cli(root: Option<&str>, max_depth: usize) -> Result<()> {
+    let scan_root = match root {
+        Some(value) => PathBuf::from(value),
+        None => dirs::home_dir()
+            .map(|home| home.join("Projects"))
+            .unwrap_or_else(|| PathBuf::from(".")),
+    };
+
+    if !scan_root.exists() {
+        bail!("scan root does not exist: {}", scan_root.display());
+    }
+
+    let discovered = discover_projects(&scan_root, max_depth)?;
+    if discovered.is_empty() {
+        println!(
+            "No Patina projects discovered under {} (max_depth={}).",
+            scan_root.display(),
+            max_depth
+        );
+        return Ok(());
+    }
+
+    let mut success = 0usize;
+    let mut failed = 0usize;
+    for project_root in discovered {
+        match patina::project::register_with_mother(&project_root) {
+            Ok(uid) => {
+                success += 1;
+                println!("✓ {} ({})", project_root.display(), uid);
+            }
+            Err(error) => {
+                failed += 1;
+                println!("✗ {} ({})", project_root.display(), error);
+            }
+        }
+    }
+
+    println!();
+    println!(
+        "Project sync complete: {} checked in, {} failed (root={}, max_depth={})",
+        success,
+        failed,
+        scan_root.display(),
+        max_depth
+    );
+
+    Ok(())
+}
+
+fn resolve_project_root_from_path(path: &Path) -> Result<PathBuf> {
+    let mut current = if path.is_file() {
+        path.parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| anyhow::anyhow!("path has no parent: {}", path.display()))?
+    } else {
+        path.to_path_buf()
+    };
+
+    loop {
+        if patina::project::is_patina_project(&current) {
+            let canonical = std::fs::canonicalize(&current).unwrap_or(current.clone());
+            return Ok(canonical);
+        }
+        let Some(parent) = current.parent().map(Path::to_path_buf) else {
+            break;
+        };
+        current = parent;
+    }
+
+    bail!(
+        "not inside a Patina project: {}\nRun `patina init .` in the project root first.",
+        path.display()
+    )
+}
+
+fn discover_projects(root: &Path, max_depth: usize) -> Result<Vec<PathBuf>> {
+    let mut projects = std::collections::BTreeSet::new();
+
+    for entry in WalkDir::new(root)
+        .max_depth(max_depth)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(should_descend)
+    {
+        let entry = entry?;
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+        let path = entry.path();
+        if patina::project::is_patina_project(path) {
+            let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            projects.insert(canonical);
+        }
+    }
+
+    Ok(projects.into_iter().collect())
+}
+
+fn should_descend(entry: &DirEntry) -> bool {
+    if entry.depth() == 0 {
+        return true;
+    }
+    let name = entry.file_name().to_string_lossy();
+    !matches!(
+        name.as_ref(),
+        ".git" | ".patina" | "target" | "node_modules" | ".direnv" | "dist" | "build"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1380,6 +1740,56 @@ mod tests {
             tier: Some("patina".to_string()),
         });
         assert!(matches!(toys_list, MotherCommands::Toys(_)));
+
+        let projects = MotherCommands::Projects(ProjectsCommands::List);
+        assert!(matches!(projects, MotherCommands::Projects(_)));
+    }
+
+    #[test]
+    fn resolve_project_root_from_nested_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("alpha");
+        std::fs::create_dir_all(project.join(".patina")).unwrap();
+        std::fs::write(
+            project.join(".patina/config.toml"),
+            "[project]\nname='alpha'\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(project.join("layer")).unwrap();
+        std::fs::create_dir_all(project.join("src/bin")).unwrap();
+
+        let nested = project.join("src/bin");
+        let resolved = resolve_project_root_from_path(&nested).unwrap();
+        assert_eq!(resolved, std::fs::canonicalize(project).unwrap());
+    }
+
+    #[test]
+    fn discover_projects_finds_patina_roots() {
+        let temp = tempfile::tempdir().unwrap();
+
+        let project_a = temp.path().join("a");
+        std::fs::create_dir_all(project_a.join(".patina")).unwrap();
+        std::fs::write(
+            project_a.join(".patina/config.toml"),
+            "[project]\nname='a'\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(project_a.join("layer")).unwrap();
+
+        let project_b = temp.path().join("nested/b");
+        std::fs::create_dir_all(project_b.join(".patina")).unwrap();
+        std::fs::write(
+            project_b.join(".patina/config.toml"),
+            "[project]\nname='b'\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(project_b.join("layer")).unwrap();
+
+        let discovered = discover_projects(temp.path(), 6).unwrap();
+        let canonical: std::collections::HashSet<_> = discovered.into_iter().collect();
+
+        assert!(canonical.contains(&std::fs::canonicalize(project_a).unwrap()));
+        assert!(canonical.contains(&std::fs::canonicalize(project_b).unwrap()));
     }
 
     #[test]
