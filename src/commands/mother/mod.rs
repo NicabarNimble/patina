@@ -287,6 +287,21 @@ pub enum ProjectsCommands {
         #[arg(long, default_value_t = 6)]
         max_depth: usize,
     },
+
+    /// Prune stale ephemeral project registrations and artifacts.
+    ///
+    /// Ephemeral projects are temp paths under /tmp or /private/var/folders.
+    /// Missing ephemeral paths are pruned immediately; existing ephemeral paths
+    /// are pruned when last check-in is older than the TTL.
+    Prune {
+        /// Ephemeral TTL in days (existing temp paths older than this are pruned)
+        #[arg(long, default_value_t = 3)]
+        ephemeral_ttl_days: i64,
+
+        /// Show what would be deleted without deleting
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// Graph subcommands (nested under `patina mother graph`)
@@ -1394,6 +1409,10 @@ fn execute_projects(command: ProjectsCommands) -> Result<()> {
         ProjectsCommands::List => list_projects_cli(),
         ProjectsCommands::CheckIn { path } => check_in_project_cli(path.as_deref()),
         ProjectsCommands::Sync { root, max_depth } => sync_projects_cli(root.as_deref(), max_depth),
+        ProjectsCommands::Prune {
+            ephemeral_ttl_days,
+            dry_run,
+        } => prune_projects_cli(ephemeral_ttl_days, dry_run),
     }
 }
 
@@ -1636,6 +1655,246 @@ fn sync_projects_cli(root: Option<&str>, max_depth: usize) -> Result<()> {
     Ok(())
 }
 
+fn is_ephemeral_project_path(path: &str) -> bool {
+    path.starts_with("/tmp/")
+        || path.starts_with("/private/tmp/")
+        || path.starts_with("/private/var/folders/")
+        || path.contains("/.tmp")
+        || path.contains("/tmp.")
+}
+
+fn parse_rfc3339_utc(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+}
+
+fn prune_projects_cli(ephemeral_ttl_days: i64, dry_run: bool) -> Result<()> {
+    if ephemeral_ttl_days < 0 {
+        bail!("ephemeral TTL must be >= 0 days");
+    }
+
+    let store = patina::mother::MotherRuntimeStore::default();
+    let projects = store.list_registered_projects()?;
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(ephemeral_ttl_days);
+
+    let mut delete_uids = Vec::new();
+    let mut reasons = std::collections::BTreeMap::new();
+
+    for project in projects {
+        if !is_ephemeral_project_path(&project.project_path) {
+            continue;
+        }
+
+        let exists = Path::new(&project.project_path).exists();
+        if !exists {
+            reasons.insert(
+                project.project_uid.clone(),
+                format!("missing ephemeral path {}", project.project_path),
+            );
+            delete_uids.push(project.project_uid);
+            continue;
+        }
+
+        let updated_at = parse_rfc3339_utc(&project.updated_at)
+            .or_else(|| parse_rfc3339_utc(&project.registered_at));
+
+        if updated_at.is_some_and(|ts| ts < cutoff) {
+            reasons.insert(
+                project.project_uid.clone(),
+                format!(
+                    "ephemeral TTL exceeded (updated_at={}, ttl_days={})",
+                    project.updated_at, ephemeral_ttl_days
+                ),
+            );
+            delete_uids.push(project.project_uid);
+        }
+    }
+
+    delete_uids.sort();
+    delete_uids.dedup();
+
+    if delete_uids.is_empty() {
+        println!(
+            "No ephemeral projects eligible for prune (ttl_days={}, dry_run={}).",
+            ephemeral_ttl_days, dry_run
+        );
+        return Ok(());
+    }
+
+    let mut conn = rusqlite::Connection::open(store.path()).with_context(|| {
+        format!(
+            "opening mother state db for prune: {}",
+            store.path().display()
+        )
+    })?;
+    conn.execute("PRAGMA busy_timeout = 10000", [])?;
+
+    let uid_placeholders = std::iter::repeat_n("?", delete_uids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let runtime_ids: Vec<String> = conn
+        .prepare(&format!(
+            "SELECT runtime_id FROM mother_sessions WHERE project_uid IN ({})",
+            uid_placeholders
+        ))?
+        .query_map(rusqlite::params_from_iter(delete_uids.iter()), |row| {
+            row.get::<_, String>(0)
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    let linked_sessions = runtime_ids.len();
+    let linked_participants: i64 = if runtime_ids.is_empty() {
+        0
+    } else {
+        let rt_placeholders = std::iter::repeat_n("?", runtime_ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM mother_session_participants WHERE session_runtime_id IN ({})",
+                rt_placeholders
+            ),
+            rusqlite::params_from_iter(runtime_ids.iter()),
+            |row| row.get(0),
+        )?
+    };
+
+    println!(
+        "Prune candidates: {} ephemeral projects (ttl_days={}, dry_run={})",
+        delete_uids.len(),
+        ephemeral_ttl_days,
+        dry_run
+    );
+    println!(
+        "Linked records: sessions={} participants={}",
+        linked_sessions, linked_participants
+    );
+    for uid in &delete_uids {
+        if let Some(reason) = reasons.get(uid) {
+            println!("- {} ({})", uid, reason);
+        } else {
+            println!("- {}", uid);
+        }
+    }
+
+    if dry_run {
+        return Ok(());
+    }
+
+    let tx = conn.transaction()?;
+
+    if !runtime_ids.is_empty() {
+        let rt_placeholders = std::iter::repeat_n("?", runtime_ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        tx.execute(
+            &format!(
+                "DELETE FROM mother_session_participants WHERE session_runtime_id IN ({})",
+                rt_placeholders
+            ),
+            rusqlite::params_from_iter(runtime_ids.iter()),
+        )?;
+
+        let handoff_params = runtime_ids
+            .iter()
+            .chain(runtime_ids.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        tx.execute(
+            &format!(
+                "DELETE FROM mother_session_handoffs
+                 WHERE from_runtime_id IN ({0}) OR to_runtime_id IN ({0})",
+                rt_placeholders
+            ),
+            rusqlite::params_from_iter(handoff_params.iter()),
+        )?;
+    }
+
+    tx.execute(
+        &format!(
+            "DELETE FROM mother_sessions WHERE project_uid IN ({})",
+            uid_placeholders
+        ),
+        rusqlite::params_from_iter(delete_uids.iter()),
+    )?;
+
+    tx.execute(
+        &format!(
+            "DELETE FROM mother_project_belief_state WHERE project_uid IN ({})",
+            uid_placeholders
+        ),
+        rusqlite::params_from_iter(delete_uids.iter()),
+    )?;
+
+    tx.execute(
+        &format!(
+            "DELETE FROM mother_project_identities WHERE project_uid IN ({})",
+            uid_placeholders
+        ),
+        rusqlite::params_from_iter(delete_uids.iter()),
+    )?;
+
+    tx.execute(
+        &format!(
+            "DELETE FROM project_registry WHERE project_uid IN ({})",
+            uid_placeholders
+        ),
+        rusqlite::params_from_iter(delete_uids.iter()),
+    )?;
+
+    tx.commit()?;
+
+    let projects_root = paths::mother::data_dir().join("projects");
+    let mut removed_dirs = 0usize;
+    for uid in &delete_uids {
+        if let Ok(dir) = paths::mother::projects::project_dir(uid) {
+            if dir.exists() {
+                std::fs::remove_dir_all(&dir)
+                    .with_context(|| format!("removing pruned project dir {}", dir.display()))?;
+                removed_dirs += 1;
+            }
+        }
+    }
+
+    // Safety sweep: remove leftover project dirs no longer present in registry.
+    let remaining_uids = store
+        .list_registered_projects()?
+        .into_iter()
+        .map(|entry| entry.project_uid)
+        .collect::<std::collections::HashSet<_>>();
+    let mut removed_orphans = 0usize;
+    if projects_root.exists() {
+        for entry in std::fs::read_dir(&projects_root)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !remaining_uids.contains(name) {
+                std::fs::remove_dir_all(&path)
+                    .with_context(|| format!("removing orphan project dir {}", path.display()))?;
+                removed_orphans += 1;
+            }
+        }
+    }
+
+    println!();
+    println!(
+        "Prune complete: removed {} projects, {} project dirs, {} orphan dirs.",
+        delete_uids.len(),
+        removed_dirs,
+        removed_orphans
+    );
+
+    Ok(())
+}
+
 fn resolve_project_root_from_path(path: &Path) -> Result<PathBuf> {
     let mut current = if path.is_file() {
         path.parent()
@@ -1743,6 +2002,12 @@ mod tests {
 
         let projects = MotherCommands::Projects(ProjectsCommands::List);
         assert!(matches!(projects, MotherCommands::Projects(_)));
+
+        let projects_prune = MotherCommands::Projects(ProjectsCommands::Prune {
+            ephemeral_ttl_days: 3,
+            dry_run: true,
+        });
+        assert!(matches!(projects_prune, MotherCommands::Projects(_)));
     }
 
     #[test]
@@ -1761,6 +2026,19 @@ mod tests {
         let nested = project.join("src/bin");
         let resolved = resolve_project_root_from_path(&nested).unwrap();
         assert_eq!(resolved, std::fs::canonicalize(project).unwrap());
+    }
+
+    #[test]
+    fn ephemeral_project_path_detection_matches_temp_conventions() {
+        assert!(is_ephemeral_project_path("/tmp/my-proj"));
+        assert!(is_ephemeral_project_path("/private/tmp/my-proj"));
+        assert!(is_ephemeral_project_path(
+            "/private/var/folders/aa/bb/T/.tmpXYZ/project"
+        ));
+        assert!(is_ephemeral_project_path("/Users/x/.tmp123/project"));
+        assert!(!is_ephemeral_project_path(
+            "/Users/nicabar/Projects/Patina/patina"
+        ));
     }
 
     #[test]
