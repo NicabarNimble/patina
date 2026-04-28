@@ -134,11 +134,18 @@ pub(super) fn read_current_project_uid() -> Option<String> {
     let cwd = std::env::current_dir().ok()?;
     let uid = std::fs::read_to_string(patina::paths::project::uid_path(&cwd)).ok()?;
     let uid = uid.trim();
-    if uid.len() == 8
+
+    let is_legacy = uid.len() == 8
         && uid
             .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-    {
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
+    let is_modern = uid.len() == 37
+        && uid.starts_with("puid_")
+        && uid[5..]
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
+
+    if is_legacy || is_modern {
         Some(uid.to_string())
     } else {
         None

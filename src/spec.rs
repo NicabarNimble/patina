@@ -39,7 +39,7 @@ pub enum SpecCommands {
         blocked_by: Vec<String>,
         #[arg(long)]
         related: Vec<String>,
-        /// Target Patina project path or project UID (8-hex) where the spec should live
+        /// Target Patina project path or project UID (legacy 8-hex or modern `puid_` + 32-hex) where the spec should live
         #[arg(long)]
         project: Option<String>,
         /// Allow creating in another project even when that target has no active session
@@ -295,10 +295,18 @@ fn current_route_context() -> SpecRouteContext {
 }
 
 fn looks_like_project_uid(value: &str) -> bool {
-    value.len() == 8
+    let legacy = value.len() == 8
         && value
             .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
+
+    let modern = value.len() == 37
+        && value.starts_with("puid_")
+        && value[5..]
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase());
+
+    legacy || modern
 }
 
 fn canonical_project_root(path: &Path) -> Result<PathBuf> {

@@ -365,8 +365,11 @@ pub fn get_voice(project_path: &Path) -> Option<String> {
     }
 }
 
-/// Create a unique project identifier if it doesn't exist
-/// Returns the UID (8 hex characters, created once, never modified)
+/// Create a unique project identifier if it doesn't exist.
+///
+/// UID formats:
+/// - Legacy: `8` lowercase hex chars (kept for backwards compatibility)
+/// - Modern: `puid_` + `32` lowercase hex chars (new default)
 pub fn create_uid_if_missing(project_path: &Path) -> Result<String> {
     let uid_file = uid_path(project_path);
 
@@ -375,8 +378,11 @@ pub fn create_uid_if_missing(project_path: &Path) -> Result<String> {
         return Ok(fs::read_to_string(&uid_file)?.trim().to_string());
     }
 
-    // Generate new UID (8 hex chars from random u32)
-    let uid = format!("{:08x}", fastrand::u32(..));
+    // Generate new UID (high entropy, filesystem-safe, SQL-alias-safe)
+    let uid = format!(
+        "puid_{}",
+        uuid::Uuid::new_v4().simple().to_string().to_lowercase()
+    );
 
     // Ensure .patina directory exists
     if let Some(parent) = uid_file.parent() {
@@ -1186,6 +1192,31 @@ mod tests {
         assert_eq!(upstream.remote, "origin");
         assert!(upstream.include_patina);
         assert!(upstream.include_interfaces);
+    }
+
+    #[test]
+    fn test_create_uid_if_missing_generates_modern_high_entropy_uid() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".patina")).unwrap();
+
+        let uid = create_uid_if_missing(tmp.path()).unwrap();
+        assert!(uid.starts_with("puid_"));
+        assert_eq!(uid.len(), 37);
+        assert!(uid[5..].chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(uid[5..].chars().all(|c| !c.is_ascii_uppercase()));
+
+        let persisted = fs::read_to_string(tmp.path().join(".patina/uid")).unwrap();
+        assert_eq!(uid, persisted.trim());
+    }
+
+    #[test]
+    fn test_create_uid_if_missing_preserves_legacy_uid() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join(".patina")).unwrap();
+        fs::write(tmp.path().join(".patina/uid"), "2bdc808e\n").unwrap();
+
+        let uid = create_uid_if_missing(tmp.path()).unwrap();
+        assert_eq!(uid, "2bdc808e");
     }
 
     #[test]
