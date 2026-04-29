@@ -311,7 +311,7 @@ fn with_project_root_cwd<T>(
     project_root: &Path,
     f: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
-    let original = std::env::current_dir().map_err(|e| e.to_string())?;
+    let original = std::env::current_dir().ok();
     std::env::set_current_dir(project_root).map_err(|e| {
         format!(
             "failed to enter project root {}: {}",
@@ -322,15 +322,11 @@ fn with_project_root_cwd<T>(
 
     let result = f();
 
-    let restore = std::env::set_current_dir(&original)
-        .map_err(|e| format!("failed to restore cwd {}: {}", original.display(), e));
-
-    match (result, restore) {
-        (Ok(value), Ok(())) => Ok(value),
-        (Err(error), Ok(())) => Err(error),
-        (Ok(_), Err(restore_error)) => Err(restore_error),
-        (Err(error), Err(_)) => Err(error),
+    if let Some(original) = original {
+        let _ = std::env::set_current_dir(&original);
     }
+
+    result
 }
 
 fn extract_frontmatter_and_body(content: &str) -> Option<(&str, &str)> {
