@@ -1,5 +1,5 @@
 use super::*;
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 
 #[derive(Debug, Clone)]
 pub struct ChildRegistryStore {
@@ -44,6 +44,37 @@ impl ChildRegistryStore {
         Ok(())
     }
 
+    pub fn get_source(&self, source_id: &str) -> Result<Option<ChildRegistrySourceRecord>> {
+        let conn = self.runtime.open()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT source_id, provider_kind, provider_config_json, enabled,
+                   last_sync_at, last_sync_status, last_error,
+                   created_at, updated_at
+            FROM mother_child_sources
+            WHERE source_id = ?1
+            "#,
+        )?;
+
+        let row = stmt
+            .query_row(params![source_id], |row| {
+                Ok(ChildRegistrySourceRecord {
+                    source_id: row.get(0)?,
+                    provider_kind: row.get(1)?,
+                    provider_config_json: row.get(2)?,
+                    enabled: row.get::<_, i64>(3)? == 1,
+                    last_sync_at: row.get(4)?,
+                    last_sync_status: row.get(5)?,
+                    last_error: row.get(6)?,
+                    created_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                })
+            })
+            .optional()?;
+
+        Ok(row)
+    }
+
     pub fn list_sources(&self) -> Result<Vec<ChildRegistrySourceRecord>> {
         let conn = self.runtime.open()?;
         let mut stmt = conn.prepare(
@@ -73,6 +104,33 @@ impl ChildRegistryStore {
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         Ok(rows)
+    }
+
+    pub fn set_source_sync_status(
+        &self,
+        source_id: &str,
+        status: &str,
+        error_message: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.runtime.open()?;
+        let now = Utc::now().to_rfc3339();
+        let changed = conn.execute(
+            r#"
+            UPDATE mother_child_sources
+            SET last_sync_at = ?2,
+                last_sync_status = ?3,
+                last_error = ?4,
+                updated_at = ?2
+            WHERE source_id = ?1
+            "#,
+            params![source_id, now, status, error_message],
+        )?;
+
+        if changed == 0 {
+            anyhow::bail!("unknown child registry source '{}'", source_id);
+        }
+
+        Ok(())
     }
 
     pub fn upsert_entry(&self, update: &ChildRegistryEntryUpdate) -> Result<()> {
@@ -169,6 +227,55 @@ impl ChildRegistryStore {
         }
 
         Ok(())
+    }
+
+    pub fn get_entry_by_child_version(
+        &self,
+        child_name: &str,
+        version: &str,
+    ) -> Result<Option<ChildRegistryEntryRecord>> {
+        let conn = self.runtime.open()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT entry_id, child_name, version, source_id, source_release_ref,
+                   artifact_url, manifest_url, checksums_url,
+                   artifact_sha256, manifest_sha256,
+                   signature_ref, patina_min,
+                   operations_json, needs_toys_json, needs_scopes_json,
+                   state, state_reason, created_at, updated_at
+            FROM mother_child_registry_entries
+            WHERE child_name = ?1 AND version = ?2
+            LIMIT 1
+            "#,
+        )?;
+
+        let row = stmt
+            .query_row(params![child_name, version], |row| {
+                Ok(ChildRegistryEntryRecord {
+                    entry_id: row.get(0)?,
+                    child_name: row.get(1)?,
+                    version: row.get(2)?,
+                    source_id: row.get(3)?,
+                    source_release_ref: row.get(4)?,
+                    artifact_url: row.get(5)?,
+                    manifest_url: row.get(6)?,
+                    checksums_url: row.get(7)?,
+                    artifact_sha256: row.get(8)?,
+                    manifest_sha256: row.get(9)?,
+                    signature_ref: row.get(10)?,
+                    patina_min: row.get(11)?,
+                    operations_json: row.get(12)?,
+                    needs_toys_json: row.get(13)?,
+                    needs_scopes_json: row.get(14)?,
+                    state: row.get(15)?,
+                    state_reason: row.get(16)?,
+                    created_at: row.get(17)?,
+                    updated_at: row.get(18)?,
+                })
+            })
+            .optional()?;
+
+        Ok(row)
     }
 
     pub fn list_entries(&self, child_name: Option<&str>) -> Result<Vec<ChildRegistryEntryRecord>> {
@@ -499,8 +606,25 @@ impl MotherRuntimeStore {
         self.child_registry_store().upsert_source(update)
     }
 
+    pub fn get_child_registry_source(
+        &self,
+        source_id: &str,
+    ) -> Result<Option<ChildRegistrySourceRecord>> {
+        self.child_registry_store().get_source(source_id)
+    }
+
     pub fn list_child_registry_sources(&self) -> Result<Vec<ChildRegistrySourceRecord>> {
         self.child_registry_store().list_sources()
+    }
+
+    pub fn set_child_registry_source_sync_status(
+        &self,
+        source_id: &str,
+        status: &str,
+        error_message: Option<&str>,
+    ) -> Result<()> {
+        self.child_registry_store()
+            .set_source_sync_status(source_id, status, error_message)
     }
 
     pub fn upsert_child_registry_entry(&self, update: &ChildRegistryEntryUpdate) -> Result<()> {
@@ -515,6 +639,15 @@ impl MotherRuntimeStore {
     ) -> Result<()> {
         self.child_registry_store()
             .set_entry_state(entry_id, state, reason)
+    }
+
+    pub fn get_child_registry_entry_by_child_version(
+        &self,
+        child_name: &str,
+        version: &str,
+    ) -> Result<Option<ChildRegistryEntryRecord>> {
+        self.child_registry_store()
+            .get_entry_by_child_version(child_name, version)
     }
 
     pub fn list_child_registry_entries(
