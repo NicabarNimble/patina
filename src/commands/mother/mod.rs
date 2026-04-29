@@ -251,13 +251,21 @@ pub enum FederationCommands {
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum ChildrenCommands {
     /// List configured child registry sources and sync status
-    Sources,
+    Sources {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 
     /// Sync child registry entries from provider sources
     Sync {
         /// Sync a specific source id (defaults to all configured sources)
         #[arg(long)]
         source: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -2024,7 +2032,7 @@ mod tests {
         let projects = MotherCommands::Projects(ProjectsCommands::List);
         assert!(matches!(projects, MotherCommands::Projects(_)));
 
-        let children = MotherCommands::Children(ChildrenCommands::Sources);
+        let children = MotherCommands::Children(ChildrenCommands::Sources { json: false });
         assert!(matches!(children, MotherCommands::Children(_)));
 
         let projects_prune = MotherCommands::Projects(ProjectsCommands::Prune {
