@@ -271,6 +271,137 @@ pub enum ChildrenCommands {
         #[arg(long)]
         json: bool,
     },
+
+    /// Show details for one entry (`entry_id` or `child@version`)
+    Show {
+        target: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Search/list registry entries
+    Search {
+        /// Filter by child name
+        #[arg(long)]
+        child: Option<String>,
+
+        /// Filter by state
+        #[arg(long)]
+        state: Option<String>,
+
+        /// Filter by source id
+        #[arg(long)]
+        source: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Approve an entry (`entry_id` or `child@version`)
+    Approve {
+        target: String,
+
+        /// Reason for transition
+        #[arg(long)]
+        reason: Option<String>,
+
+        /// Allow explicit override for deprecated -> approved
+        #[arg(long)]
+        force: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Block an entry (`entry_id` or `child@version`)
+    Block {
+        target: String,
+
+        /// Reason for transition
+        #[arg(long)]
+        reason: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Deprecate an entry (`entry_id` or `child@version`)
+    Deprecate {
+        target: String,
+
+        /// Reason for transition
+        #[arg(long)]
+        reason: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Install an approved entry (`entry_id` or `child@version`)
+    Install {
+        target: String,
+
+        /// Installer identity for provenance (defaults to local user)
+        #[arg(long)]
+        installed_by: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Assign approved entry to a project (`entry_id` or `child@version`)
+    Assign {
+        target: String,
+
+        /// Project UID or project path
+        #[arg(long)]
+        project: String,
+
+        /// Assignment reason
+        #[arg(long)]
+        reason: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Revoke active assignment for a project child
+    Unassign {
+        /// Child name to revoke
+        #[arg(long)]
+        child: String,
+
+        /// Project UID or project path
+        #[arg(long)]
+        project: String,
+
+        /// Revoke reason
+        #[arg(long)]
+        reason: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Show control-plane status
+    Status {
+        /// Optional project UID/path filter
+        #[arg(long)]
+        project: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -2091,6 +2222,41 @@ mod tests {
             json: true,
         });
         assert!(matches!(children_disable, MotherCommands::Children(_)));
+
+        let children_show = MotherCommands::Children(ChildrenCommands::Show {
+            target: "slate-manager@0.1.0".to_string(),
+            json: false,
+        });
+        assert!(matches!(children_show, MotherCommands::Children(_)));
+
+        let children_install = MotherCommands::Children(ChildrenCommands::Install {
+            target: "entry_abc".to_string(),
+            installed_by: Some("usr_test".to_string()),
+            json: true,
+        });
+        assert!(matches!(children_install, MotherCommands::Children(_)));
+
+        let children_assign = MotherCommands::Children(ChildrenCommands::Assign {
+            target: "entry_abc".to_string(),
+            project: "2bdc808e".to_string(),
+            reason: Some("test".to_string()),
+            json: true,
+        });
+        assert!(matches!(children_assign, MotherCommands::Children(_)));
+
+        let children_unassign = MotherCommands::Children(ChildrenCommands::Unassign {
+            child: "slate-manager".to_string(),
+            project: "2bdc808e".to_string(),
+            reason: None,
+            json: false,
+        });
+        assert!(matches!(children_unassign, MotherCommands::Children(_)));
+
+        let children_status = MotherCommands::Children(ChildrenCommands::Status {
+            project: Some("2bdc808e".to_string()),
+            json: true,
+        });
+        assert!(matches!(children_status, MotherCommands::Children(_)));
 
         let projects_prune = MotherCommands::Projects(ProjectsCommands::Prune {
             ephemeral_ttl_days: 3,
