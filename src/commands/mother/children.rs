@@ -8,6 +8,12 @@ pub(super) fn execute_children(command: ChildrenCommands) -> Result<()> {
         ChildrenCommands::Sources { command, json } => match command {
             None => list_sources_cli(json),
             Some(ChildrenSourcesCommands::Add { provider }) => add_source_cli(provider, json),
+            Some(ChildrenSourcesCommands::Disable { source_id }) => {
+                set_source_enabled_cli(&source_id, false, json)
+            }
+            Some(ChildrenSourcesCommands::Enable { source_id }) => {
+                set_source_enabled_cli(&source_id, true, json)
+            }
         },
         ChildrenCommands::Sync { source, json } => sync_sources_cli(source.as_deref(), json),
     }
@@ -88,6 +94,40 @@ fn add_source_cli(provider: ChildrenSourceProviderCommands, as_json: bool) -> Re
             as_json,
         ),
     }
+}
+
+fn set_source_enabled_cli(source_id: &str, enabled: bool, as_json: bool) -> Result<()> {
+    let store = patina::mother::MotherRuntimeStore::default();
+    let source = store
+        .get_child_registry_source(source_id)?
+        .ok_or_else(|| anyhow::anyhow!("unknown child registry source '{}'", source_id))?;
+
+    store.upsert_child_registry_source(&patina::mother::ChildRegistrySourceUpdate {
+        source_id: source.source_id.clone(),
+        provider_kind: source.provider_kind.clone(),
+        provider_config_json: source.provider_config_json.clone(),
+        enabled,
+    })?;
+
+    if as_json {
+        let payload = json!({
+            "ok": true,
+            "source": {
+                "source_id": source.source_id,
+                "provider_kind": source.provider_kind,
+                "enabled": enabled,
+            }
+        });
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+    } else {
+        println!(
+            "✓ {} child source {}",
+            if enabled { "Enabled" } else { "Disabled" },
+            source_id
+        );
+    }
+
+    Ok(())
 }
 
 fn add_github_source_cli(

@@ -280,6 +280,18 @@ pub enum ChildrenSourcesCommands {
         #[command(subcommand)]
         provider: ChildrenSourceProviderCommands,
     },
+
+    /// Disable a child registry source
+    Disable {
+        /// Source id to disable
+        source_id: String,
+    },
+
+    /// Enable a child registry source
+    Enable {
+        /// Source id to enable
+        source_id: String,
+    },
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -2071,6 +2083,14 @@ mod tests {
             json: false,
         });
         assert!(matches!(children, MotherCommands::Children(_)));
+
+        let children_disable = MotherCommands::Children(ChildrenCommands::Sources {
+            command: Some(ChildrenSourcesCommands::Disable {
+                source_id: "src_github_demo".to_string(),
+            }),
+            json: true,
+        });
+        assert!(matches!(children_disable, MotherCommands::Children(_)));
 
         let projects_prune = MotherCommands::Projects(ProjectsCommands::Prune {
             ephemeral_ttl_days: 3,
