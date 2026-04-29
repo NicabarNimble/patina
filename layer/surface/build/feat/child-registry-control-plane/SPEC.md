@@ -59,6 +59,7 @@ validated_against_commit: 35db4b562f2052acf610e9fc7ad8f5f5b7d8431e
 last_freshness_check: 2026-04-29T02:04:11Z
 freshness_scope:
 - mother/src/state/mod.rs
+- mother/src/state/children_registry.rs
 ---
 # feat: Mother child registry control plane (GitHub-first, provider-pluggable)
 
