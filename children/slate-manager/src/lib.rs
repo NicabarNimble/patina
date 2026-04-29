@@ -278,6 +278,21 @@ fn resolve_project_root_from_hint(project: Option<&str>) -> Result<PathBuf, Stri
             if is_patina_project_root(&resolved) {
                 return Ok(resolved);
             }
+
+            // Mother passes host-absolute project roots. In WASI, filesystem access is
+            // scoped to guest preopens (commonly mounted at /input), so host absolute
+            // paths may need remapping to guest-visible paths.
+            if resolved.is_absolute() {
+                let remapped = PathBuf::from("/input").join(
+                    resolved
+                        .strip_prefix("/")
+                        .unwrap_or_else(|_| resolved.as_path()),
+                );
+                if is_patina_project_root(&remapped) {
+                    return Ok(remapped);
+                }
+            }
+
             return Err(format!(
                 "invalid project root in slate envelope: {}",
                 resolved.display()

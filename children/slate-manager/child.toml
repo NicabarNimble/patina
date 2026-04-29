@@ -25,4 +25,7 @@ allow = [
 ]
 
 [needs]
-toys = ["logging", "measure", "git"]
+toys = ["logging", "measure", "git", "filesystem"]
+
+[needs.scopes.filesystem]
+path = "/"
