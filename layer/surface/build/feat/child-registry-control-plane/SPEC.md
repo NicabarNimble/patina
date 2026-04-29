@@ -55,6 +55,7 @@ exit_criteria:
 - id: crc10-state-seam-modularity
   text: 'Mother state implementation follows dependable-rust/unix boundaries for this feature: child-registry state logic is isolated behind a dedicated store seam/module (`ChildRegistryStore`) rather than growing monolithic `state.rs`.'
   checked: true
+validated_against_commit: 35db4b562f2052acf610e9fc7ad8f5f5b7d8431e
 ---
 # feat: Mother child registry control plane (GitHub-first, provider-pluggable)
 
