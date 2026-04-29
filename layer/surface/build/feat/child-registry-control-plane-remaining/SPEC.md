@@ -65,6 +65,8 @@ Finish the remaining control-plane criteria with fail-closed behavior and audita
 
 - Prior spec delivered: seam refactor, schema/state APIs, provider abstraction, GitHub sync ingestion, source management commands.
 - This spec scope starts at remaining slices equivalent to prior C/D/E/F obligations.
+- Implementation progress landed in `fda637be` (state transitions + audit store) and `a8c2f090` (operator lifecycle commands + install/assignment flows).
+- Exit criteria remain unchecked until verification gate + external Slate proof evidence are completed and linked.
 
 ## Non-Goals
 
