@@ -7,7 +7,8 @@ updated: 2026-04-24
 related:
   - mother/src/registry.rs
   - mother/src/runtime.rs
-  - mother/src/state.rs
+  - mother/src/state/mod.rs
+  - mother/src/state/children_registry.rs
   - src/commands/mother/mod.rs
   - src/commands/mother/daemon.rs
   - src/paths.rs
@@ -58,6 +59,10 @@ exit_criteria:
 
   - id: crc9-backward-compat
     text: "Existing local child loading from ~/.patina/children remains operational; registry-backed install is additive and can coexist during migration."
+    checked: false
+
+  - id: crc10-state-seam-modularity
+    text: "Mother state implementation follows dependable-rust/unix boundaries for this feature: child-registry state logic is isolated behind a dedicated store seam/module (`ChildRegistryStore`) rather than growing monolithic `state.rs`."
     checked: false
 ---
 # feat: Mother child registry control plane (GitHub-first, provider-pluggable)
@@ -193,6 +198,14 @@ Use Slate as first external child:
 4. Install to local children runtime path.
 5. Assign to project(s).
 6. Verify routed `patina spec`/Slate workflows execute through assigned child.
+
+## Modularity requirement (core values lock)
+
+Before implementing provider/CLI slices, child-registry state logic must be isolated behind a dedicated seam/module to avoid monolithic state growth.
+
+- Boundary target: `ChildRegistryStore` (or equivalent) with a small, honest API.
+- Existing `MotherRuntimeStore` may delegate to this seam.
+- This refactor is in-scope and required by `crc10-state-seam-modularity`.
 
 ## Verification
 

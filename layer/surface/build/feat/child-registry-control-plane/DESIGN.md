@@ -16,6 +16,19 @@ This enables external child repos (starting with Slate) without weakening trust 
 
 ## Boundary and ownership
 
+### State seam requirement (dependable-rust / unix)
+
+Child-registry persistence logic must not continue as monolithic growth in `mother/src/state.rs`.
+
+Introduce a dedicated seam:
+
+- `ChildRegistryStore` (focused API for sources, entries, installs, assignments)
+- implementation isolated in `mother/src/state/children_registry.rs`
+- `MotherRuntimeStore` delegates to this seam
+
+This keeps the public surface small, implementations swappable, and review scope bounded.
+
+
 - **Mother (`mother` crate):** authority for registry state, approval policy, install verification, assignment policy.
 - **CLI (`patina-ai`):** operator surface only (`patina mother children ...`).
 - **Children:** execution capabilities after assignment/activation.
@@ -97,7 +110,7 @@ Uniqueness constraint:
 
 ## State schema (Mother DB additions)
 
-Add tables in `mother/src/state.rs` migrations:
+Add tables in `mother/src/state/mod.rs` schema init, with child-registry operations implemented via the dedicated child-registry seam:
 
 - `mother_child_sources`
 - `mother_child_registry_entries`
@@ -268,8 +281,13 @@ Acceptance path:
 
 ## Implementation slices
 
+### Slice A0 — State seam refactor (required)
+- Create `ChildRegistryStore` and isolate child-registry state logic in `mother/src/state/children_registry.rs`.
+- Keep `MotherRuntimeStore` public API stable via delegation.
+- Add deterministic seam tests (happy path + fail-closed assignment guard).
+
 ### Slice A — Schema + state APIs
-- DB tables, structs, CRUD methods, guardrails.
+- DB tables, structs, CRUD methods, guardrails (executed through `ChildRegistryStore`).
 
 ### Slice B — GitHub provider
 - source sync + normalize releases -> entries.
