@@ -283,11 +283,8 @@ fn resolve_project_root_from_hint(project: Option<&str>) -> Result<PathBuf, Stri
             // scoped to guest preopens (commonly mounted at /input), so host absolute
             // paths may need remapping to guest-visible paths.
             if resolved.is_absolute() {
-                let remapped = PathBuf::from("/input").join(
-                    resolved
-                        .strip_prefix("/")
-                        .unwrap_or_else(|_| resolved.as_path()),
-                );
+                let remapped = PathBuf::from("/input")
+                    .join(resolved.strip_prefix("/").unwrap_or(resolved.as_path()));
                 if is_patina_project_root(&remapped) {
                     return Ok(remapped);
                 }
