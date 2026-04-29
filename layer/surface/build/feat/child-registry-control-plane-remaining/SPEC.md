@@ -42,6 +42,8 @@ exit_criteria:
   checked: false
 validated_against_commit: e0c87f8aaecaa5c79693676ca623e910c1bdc630
 last_freshness_check: 2026-04-29T02:12:02Z
+freshness_scope:
+- mother/src/state/children_registry.rs
 ---
 # feat: Child registry control plane completion (remaining criteria)
 
