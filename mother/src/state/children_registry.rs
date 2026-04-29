@@ -229,6 +229,82 @@ impl ChildRegistryStore {
         Ok(())
     }
 
+    pub fn transition_entry_state(
+        &self,
+        entry_id: &str,
+        state: &str,
+        reason: Option<&str>,
+        allow_override: bool,
+    ) -> Result<(String, String)> {
+        let current = self
+            .get_entry_by_id(entry_id)?
+            .ok_or_else(|| anyhow::anyhow!("unknown child registry entry '{}'", entry_id))?;
+
+        if current.state == state {
+            return Ok((current.state, state.to_string()));
+        }
+
+        if !is_valid_entry_state_transition(&current.state, state) {
+            let override_allowed =
+                allow_override && current.state == "deprecated" && state == "approved";
+            if !override_allowed {
+                anyhow::bail!(
+                    "invalid child registry state transition: {} -> {}",
+                    current.state,
+                    state
+                );
+            }
+        }
+
+        self.set_entry_state(entry_id, state, reason)?;
+        Ok((current.state, state.to_string()))
+    }
+
+    pub fn get_entry_by_id(&self, entry_id: &str) -> Result<Option<ChildRegistryEntryRecord>> {
+        let conn = self.runtime.open()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT entry_id, child_name, version, source_id, source_release_ref,
+                   artifact_url, manifest_url, checksums_url,
+                   artifact_sha256, manifest_sha256,
+                   signature_ref, patina_min,
+                   operations_json, needs_toys_json, needs_scopes_json,
+                   state, state_reason, created_at, updated_at
+            FROM mother_child_registry_entries
+            WHERE entry_id = ?1
+            LIMIT 1
+            "#,
+        )?;
+
+        let row = stmt
+            .query_row(params![entry_id], |row| {
+                Ok(ChildRegistryEntryRecord {
+                    entry_id: row.get(0)?,
+                    child_name: row.get(1)?,
+                    version: row.get(2)?,
+                    source_id: row.get(3)?,
+                    source_release_ref: row.get(4)?,
+                    artifact_url: row.get(5)?,
+                    manifest_url: row.get(6)?,
+                    checksums_url: row.get(7)?,
+                    artifact_sha256: row.get(8)?,
+                    manifest_sha256: row.get(9)?,
+                    signature_ref: row.get(10)?,
+                    patina_min: row.get(11)?,
+                    operations_json: row.get(12)?,
+                    needs_toys_json: row.get(13)?,
+                    needs_scopes_json: row.get(14)?,
+                    state: row.get(15)?,
+                    state_reason: row.get(16)?,
+                    created_at: row.get(17)?,
+                    updated_at: row.get(18)?,
+                })
+            })
+            .optional()?;
+
+        Ok(row)
+    }
+
     pub fn get_entry_by_child_version(
         &self,
         child_name: &str,
@@ -595,6 +671,138 @@ impl ChildRegistryStore {
 
         Ok(rows)
     }
+
+    pub fn get_active_project_assignment(
+        &self,
+        project_uid: &str,
+        child_name: &str,
+    ) -> Result<Option<ProjectChildAssignmentRecord>> {
+        let conn = self.runtime.open()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT assignment_id, project_uid, project_id, child_name, entry_id,
+                   pinned_version, status, reason, created_at, updated_at
+            FROM mother_project_child_assignments
+            WHERE project_uid = ?1 AND child_name = ?2 AND status = 'active'
+            LIMIT 1
+            "#,
+        )?;
+
+        stmt.query_row(params![project_uid, child_name], |row| {
+            Ok(ProjectChildAssignmentRecord {
+                assignment_id: row.get(0)?,
+                project_uid: row.get(1)?,
+                project_id: row.get(2)?,
+                child_name: row.get(3)?,
+                entry_id: row.get(4)?,
+                pinned_version: row.get(5)?,
+                status: row.get(6)?,
+                reason: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+            })
+        })
+        .optional()
+        .map_err(Into::into)
+    }
+
+    pub fn set_project_assignment_status(
+        &self,
+        assignment_id: &str,
+        status: &str,
+        reason: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.runtime.open()?;
+        let now = Utc::now().to_rfc3339();
+        let changed = conn.execute(
+            r#"
+            UPDATE mother_project_child_assignments
+            SET status = ?2,
+                reason = ?3,
+                updated_at = ?4
+            WHERE assignment_id = ?1
+            "#,
+            params![assignment_id, status, reason, now],
+        )?;
+
+        if changed == 0 {
+            anyhow::bail!("unknown child assignment '{}'", assignment_id);
+        }
+
+        Ok(())
+    }
+
+    pub fn append_audit_event(&self, event: &ChildRegistryAuditEventUpdate) -> Result<i64> {
+        let conn = self.runtime.open()?;
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            r#"
+            INSERT INTO mother_child_registry_audit (
+                event_kind,
+                outcome,
+                project_uid,
+                child_name,
+                entry_id,
+                reason,
+                payload_json,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "#,
+            params![
+                &event.event_kind,
+                &event.outcome,
+                event.project_uid.as_deref(),
+                event.child_name.as_deref(),
+                event.entry_id.as_deref(),
+                event.reason.as_deref(),
+                &event.payload_json,
+                now,
+            ],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn list_audit_events(&self, limit: usize) -> Result<Vec<ChildRegistryAuditRecord>> {
+        let conn = self.runtime.open()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, event_kind, outcome, project_uid, child_name, entry_id,
+                   reason, payload_json, created_at
+            FROM mother_child_registry_audit
+            ORDER BY id DESC
+            LIMIT ?1
+            "#,
+        )?;
+
+        let rows = stmt
+            .query_map(params![limit as i64], |row| {
+                Ok(ChildRegistryAuditRecord {
+                    id: row.get(0)?,
+                    event_kind: row.get(1)?,
+                    outcome: row.get(2)?,
+                    project_uid: row.get(3)?,
+                    child_name: row.get(4)?,
+                    entry_id: row.get(5)?,
+                    reason: row.get(6)?,
+                    payload_json: row.get(7)?,
+                    created_at: row.get(8)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(rows)
+    }
+}
+
+fn is_valid_entry_state_transition(from: &str, to: &str) -> bool {
+    match from {
+        "candidate" => matches!(to, "approved" | "blocked" | "deprecated"),
+        "approved" => matches!(to, "blocked" | "deprecated"),
+        "blocked" => matches!(to, "approved" | "deprecated"),
+        "deprecated" => false,
+        _ => false,
+    }
 }
 
 impl MotherRuntimeStore {
@@ -650,6 +858,24 @@ impl MotherRuntimeStore {
             .get_entry_by_child_version(child_name, version)
     }
 
+    pub fn get_child_registry_entry_by_id(
+        &self,
+        entry_id: &str,
+    ) -> Result<Option<ChildRegistryEntryRecord>> {
+        self.child_registry_store().get_entry_by_id(entry_id)
+    }
+
+    pub fn transition_child_registry_entry_state(
+        &self,
+        entry_id: &str,
+        state: &str,
+        reason: Option<&str>,
+        allow_override: bool,
+    ) -> Result<(String, String)> {
+        self.child_registry_store()
+            .transition_entry_state(entry_id, state, reason, allow_override)
+    }
+
     pub fn list_child_registry_entries(
         &self,
         child_name: Option<&str>,
@@ -679,6 +905,39 @@ impl MotherRuntimeStore {
     ) -> Result<Vec<ProjectChildAssignmentRecord>> {
         self.child_registry_store()
             .list_project_assignments(project_uid)
+    }
+
+    pub fn get_active_project_child_assignment(
+        &self,
+        project_uid: &str,
+        child_name: &str,
+    ) -> Result<Option<ProjectChildAssignmentRecord>> {
+        self.child_registry_store()
+            .get_active_project_assignment(project_uid, child_name)
+    }
+
+    pub fn set_project_child_assignment_status(
+        &self,
+        assignment_id: &str,
+        status: &str,
+        reason: Option<&str>,
+    ) -> Result<()> {
+        self.child_registry_store()
+            .set_project_assignment_status(assignment_id, status, reason)
+    }
+
+    pub fn append_child_registry_audit_event(
+        &self,
+        event: &ChildRegistryAuditEventUpdate,
+    ) -> Result<i64> {
+        self.child_registry_store().append_audit_event(event)
+    }
+
+    pub fn list_child_registry_audit_events(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<ChildRegistryAuditRecord>> {
+        self.child_registry_store().list_audit_events(limit)
     }
 }
 
@@ -803,4 +1062,28 @@ pub struct ProjectChildAssignmentUpdate {
     pub pinned_version: String,
     pub status: String,
     pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChildRegistryAuditRecord {
+    pub id: i64,
+    pub event_kind: String,
+    pub outcome: String,
+    pub project_uid: Option<String>,
+    pub child_name: Option<String>,
+    pub entry_id: Option<String>,
+    pub reason: Option<String>,
+    pub payload_json: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChildRegistryAuditEventUpdate {
+    pub event_kind: String,
+    pub outcome: String,
+    pub project_uid: Option<String>,
+    pub child_name: Option<String>,
+    pub entry_id: Option<String>,
+    pub reason: Option<String>,
+    pub payload_json: String,
 }

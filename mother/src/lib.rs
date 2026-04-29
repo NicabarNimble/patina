@@ -38,7 +38,8 @@ pub use runtime::{
     PandoRefreshResult, PendingEvent, ReadinessState, TaskIntent, TaskIntentKind, Toy,
 };
 pub use state::{
-    ChildInstallRecord, ChildInstallUpdate, ChildRegistryEntryRecord, ChildRegistryEntryUpdate,
+    ChildInstallRecord, ChildInstallUpdate, ChildRegistryAuditEventUpdate,
+    ChildRegistryAuditRecord, ChildRegistryEntryRecord, ChildRegistryEntryUpdate,
     ChildRegistrySourceRecord, ChildRegistrySourceUpdate, LakeCursorUpdate, MotherRuntimeStore,
     MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus, ProjectBeliefStateRecord,
     ProjectBeliefStateUpdate, ProjectChildAssignmentRecord, ProjectChildAssignmentUpdate,

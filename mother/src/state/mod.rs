@@ -7,7 +7,8 @@ use crate::{TaskIntent, TaskIntentKind};
 
 mod children_registry;
 pub use children_registry::{
-    ChildInstallRecord, ChildInstallUpdate, ChildRegistryEntryRecord, ChildRegistryEntryUpdate,
+    ChildInstallRecord, ChildInstallUpdate, ChildRegistryAuditEventUpdate,
+    ChildRegistryAuditRecord, ChildRegistryEntryRecord, ChildRegistryEntryUpdate,
     ChildRegistrySourceRecord, ChildRegistrySourceUpdate, ChildRegistryStore,
     ProjectChildAssignmentRecord, ProjectChildAssignmentUpdate,
 };
@@ -643,6 +644,23 @@ impl MotherRuntimeStore {
 
             CREATE INDEX IF NOT EXISTS idx_mother_project_child_assignment_project_status
             ON mother_project_child_assignments(project_uid, status, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS mother_child_registry_audit (
+                id INTEGER PRIMARY KEY,
+                event_kind TEXT NOT NULL,
+                outcome TEXT NOT NULL,
+                project_uid TEXT,
+                child_name TEXT,
+                entry_id TEXT,
+                reason TEXT,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_uid) REFERENCES project_registry(project_uid),
+                FOREIGN KEY (entry_id) REFERENCES mother_child_registry_entries(entry_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mother_child_registry_audit_created
+            ON mother_child_registry_audit(created_at DESC, id DESC);
 
             CREATE INDEX IF NOT EXISTS idx_project_registry_updated_at
             ON project_registry (updated_at DESC);
@@ -2200,12 +2218,21 @@ mod tests {
             .contains("requires approved child registry entry"));
 
         store
-            .set_child_registry_entry_state(
+            .transition_child_registry_entry_state(
                 "entry_slate_v0_1_0",
                 "approved",
                 Some("security review complete"),
+                false,
             )
             .unwrap();
+
+        let invalid_reverse = store.transition_child_registry_entry_state(
+            "entry_slate_v0_1_0",
+            "candidate",
+            Some("should fail"),
+            false,
+        );
+        assert!(invalid_reverse.is_err());
 
         store
             .upsert_project_child_assignment(&ProjectChildAssignmentUpdate {

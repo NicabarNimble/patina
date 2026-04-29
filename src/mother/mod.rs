@@ -52,7 +52,8 @@ pub use mother_crate::child_registry::{
     GitHubChildRegistryProvider, SourceSyncReport,
 };
 pub use mother_crate::state::{
-    ChildInstallRecord, ChildInstallUpdate, ChildRegistryEntryRecord, ChildRegistryEntryUpdate,
+    ChildInstallRecord, ChildInstallUpdate, ChildRegistryAuditEventUpdate,
+    ChildRegistryAuditRecord, ChildRegistryEntryRecord, ChildRegistryEntryUpdate,
     ChildRegistrySourceRecord, ChildRegistrySourceUpdate, InterfaceKindId, LakeCursorUpdate,
     MotherRuntimeStore, MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus,
     ProjectBeliefStateRecord, ProjectBeliefStateUpdate, ProjectChildAssignmentRecord,
