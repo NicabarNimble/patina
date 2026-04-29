@@ -47,6 +47,7 @@ freshness_scope:
 - mother/src/child_registry/sync.rs
 - mother/src/child_registry/github.rs
 - src/commands/mother/children.rs
+- src/commands/mother/mod.rs
 ---
 # feat: Child registry control plane completion (remaining criteria)
 
