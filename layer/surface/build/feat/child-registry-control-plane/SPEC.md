@@ -60,6 +60,7 @@ last_freshness_check: 2026-04-29T02:04:11Z
 freshness_scope:
 - mother/src/state/mod.rs
 - mother/src/state/children_registry.rs
+- mother/src/child_registry/mod.rs
 ---
 # feat: Mother child registry control plane (GitHub-first, provider-pluggable)
 
