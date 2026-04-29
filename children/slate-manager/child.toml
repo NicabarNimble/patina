@@ -7,7 +7,7 @@ role = "app"
 patina_min = "0.64.0"
 
 [child.ingress]
-mode = "hybrid"
+mode = "wit-only"
 
 [child.contract]
 default = "patina:slate/control@0.1.0.list-specs"
