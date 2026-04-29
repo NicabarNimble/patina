@@ -250,9 +250,13 @@ pub enum FederationCommands {
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum ChildrenCommands {
-    /// List configured child registry sources and sync status
+    /// Child registry source operations
     Sources {
-        /// Output as JSON
+        /// Source operation (defaults to list)
+        #[command(subcommand)]
+        command: Option<ChildrenSourcesCommands>,
+
+        /// Output as JSON (list/add operations)
         #[arg(long)]
         json: bool,
     },
@@ -266,6 +270,36 @@ pub enum ChildrenCommands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+    },
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum ChildrenSourcesCommands {
+    /// Add a child registry source
+    Add {
+        #[command(subcommand)]
+        provider: ChildrenSourceProviderCommands,
+    },
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum ChildrenSourceProviderCommands {
+    /// Add a GitHub source using owner/repo
+    Github {
+        /// Repository in owner/repo format
+        repo: String,
+
+        /// Override generated source id (default: src_github_<owner>_<repo>)
+        #[arg(long)]
+        source_id: Option<String>,
+
+        /// Optional canonical child name hint
+        #[arg(long)]
+        child_name: Option<String>,
+
+        /// Add as disabled source
+        #[arg(long)]
+        disabled: bool,
     },
 }
 
@@ -2032,7 +2066,10 @@ mod tests {
         let projects = MotherCommands::Projects(ProjectsCommands::List);
         assert!(matches!(projects, MotherCommands::Projects(_)));
 
-        let children = MotherCommands::Children(ChildrenCommands::Sources { json: false });
+        let children = MotherCommands::Children(ChildrenCommands::Sources {
+            command: None,
+            json: false,
+        });
         assert!(matches!(children, MotherCommands::Children(_)));
 
         let projects_prune = MotherCommands::Projects(ProjectsCommands::Prune {

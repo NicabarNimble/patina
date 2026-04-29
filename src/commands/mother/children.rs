@@ -1,11 +1,14 @@
 use anyhow::{bail, Context, Result};
 use serde_json::json;
 
-use super::ChildrenCommands;
+use super::{ChildrenCommands, ChildrenSourceProviderCommands, ChildrenSourcesCommands};
 
 pub(super) fn execute_children(command: ChildrenCommands) -> Result<()> {
     match command {
-        ChildrenCommands::Sources { json } => list_sources_cli(json),
+        ChildrenCommands::Sources { command, json } => match command {
+            None => list_sources_cli(json),
+            Some(ChildrenSourcesCommands::Add { provider }) => add_source_cli(provider, json),
+        },
         ChildrenCommands::Sync { source, json } => sync_sources_cli(source.as_deref(), json),
     }
 }
@@ -64,6 +67,82 @@ fn list_sources_cli(as_json: bool) -> Result<()> {
             row["last_sync_at"].as_str().unwrap_or("<never>"),
             row["last_sync_status"].as_str().unwrap_or("<none>"),
             row["last_error"].as_str().unwrap_or("<none>"),
+        );
+    }
+
+    Ok(())
+}
+
+fn add_source_cli(provider: ChildrenSourceProviderCommands, as_json: bool) -> Result<()> {
+    match provider {
+        ChildrenSourceProviderCommands::Github {
+            repo,
+            source_id,
+            child_name,
+            disabled,
+        } => add_github_source_cli(
+            &repo,
+            source_id.as_deref(),
+            child_name.as_deref(),
+            disabled,
+            as_json,
+        ),
+    }
+}
+
+fn add_github_source_cli(
+    repo: &str,
+    source_id_override: Option<&str>,
+    child_name: Option<&str>,
+    disabled: bool,
+    as_json: bool,
+) -> Result<()> {
+    let (owner, repo_name) = parse_owner_repo(repo)?;
+    let source_id = source_id_override
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| default_github_source_id(&owner, &repo_name));
+
+    let store = patina::mother::MotherRuntimeStore::default();
+    if store.get_child_registry_source(&source_id)?.is_some() {
+        bail!(
+            "child registry source '{}' already exists; choose --source-id or sync existing source",
+            source_id
+        );
+    }
+
+    let mut config = json!({
+        "owner": owner,
+        "repo": repo_name,
+    });
+    if let Some(child_name) = child_name {
+        config["child_name"] = json!(child_name);
+    }
+
+    store.upsert_child_registry_source(&patina::mother::ChildRegistrySourceUpdate {
+        source_id: source_id.clone(),
+        provider_kind: "github".to_string(),
+        provider_config_json: serde_json::to_string(&config)?,
+        enabled: !disabled,
+    })?;
+
+    if as_json {
+        let payload = json!({
+            "ok": true,
+            "source": {
+                "source_id": source_id,
+                "provider_kind": "github",
+                "enabled": !disabled,
+                "provider_config": config,
+            }
+        });
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+    } else {
+        println!(
+            "✓ Added child source {} (kind=github, enabled={}, repo={}/{})",
+            source_id,
+            !disabled,
+            config["owner"].as_str().unwrap_or(""),
+            config["repo"].as_str().unwrap_or("")
         );
     }
 
@@ -186,6 +265,45 @@ fn provider_for_kind(kind: &str) -> Result<Box<dyn patina::mother::ChildRegistry
     }
 }
 
+fn parse_owner_repo(input: &str) -> Result<(String, String)> {
+    let value = input
+        .trim()
+        .trim_start_matches("https://github.com/")
+        .trim_start_matches("http://github.com/")
+        .trim_start_matches("git@github.com:")
+        .trim_end_matches(".git")
+        .trim_matches('/');
+
+    let (owner, repo) = value
+        .split_once('/')
+        .ok_or_else(|| anyhow::anyhow!("expected owner/repo, got '{}'", input))?;
+
+    if owner.trim().is_empty() || repo.trim().is_empty() || repo.contains('/') {
+        bail!("expected owner/repo, got '{}'", input);
+    }
+
+    Ok((owner.to_string(), repo.to_string()))
+}
+
+fn default_github_source_id(owner: &str, repo: &str) -> String {
+    format!("src_github_{}_{}", slug(owner), slug(repo))
+}
+
+fn slug(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push('_');
+        }
+    }
+    while out.contains("__") {
+        out = out.replace("__", "_");
+    }
+    out.trim_matches('_').to_string()
+}
+
 fn report_to_json(report: &patina::mother::SourceSyncReport) -> serde_json::Value {
     json!({
         "source_id": report.source_id,
@@ -241,5 +359,29 @@ mod tests {
         assert_eq!(value["upserted_count"].as_u64(), Some(3));
         assert_eq!(value["skipped_count"].as_u64(), Some(1));
         assert_eq!(value["status"].as_str(), Some("success"));
+    }
+
+    #[test]
+    fn parse_owner_repo_accepts_common_github_forms() {
+        assert_eq!(
+            parse_owner_repo("NicabarNimble/patina").unwrap(),
+            ("NicabarNimble".to_string(), "patina".to_string())
+        );
+        assert_eq!(
+            parse_owner_repo("https://github.com/NicabarNimble/patina").unwrap(),
+            ("NicabarNimble".to_string(), "patina".to_string())
+        );
+        assert_eq!(
+            parse_owner_repo("git@github.com:NicabarNimble/patina.git").unwrap(),
+            ("NicabarNimble".to_string(), "patina".to_string())
+        );
+    }
+
+    #[test]
+    fn default_github_source_id_is_stable_slug() {
+        assert_eq!(
+            default_github_source_id("NicabarNimble", "patina-child-slate"),
+            "src_github_nicabarnimble_patina_child_slate"
+        );
     }
 }
