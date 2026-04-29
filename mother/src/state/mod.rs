@@ -5,6 +5,14 @@ use std::path::{Path, PathBuf};
 
 use crate::{TaskIntent, TaskIntentKind};
 
+mod children_registry;
+pub use children_registry::{
+    ChildInstallRecord, ChildInstallUpdate, ChildRegistryAuditEventUpdate,
+    ChildRegistryAuditRecord, ChildRegistryEntryRecord, ChildRegistryEntryUpdate,
+    ChildRegistrySourceRecord, ChildRegistrySourceUpdate, ChildRegistryStore,
+    ProjectChildAssignmentRecord, ProjectChildAssignmentUpdate,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskStatus {
     Queued,
@@ -544,8 +552,142 @@ impl MotherRuntimeStore {
             CREATE INDEX IF NOT EXISTS idx_mother_project_belief_state_status
             ON mother_project_belief_state(status, updated_at DESC);
 
+            CREATE TABLE IF NOT EXISTS mother_child_sources (
+                source_id TEXT PRIMARY KEY,
+                provider_kind TEXT NOT NULL,
+                provider_config_json TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_sync_at TEXT,
+                last_sync_status TEXT,
+                last_error TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (provider_kind IN ('github', 'gitea', 'custom')),
+                CHECK (enabled IN (0, 1))
+            );
+
+            CREATE TABLE IF NOT EXISTS mother_child_registry_entries (
+                entry_id TEXT PRIMARY KEY,
+                child_name TEXT NOT NULL,
+                version TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                source_release_ref TEXT NOT NULL,
+                artifact_url TEXT NOT NULL,
+                manifest_url TEXT NOT NULL,
+                checksums_url TEXT,
+                artifact_sha256 TEXT NOT NULL,
+                manifest_sha256 TEXT NOT NULL,
+                signature_ref TEXT,
+                patina_min TEXT,
+                operations_json TEXT,
+                needs_toys_json TEXT,
+                needs_scopes_json TEXT,
+                state TEXT NOT NULL DEFAULT 'candidate',
+                state_reason TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (source_id) REFERENCES mother_child_sources(source_id),
+                CHECK (state IN ('candidate', 'approved', 'blocked', 'deprecated')),
+                CHECK (LENGTH(TRIM(artifact_sha256)) > 0),
+                CHECK (LENGTH(TRIM(manifest_sha256)) > 0)
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mother_child_entry_name_version
+            ON mother_child_registry_entries(child_name, version);
+
+            CREATE INDEX IF NOT EXISTS idx_mother_child_entry_state
+            ON mother_child_registry_entries(state, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS mother_child_installs (
+                install_id TEXT PRIMARY KEY,
+                entry_id TEXT NOT NULL,
+                installed_name TEXT NOT NULL,
+                installed_version TEXT NOT NULL,
+                wasm_path TEXT NOT NULL,
+                manifest_path TEXT NOT NULL,
+                artifact_sha256_verified TEXT NOT NULL,
+                manifest_sha256_verified TEXT NOT NULL,
+                installed_at TEXT NOT NULL,
+                installed_by TEXT,
+                status TEXT NOT NULL DEFAULT 'installed',
+                last_error TEXT,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (entry_id) REFERENCES mother_child_registry_entries(entry_id),
+                CHECK (status IN ('installed', 'superseded', 'removed', 'failed')),
+                CHECK (LENGTH(TRIM(artifact_sha256_verified)) > 0),
+                CHECK (LENGTH(TRIM(manifest_sha256_verified)) > 0)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mother_child_installs_status
+            ON mother_child_installs(status, installed_at DESC);
+
+            CREATE TABLE IF NOT EXISTS mother_project_child_assignments (
+                assignment_id TEXT PRIMARY KEY,
+                project_uid TEXT NOT NULL,
+                project_id TEXT,
+                child_name TEXT NOT NULL,
+                entry_id TEXT NOT NULL,
+                pinned_version TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                reason TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_uid) REFERENCES project_registry(project_uid),
+                FOREIGN KEY (project_id) REFERENCES mother_project_identities(project_id),
+                FOREIGN KEY (entry_id) REFERENCES mother_child_registry_entries(entry_id),
+                CHECK (status IN ('active', 'revoked'))
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mother_project_child_assignment_active
+            ON mother_project_child_assignments(project_uid, child_name)
+            WHERE status = 'active';
+
+            CREATE INDEX IF NOT EXISTS idx_mother_project_child_assignment_project_status
+            ON mother_project_child_assignments(project_uid, status, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS mother_child_registry_audit (
+                id INTEGER PRIMARY KEY,
+                event_kind TEXT NOT NULL,
+                outcome TEXT NOT NULL,
+                project_uid TEXT,
+                child_name TEXT,
+                entry_id TEXT,
+                reason TEXT,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_uid) REFERENCES project_registry(project_uid),
+                FOREIGN KEY (entry_id) REFERENCES mother_child_registry_entries(entry_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_mother_child_registry_audit_created
+            ON mother_child_registry_audit(created_at DESC, id DESC);
+
             CREATE INDEX IF NOT EXISTS idx_project_registry_updated_at
             ON project_registry (updated_at DESC);
+
+            CREATE TRIGGER IF NOT EXISTS trg_project_child_assignment_requires_approved_entry_insert
+            BEFORE INSERT ON mother_project_child_assignments
+            WHEN NEW.status = 'active'
+            BEGIN
+              SELECT CASE
+                WHEN (
+                  SELECT state FROM mother_child_registry_entries WHERE entry_id = NEW.entry_id
+                ) <> 'approved'
+                THEN RAISE(ABORT, 'project child assignment requires approved child registry entry')
+              END;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS trg_project_child_assignment_requires_approved_entry_update
+            BEFORE UPDATE ON mother_project_child_assignments
+            WHEN NEW.status = 'active'
+            BEGIN
+              SELECT CASE
+                WHEN (
+                  SELECT state FROM mother_child_registry_entries WHERE entry_id = NEW.entry_id
+                ) <> 'approved'
+                THEN RAISE(ABORT, 'project child assignment requires approved child registry entry')
+              END;
+            END;
 
             CREATE TRIGGER IF NOT EXISTS trg_node_full_admin_guard_delete
             BEFORE DELETE ON mother_node_memberships
@@ -2002,6 +2144,158 @@ mod tests {
         assert_eq!(record.source_belief_count, Some(12));
         assert_eq!(record.indexed_belief_count, Some(12));
         assert_eq!(record.source_commit_sha.as_deref(), Some("deadbeef"));
+    }
+
+    #[test]
+    fn child_registry_roundtrip_and_assignment_requires_approved_entry() {
+        let store = temp_store();
+
+        store
+            .upsert_child_registry_source(&ChildRegistrySourceUpdate {
+                source_id: "src_github_slate".to_string(),
+                provider_kind: "github".to_string(),
+                provider_config_json: r#"{"owner":"NicabarNimble","repo":"patina-child-slate"}"#
+                    .to_string(),
+                enabled: true,
+            })
+            .unwrap();
+
+        let sources = store.list_child_registry_sources().unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].provider_kind, "github");
+        assert!(sources[0].enabled);
+
+        store
+            .upsert_child_registry_entry(&ChildRegistryEntryUpdate {
+                entry_id: "entry_slate_v0_1_0".to_string(),
+                child_name: "slate-manager".to_string(),
+                version: "0.1.0".to_string(),
+                source_id: "src_github_slate".to_string(),
+                source_release_ref: "v0.1.0".to_string(),
+                artifact_url: "https://example.invalid/slate-manager.wasm".to_string(),
+                manifest_url: "https://example.invalid/slate-manager.toml".to_string(),
+                checksums_url: None,
+                artifact_sha256: "a3d24c4036f88fe4ca64f70556f0eae2e4ef6f878b6c51481e4a4e5c4b2b8f66"
+                    .to_string(),
+                manifest_sha256: "c26bcdf6529d8adf4ceac76714566491582f59d0bc889ef9e4d8ce96aa95f4c4"
+                    .to_string(),
+                signature_ref: None,
+                patina_min: Some("0.64.4".to_string()),
+                operations_json: Some(r#"["patina:slate/control.list-specs"]"#.to_string()),
+                needs_toys_json: Some(r#"["logging","measure","git"]"#.to_string()),
+                needs_scopes_json: None,
+                state: "candidate".to_string(),
+                state_reason: Some("newly discovered".to_string()),
+            })
+            .unwrap();
+
+        let entries = store
+            .list_child_registry_entries(Some("slate-manager"))
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].state, "candidate");
+
+        let project_uid = ProjectUid::new("2bdc808e").unwrap();
+        let project_dir = tempfile::tempdir().unwrap();
+        store
+            .register_project(&project_uid, project_dir.path())
+            .unwrap();
+
+        let denied = store.upsert_project_child_assignment(&ProjectChildAssignmentUpdate {
+            assignment_id: "asg_slate_project".to_string(),
+            project_uid: "2bdc808e".to_string(),
+            project_id: None,
+            child_name: "slate-manager".to_string(),
+            entry_id: "entry_slate_v0_1_0".to_string(),
+            pinned_version: "0.1.0".to_string(),
+            status: "active".to_string(),
+            reason: Some("initial assignment".to_string()),
+        });
+        assert!(denied.is_err());
+        assert!(denied
+            .unwrap_err()
+            .to_string()
+            .contains("requires approved child registry entry"));
+
+        store
+            .transition_child_registry_entry_state(
+                "entry_slate_v0_1_0",
+                "approved",
+                Some("security review complete"),
+                false,
+            )
+            .unwrap();
+
+        let invalid_reverse = store.transition_child_registry_entry_state(
+            "entry_slate_v0_1_0",
+            "candidate",
+            Some("should fail"),
+            false,
+        );
+        assert!(invalid_reverse.is_err());
+
+        store
+            .upsert_project_child_assignment(&ProjectChildAssignmentUpdate {
+                assignment_id: "asg_slate_project".to_string(),
+                project_uid: "2bdc808e".to_string(),
+                project_id: None,
+                child_name: "slate-manager".to_string(),
+                entry_id: "entry_slate_v0_1_0".to_string(),
+                pinned_version: "0.1.0".to_string(),
+                status: "active".to_string(),
+                reason: Some("approved for project".to_string()),
+            })
+            .unwrap();
+
+        let assignments = store
+            .list_project_child_assignments(Some("2bdc808e"))
+            .unwrap();
+        assert_eq!(assignments.len(), 1);
+        assert_eq!(assignments[0].child_name, "slate-manager");
+        assert_eq!(assignments[0].status, "active");
+
+        store
+            .upsert_child_install(&ChildInstallUpdate {
+                install_id: "install_slate_v0_1_0".to_string(),
+                entry_id: "entry_slate_v0_1_0".to_string(),
+                installed_name: "slate-manager".to_string(),
+                installed_version: "0.1.0".to_string(),
+                wasm_path: "/Users/nicabar/.patina/children/slate-manager.wasm".to_string(),
+                manifest_path: "/Users/nicabar/.patina/children/slate-manager.toml".to_string(),
+                artifact_sha256_verified:
+                    "a3d24c4036f88fe4ca64f70556f0eae2e4ef6f878b6c51481e4a4e5c4b2b8f66".to_string(),
+                manifest_sha256_verified:
+                    "c26bcdf6529d8adf4ceac76714566491582f59d0bc889ef9e4d8ce96aa95f4c4".to_string(),
+                installed_by: Some("usr_3c87424dc90e4d43b61c47dacf43ab9b".to_string()),
+                status: "installed".to_string(),
+                last_error: None,
+            })
+            .unwrap();
+
+        let installs = store.list_child_installs(Some("slate-manager")).unwrap();
+        assert_eq!(installs.len(), 1);
+        assert_eq!(installs[0].status, "installed");
+    }
+
+    #[test]
+    fn child_install_hashes_are_non_empty() {
+        let store = temp_store();
+
+        let err = store.upsert_child_install(&ChildInstallUpdate {
+            install_id: "install_bad".to_string(),
+            entry_id: "entry_missing".to_string(),
+            installed_name: "slate-manager".to_string(),
+            installed_version: "0.1.0".to_string(),
+            wasm_path: "/tmp/slate-manager.wasm".to_string(),
+            manifest_path: "/tmp/slate-manager.toml".to_string(),
+            artifact_sha256_verified: "".to_string(),
+            manifest_sha256_verified: "".to_string(),
+            installed_by: None,
+            status: "failed".to_string(),
+            last_error: Some("checksum missing".to_string()),
+        });
+
+        assert!(err.is_err());
     }
 
     #[test]

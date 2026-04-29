@@ -103,7 +103,12 @@ pub fn backup_file(project_path: &Path, file_path: &Path) -> Result<Option<PathB
 
 /// Create a unique project identifier if it doesn't exist
 ///
-/// Returns the UID (8 hex characters, created once, never modified).
+/// Returns the UID (created once, never modified).
+///
+/// Formats:
+/// - Legacy: `8` lowercase hex characters
+/// - Modern: `puid_` + `32` lowercase hex characters
+///
 /// Used for stable project identity across different machines.
 pub fn create_uid_if_missing(project_path: &Path) -> Result<String> {
     internal::create_uid_if_missing(project_path)

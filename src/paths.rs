@@ -324,11 +324,23 @@ pub mod mother {
     pub mod projects {
         use super::*;
 
-        fn is_valid_project_uid(uid: &str) -> bool {
+        fn is_valid_legacy_project_uid(uid: &str) -> bool {
             uid.len() == 8
                 && uid
                     .bytes()
                     .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        }
+
+        fn is_valid_modern_project_uid(uid: &str) -> bool {
+            uid.len() == 37
+                && uid.starts_with("puid_")
+                && uid[5..]
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        }
+
+        fn is_valid_project_uid(uid: &str) -> bool {
+            is_valid_legacy_project_uid(uid) || is_valid_modern_project_uid(uid)
         }
 
         fn validate_project_uid(uid: &str) -> Result<(), String> {
@@ -336,7 +348,7 @@ pub mod mother {
                 Ok(())
             } else {
                 Err(format!(
-                    "invalid project uid '{}': expected 8 lowercase hex chars",
+                    "invalid project uid '{}': expected legacy 8 lowercase hex or modern 'puid_' + 32 lowercase hex",
                     uid
                 ))
             }
@@ -721,14 +733,23 @@ mod tests {
     #[test]
     fn test_mother_project_paths_validate_uid() {
         with_temp_patina_home(|expected_home| {
-            let project_dir = mother::projects::project_dir("2bdc808e").expect("valid uid");
-            assert_eq!(project_dir, expected_home.join("mother/projects/2bdc808e"));
+            let legacy = mother::projects::project_dir("2bdc808e").expect("valid legacy uid");
+            assert_eq!(legacy, expected_home.join("mother/projects/2bdc808e"));
+
+            let modern = mother::projects::project_dir("puid_3c87424dc90e4d43b61c47dacf43ab9b")
+                .expect("valid modern uid");
+            assert_eq!(
+                modern,
+                expected_home.join("mother/projects/puid_3c87424dc90e4d43b61c47dacf43ab9b")
+            );
 
             assert!(mother::projects::project_dir("").is_err());
             assert!(mother::projects::project_dir("123").is_err());
             assert!(mother::projects::project_dir("../etc").is_err());
             assert!(mother::projects::project_dir("ABCDEF12").is_err());
             assert!(mother::projects::project_dir("deadbeeg").is_err());
+            assert!(mother::projects::project_dir("puid_ABCDEF12").is_err());
+            assert!(mother::projects::project_dir("puid_123").is_err());
         });
     }
 

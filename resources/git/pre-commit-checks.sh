@@ -3,7 +3,22 @@
 
 set -euo pipefail
 
+# Ensure common toolchain locations are available in non-interactive environments
+# (e.g. Mother/service-launched subprocesses running git hooks).
+if [ -f "$HOME/.cargo/env" ]; then
+  # shellcheck disable=SC1090
+  . "$HOME/.cargo/env"
+fi
+export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 MAX_SIZE_KB=10240 # 10MB, far below GitHub's hard reject threshold.
+
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "❌ cargo not found in PATH for pre-commit hook"
+    echo "   PATH=$PATH"
+    echo "   Ensure Rust toolchain is installed and visible to non-interactive shells."
+    exit 1
+fi
 
 echo "🔍 Running pre-commit checks (Tier 0)..."
 echo ""
