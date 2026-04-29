@@ -27,16 +27,16 @@ references:
 exit_criteria:
 - id: crc-r1-approval-lockdown
   text: Mother enforces explicit approval lifecycle transitions (`candidate|approved|blocked|deprecated`) and denies non-approved install/assignment by default with auditable override semantics.
-  checked: false
+  checked: true
 - id: crc-r2-pin-verify-install
   text: Install flow is pin-first (`name@version`/entry id), verifies staged artifact+manifest hashes before atomic placement, records install provenance, and fails closed on mismatch.
-  checked: false
+  checked: true
 - id: crc-r3-assignment-audit
   text: Project child assignment/revoke commands persist authoritative assignment rows and emit deterministic audit events for grant/deny/revoke transitions.
-  checked: false
+  checked: true
 - id: crc-r4-operator-surface-parity
   text: Operator surface under `patina mother children` includes remaining lifecycle operations required by control-plane spec (`show/search/approve/block/deprecate/install/assign/unassign/status`) with JSON outputs and explicit failure reasons.
-  checked: false
+  checked: true
 - id: crc-r5-external-slate-proof
   text: External Slate proof is executed end-to-end (source sync -> approval -> install -> assign -> routed usage verification) with reproducible verification steps captured in spec artifacts.
   checked: true
@@ -146,3 +146,17 @@ Observed results:
 - install: hash verification + atomic placement succeeded (`~/.patina/children/slate-manager.{wasm,toml}`)
 - assign: active assignment for project `2bdc808e`
 - routed usage: execute-mode `spec next --json` succeeded through Mother/Slate route
+
+Additional closure evidence (2026-04-29):
+- Approval lockdown + fail-closed denial:
+  - `cargo run -q -- mother children block slate-manager@0.1.0 --reason "crc-r1 verification" --json`
+  - `cargo run -q -- mother children install slate-manager@0.1.0 --json` → fails with `install requires approved`
+  - `cargo run -q -- mother children assign slate-manager@0.1.0 --project /Users/nicabar/Projects/Sandbox/AI/RUST/patina --reason "crc-r1 verification" --json` → fails with `assignment requires approved`
+  - `cargo run -q -- mother children approve slate-manager@0.1.0 --reason "restore after crc verification" --json` (state restore)
+- Assignment/install audit visibility:
+  - `cargo run -q -- mother children status --json` returns authoritative counts + `recent_audit` entries including `entry.install`, `assignment.grant`, `assignment.revoke`, `entry.state.transition`.
+- Operator surface and regression coverage:
+  - `cargo run -q -- mother children --help` (show/search/approve/block/deprecate/install/assign/unassign/status present)
+  - `cargo test -p mother state::tests --quiet`
+  - `cargo test -p mother child_registry::sync::tests --quiet`
+  - `cargo test -p patina-ai commands::mother::children::tests --quiet`
