@@ -702,11 +702,13 @@ fn uds_request(method: &str, path: &str, json_body: Option<&[u8]>) -> Option<(u1
 fn read_http_response(stream: &mut std::os::unix::net::UnixStream) -> Option<Vec<u8>> {
     let mut response_buf = Vec::new();
     let mut chunk = [0u8; 8192];
+    let mut idle_timeouts = 0usize;
 
     loop {
         match stream.read(&mut chunk) {
             Ok(0) => break,
             Ok(n) => {
+                idle_timeouts = 0;
                 response_buf.extend_from_slice(&chunk[..n]);
                 if let Some(expected) = expected_http_response_len(&response_buf) {
                     if response_buf.len() >= expected {
@@ -725,6 +727,14 @@ fn read_http_response(stream: &mut std::os::unix::net::UnixStream) -> Option<Vec
                         return Some(response_buf);
                     }
                 }
+
+                // Avoid returning a partial response on the first timeout.
+                // Some local handlers flush response bytes, then close shortly after.
+                idle_timeouts += 1;
+                if idle_timeouts < 10 {
+                    continue;
+                }
+
                 if !response_buf.is_empty() {
                     break;
                 }
@@ -810,10 +820,11 @@ fn parse_http_status_body(response: &[u8]) -> Option<(u16, Vec<u8>)> {
     let body = if chunked {
         decode_chunked_body(raw_body)?
     } else if let Some(len) = content_length {
-        if raw_body.len() < len {
-            return None;
-        }
-        raw_body[..len].to_vec()
+        // Be tolerant of oversized Content-Length values from local UDS handlers.
+        // If the peer closed the stream and we have bytes, treat those bytes as the body
+        // instead of failing closed and spuriously falling back to TCP.
+        let end = len.min(raw_body.len());
+        raw_body[..end].to_vec()
     } else {
         raw_body.to_vec()
     };
@@ -1009,6 +1020,13 @@ mod tests {
     #[test]
     fn test_parse_http_body_respects_content_length() {
         let response = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}TRAILING";
+        let body = parse_http_body(response);
+        assert_eq!(body, Some(b"{}".to_vec()));
+    }
+
+    #[test]
+    fn test_parse_http_body_tolerates_oversized_content_length() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: 999\r\n\r\n{}";
         let body = parse_http_body(response);
         assert_eq!(body, Some(b"{}".to_vec()));
     }

@@ -267,6 +267,10 @@ pub fn accept_loop_tcp(
         }
         match listener.accept() {
             Ok((mut stream, _)) => {
+                // Accepted streams from a nonblocking listener can also be nonblocking.
+                // Force blocking I/O so write_response cannot truncate on WouldBlock.
+                let _ = stream.set_nonblocking(false);
+
                 if shutdown_requested.load(Ordering::Relaxed) {
                     let shutting_down = to_micro(
                         with_security_headers(json_error(503, "Server shutting down"))
@@ -491,6 +495,10 @@ pub fn accept_loop_uds(
         }
         match listener.accept() {
             Ok((mut stream, _)) => {
+                // Accepted streams from a nonblocking listener can also be nonblocking.
+                // Force blocking I/O so write_response cannot truncate on WouldBlock.
+                let _ = stream.set_nonblocking(false);
+
                 if shutdown_requested.load(Ordering::Relaxed) {
                     let shutting_down = to_micro(
                         with_security_headers(json_error(503, "Server shutting down"))

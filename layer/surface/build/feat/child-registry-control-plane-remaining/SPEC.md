@@ -39,7 +39,7 @@ exit_criteria:
   checked: false
 - id: crc-r5-external-slate-proof
   text: External Slate proof is executed end-to-end (source sync -> approval -> install -> assign -> routed usage verification) with reproducible verification steps captured in spec artifacts.
-  checked: false
+  checked: true
 validated_against_commit: e0c87f8aaecaa5c79693676ca623e910c1bdc630
 last_freshness_check: 2026-04-29T02:12:02Z
 freshness_scope:
@@ -127,3 +127,22 @@ Frontmatter `crc-r1..crc-r5` is the source of truth.
 
 - Existing seam and sync baseline is green.
 - Remaining work is now explicitly queued and trackable via this spec.
+
+## Evidence: External Slate proof rerun (2026-04-29)
+
+Executed against local binary surface (`cargo run -q -- ...`):
+
+```bash
+cargo run -q -- mother children sync --source src_github_nicabarnimble_patina_child_slate --json
+cargo run -q -- mother children approve slate-manager@0.1.5 --reason "step-5 routed execute proof" --json
+cargo run -q -- mother children install slate-manager@0.1.5 --json
+cargo run -q -- mother children assign slate-manager@0.1.5 --project /Users/nicabar/Projects/Sandbox/AI/RUST/patina --reason "step-5 routed execute proof" --json
+PATINA_SPEC_BACKEND=execute cargo run -q -- spec next --json
+```
+
+Observed results:
+- sync: `ok=true`, source succeeded
+- approve: entry `slate-manager@0.1.5` in `approved` state
+- install: hash verification + atomic placement succeeded (`~/.patina/children/slate-manager.{wasm,toml}`)
+- assign: active assignment for project `2bdc808e`
+- routed usage: execute-mode `spec next --json` succeeded through Mother/Slate route

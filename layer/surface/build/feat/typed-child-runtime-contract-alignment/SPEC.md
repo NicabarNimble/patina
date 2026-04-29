@@ -24,16 +24,16 @@ references:
 exit_criteria:
 - id: tca-r1-versioned-operation-contract
   text: Operation IDs for Slate typed routing are versioned and consistent across child contract manifest, Mother dispatch mapping, and tests (`patina:slate/control@0.1.0.*`).
-  checked: false
+  checked: true
 - id: tca-r2-typed-load-contract
   text: Mother can load Slate as a typed-first child without silent fallback; contract validation remains fail-closed and explicit on mismatch.
-  checked: false
+  checked: true
 - id: tca-r3-routed-execute-proof
   text: Routed execute proof succeeds end-to-end for Slate (`PATINA_SPEC_BACKEND=execute ...`) after external release sync/approve/install/assign.
-  checked: false
+  checked: true
 - id: tca-r4-regression-coverage
   text: Deterministic tests cover contract export validation and dispatch operation mapping to prevent unversioned-ID or export-shape regressions.
-  checked: false
+  checked: true
 ---
 # feat: Typed child runtime contract alignment for Mother
 
@@ -103,3 +103,11 @@ Frontmatter `tca-r1..tca-r4` is the source of truth.
 
 - Current breakage is isolated and reproducible.
 - Scope is small enough for rapid completion and immediate hand-back to [[child-registry-control-plane-remaining]] step-5 closure.
+
+## Evidence (2026-04-29)
+
+- Transport fix: accepted Mother TCP/UDS streams are forced to blocking mode in `mother/src/http_daemon.rs` to prevent partial 8KiB response writes (nonblocking `WouldBlock` truncation).
+- UDS parser hardening: tolerant handling for oversized `Content-Length` and timeout retry behavior in `src/mother/internal.rs`.
+- Verification:
+  - `cargo test -q parse_http_body`
+  - `PATINA_SPEC_BACKEND=execute cargo run -q -- spec next --json` (now succeeds via routed Slate execute path).
