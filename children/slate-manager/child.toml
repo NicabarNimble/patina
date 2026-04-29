@@ -10,18 +10,18 @@ patina_min = "0.64.0"
 mode = "hybrid"
 
 [child.contract]
-default = "patina:slate/control.list-specs"
+default = "patina:slate/control@0.1.0.list-specs"
 allow = [
-  "patina:slate/control.dispatch",
-  "patina:slate/control.list-specs",
-  "patina:slate/control.next-specs",
-  "patina:slate/control.check-spec",
-  "patina:slate/control.show-spec",
-  "patina:slate/control.prompt-spec",
-  "patina:slate/control.handoff-spec",
-  "patina:slate/control.packet-spec",
-  "patina:slate/control.complete-spec",
-  "patina:slate/control.archive-spec",
+  "patina:slate/control@0.1.0.dispatch",
+  "patina:slate/control@0.1.0.list-specs",
+  "patina:slate/control@0.1.0.next-specs",
+  "patina:slate/control@0.1.0.check-spec",
+  "patina:slate/control@0.1.0.show-spec",
+  "patina:slate/control@0.1.0.prompt-spec",
+  "patina:slate/control@0.1.0.handoff-spec",
+  "patina:slate/control@0.1.0.packet-spec",
+  "patina:slate/control@0.1.0.complete-spec",
+  "patina:slate/control@0.1.0.archive-spec",
 ]
 
 [needs]
