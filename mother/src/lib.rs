@@ -2,6 +2,7 @@ pub mod bridge;
 pub mod broker;
 pub mod builtin_children;
 pub mod checkpoint;
+pub mod child_registry;
 pub mod daemon_bootstrap;
 pub mod daemon_bootstrap_config;
 pub mod daemon_heartbeat;
@@ -27,6 +28,10 @@ pub mod state;
 pub mod tasks;
 pub mod toys;
 
+pub use child_registry::{
+    ChildRegistryProvider, ChildRegistrySyncEngine, DiscoveredChildRelease,
+    GitHubChildRegistryProvider, SourceSyncReport,
+};
 pub use runtime::{
     CallCorrelation, Child, ChildCallRequest, ChildHealth, ChildReloadResult, ChildRequest,
     ChildResponse, ChildWarmupResult, DegradedChild, MotherHost, MotherRuntime, PandoLoadResult,

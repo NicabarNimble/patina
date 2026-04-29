@@ -47,6 +47,10 @@ pub use crate::child::runtime::{
     CallCorrelation, Child, ChildCallRequest, ChildHealth, ChildRequest, ChildResponse, MotherHost,
     PendingEvent, TaskIntent, TaskIntentKind, Toy,
 };
+pub use mother_crate::child_registry::{
+    ChildRegistryProvider, ChildRegistrySyncEngine, DiscoveredChildRelease,
+    GitHubChildRegistryProvider, SourceSyncReport,
+};
 pub use mother_crate::state::{
     ChildInstallRecord, ChildInstallUpdate, ChildRegistryEntryRecord, ChildRegistryEntryUpdate,
     ChildRegistrySourceRecord, ChildRegistrySourceUpdate, InterfaceKindId, LakeCursorUpdate,
