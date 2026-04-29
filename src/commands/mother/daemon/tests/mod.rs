@@ -154,50 +154,50 @@ fn slate_typed_call_to_dispatch_envelope(
         .ok_or_else(|| anyhow::anyhow!("expected typed slate args[0] object"))?;
 
     let command = match request.operation_id.as_str() {
-        "patina:slate/control.list-specs" => serde_json::json!({
+        "patina:slate/control@0.1.0.list-specs" => serde_json::json!({
             "list": {
                 "status": args.get("status").cloned().unwrap_or(serde_json::Value::Null),
                 "target": args.get("target").cloned().unwrap_or(serde_json::Value::Null),
                 "json": true,
             }
         }),
-        "patina:slate/control.next-specs" => serde_json::json!({
+        "patina:slate/control@0.1.0.next-specs" => serde_json::json!({
             "next": {
                 "json": true,
             }
         }),
-        "patina:slate/control.check-spec" => serde_json::json!({
+        "patina:slate/control@0.1.0.check-spec" => serde_json::json!({
             "check": {
                 "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
                 "json": true,
             }
         }),
-        "patina:slate/control.show-spec" => serde_json::json!({
+        "patina:slate/control@0.1.0.show-spec" => serde_json::json!({
             "show": {
                 "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
                 "handoff": false,
                 "json": true,
             }
         }),
-        "patina:slate/control.prompt-spec" => serde_json::json!({
+        "patina:slate/control@0.1.0.prompt-spec" => serde_json::json!({
             "prompt": {
                 "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
                 "json": true,
             }
         }),
-        "patina:slate/control.handoff-spec" => serde_json::json!({
+        "patina:slate/control@0.1.0.handoff-spec" => serde_json::json!({
             "handoff": {
                 "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
                 "json": true,
             }
         }),
-        "patina:slate/control.packet-spec" => serde_json::json!({
+        "patina:slate/control@0.1.0.packet-spec" => serde_json::json!({
             "packet": {
                 "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
                 "json": true,
             }
         }),
-        "patina:slate/control.complete-spec" => serde_json::json!({
+        "patina:slate/control@0.1.0.complete-spec" => serde_json::json!({
             "complete": {
                 "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
                 "major": args.get("major").cloned().unwrap_or(serde_json::Value::Bool(false)),
@@ -205,7 +205,7 @@ fn slate_typed_call_to_dispatch_envelope(
                 "json": true,
             }
         }),
-        "patina:slate/control.archive-spec" => serde_json::json!({
+        "patina:slate/control@0.1.0.archive-spec" => serde_json::json!({
             "archive": {
                 "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
                 "stale": args.get("stale").cloned().unwrap_or(serde_json::Value::Bool(false)),
@@ -278,32 +278,36 @@ impl Child for SlateDispatchChild {
     }
 
     fn call(&self, request: &patina::mother::ChildCallRequest) -> Result<ChildResponse> {
-        if !request.operation_id.starts_with("patina:slate/control.") {
+        if !request
+            .operation_id
+            .starts_with("patina:slate/control@0.1.0.")
+        {
             return Err(anyhow::anyhow!(
                 "unexpected operation_id: {}",
                 request.operation_id
             ));
         }
 
-        let (command_bytes, project) = if request.operation_id == "patina:slate/control.dispatch" {
-            let command_json = request
-                .args
-                .as_array()
-                .and_then(|values| values.first())
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| anyhow::anyhow!("expected slate args[0] command JSON string"))?;
-            let envelope: serde_json::Value =
-                serde_json::from_str(command_json).map_err(|e| anyhow::anyhow!(e.to_string()))?;
-            (
-                command_json.len(),
-                envelope
-                    .get("project")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null),
-            )
-        } else {
-            (0, slate_call_project_value(request))
-        };
+        let (command_bytes, project) =
+            if request.operation_id == "patina:slate/control@0.1.0.dispatch" {
+                let command_json = request
+                    .args
+                    .as_array()
+                    .and_then(|values| values.first())
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("expected slate args[0] command JSON string"))?;
+                let envelope: serde_json::Value = serde_json::from_str(command_json)
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                (
+                    command_json.len(),
+                    envelope
+                        .get("project")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                )
+            } else {
+                (0, slate_call_project_value(request))
+            };
 
         let data = serde_json::json!({
             "status": "from-slate",
@@ -344,14 +348,17 @@ impl Child for ParitySlateDispatchChild {
     }
 
     fn call(&self, request: &patina::mother::ChildCallRequest) -> Result<ChildResponse> {
-        if !request.operation_id.starts_with("patina:slate/control.") {
+        if !request
+            .operation_id
+            .starts_with("patina:slate/control@0.1.0.")
+        {
             return Err(anyhow::anyhow!(
                 "unexpected operation_id: {}",
                 request.operation_id
             ));
         }
 
-        let command_json = if request.operation_id == "patina:slate/control.dispatch" {
+        let command_json = if request.operation_id == "patina:slate/control@0.1.0.dispatch" {
             request
                 .args
                 .as_array()
@@ -404,7 +411,10 @@ impl Child for ScaffoldSlateDispatchChild {
     }
 
     fn call(&self, request: &patina::mother::ChildCallRequest) -> Result<ChildResponse> {
-        if !request.operation_id.starts_with("patina:slate/control.") {
+        if !request
+            .operation_id
+            .starts_with("patina:slate/control@0.1.0.")
+        {
             return Err(anyhow::anyhow!(
                 "unexpected operation_id: {}",
                 request.operation_id
@@ -691,16 +701,16 @@ mode = "hybrid"
 
 [child.contract]
 allow = [
-  "patina:slate/control.dispatch",
-  "patina:slate/control.list-specs",
-  "patina:slate/control.next-specs",
-  "patina:slate/control.check-spec",
-  "patina:slate/control.show-spec",
-  "patina:slate/control.prompt-spec",
-  "patina:slate/control.handoff-spec",
-  "patina:slate/control.packet-spec",
-  "patina:slate/control.complete-spec",
-  "patina:slate/control.archive-spec",
+  "patina:slate/control@0.1.0.dispatch",
+  "patina:slate/control@0.1.0.list-specs",
+  "patina:slate/control@0.1.0.next-specs",
+  "patina:slate/control@0.1.0.check-spec",
+  "patina:slate/control@0.1.0.show-spec",
+  "patina:slate/control@0.1.0.prompt-spec",
+  "patina:slate/control@0.1.0.handoff-spec",
+  "patina:slate/control@0.1.0.packet-spec",
+  "patina:slate/control@0.1.0.complete-spec",
+  "patina:slate/control@0.1.0.archive-spec",
 ]
 "#,
         )
@@ -772,16 +782,16 @@ mode = "hybrid"
 
 [child.contract]
 allow = [
-  "patina:slate/control.dispatch",
-  "patina:slate/control.list-specs",
-  "patina:slate/control.next-specs",
-  "patina:slate/control.check-spec",
-  "patina:slate/control.show-spec",
-  "patina:slate/control.prompt-spec",
-  "patina:slate/control.handoff-spec",
-  "patina:slate/control.packet-spec",
-  "patina:slate/control.complete-spec",
-  "patina:slate/control.archive-spec",
+  "patina:slate/control@0.1.0.dispatch",
+  "patina:slate/control@0.1.0.list-specs",
+  "patina:slate/control@0.1.0.next-specs",
+  "patina:slate/control@0.1.0.check-spec",
+  "patina:slate/control@0.1.0.show-spec",
+  "patina:slate/control@0.1.0.prompt-spec",
+  "patina:slate/control@0.1.0.handoff-spec",
+  "patina:slate/control@0.1.0.packet-spec",
+  "patina:slate/control@0.1.0.complete-spec",
+  "patina:slate/control@0.1.0.archive-spec",
 ]
 "#,
         )
@@ -854,16 +864,16 @@ mode = "hybrid"
 
 [child.contract]
 allow = [
-  "patina:slate/control.dispatch",
-  "patina:slate/control.list-specs",
-  "patina:slate/control.next-specs",
-  "patina:slate/control.check-spec",
-  "patina:slate/control.show-spec",
-  "patina:slate/control.prompt-spec",
-  "patina:slate/control.handoff-spec",
-  "patina:slate/control.packet-spec",
-  "patina:slate/control.complete-spec",
-  "patina:slate/control.archive-spec",
+  "patina:slate/control@0.1.0.dispatch",
+  "patina:slate/control@0.1.0.list-specs",
+  "patina:slate/control@0.1.0.next-specs",
+  "patina:slate/control@0.1.0.check-spec",
+  "patina:slate/control@0.1.0.show-spec",
+  "patina:slate/control@0.1.0.prompt-spec",
+  "patina:slate/control@0.1.0.handoff-spec",
+  "patina:slate/control@0.1.0.packet-spec",
+  "patina:slate/control@0.1.0.complete-spec",
+  "patina:slate/control@0.1.0.archive-spec",
 ]
 "#,
         )
@@ -966,16 +976,16 @@ mode = "hybrid"
 
 [child.contract]
 allow = [
-  "patina:slate/control.dispatch",
-  "patina:slate/control.list-specs",
-  "patina:slate/control.next-specs",
-  "patina:slate/control.check-spec",
-  "patina:slate/control.show-spec",
-  "patina:slate/control.prompt-spec",
-  "patina:slate/control.handoff-spec",
-  "patina:slate/control.packet-spec",
-  "patina:slate/control.complete-spec",
-  "patina:slate/control.archive-spec",
+  "patina:slate/control@0.1.0.dispatch",
+  "patina:slate/control@0.1.0.list-specs",
+  "patina:slate/control@0.1.0.next-specs",
+  "patina:slate/control@0.1.0.check-spec",
+  "patina:slate/control@0.1.0.show-spec",
+  "patina:slate/control@0.1.0.prompt-spec",
+  "patina:slate/control@0.1.0.handoff-spec",
+  "patina:slate/control@0.1.0.packet-spec",
+  "patina:slate/control@0.1.0.complete-spec",
+  "patina:slate/control@0.1.0.archive-spec",
 ]
 "#,
         )
@@ -1118,16 +1128,16 @@ mode = "hybrid"
 
 [child.contract]
 allow = [
-  "patina:slate/control.dispatch",
-  "patina:slate/control.list-specs",
-  "patina:slate/control.next-specs",
-  "patina:slate/control.check-spec",
-  "patina:slate/control.show-spec",
-  "patina:slate/control.prompt-spec",
-  "patina:slate/control.handoff-spec",
-  "patina:slate/control.packet-spec",
-  "patina:slate/control.complete-spec",
-  "patina:slate/control.archive-spec",
+  "patina:slate/control@0.1.0.dispatch",
+  "patina:slate/control@0.1.0.list-specs",
+  "patina:slate/control@0.1.0.next-specs",
+  "patina:slate/control@0.1.0.check-spec",
+  "patina:slate/control@0.1.0.show-spec",
+  "patina:slate/control@0.1.0.prompt-spec",
+  "patina:slate/control@0.1.0.handoff-spec",
+  "patina:slate/control@0.1.0.packet-spec",
+  "patina:slate/control@0.1.0.complete-spec",
+  "patina:slate/control@0.1.0.archive-spec",
 ]
 "#,
         )

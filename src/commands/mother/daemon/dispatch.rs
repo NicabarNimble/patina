@@ -405,7 +405,7 @@ impl ApiRuntime for ServerState {
 
                     let typed_operation = match command {
                         patina::spec::SpecCommands::List { status, target, .. } => Some((
-                            "patina:slate/control.list-specs".to_string(),
+                            "patina:slate/control@0.1.0.list-specs".to_string(),
                             serde_json::json!([{
                                 "project": project_value,
                                 "status": status,
@@ -413,41 +413,41 @@ impl ApiRuntime for ServerState {
                             }]),
                         )),
                         patina::spec::SpecCommands::Next { .. } => Some((
-                            "patina:slate/control.next-specs".to_string(),
+                            "patina:slate/control@0.1.0.next-specs".to_string(),
                             serde_json::json!([{
                                 "project": project_value,
                             }]),
                         )),
                         patina::spec::SpecCommands::Check { id, .. } => Some((
-                            "patina:slate/control.check-spec".to_string(),
+                            "patina:slate/control@0.1.0.check-spec".to_string(),
                             serde_json::json!([{
                                 "project": project_value,
                                 "id": id,
                             }]),
                         )),
                         patina::spec::SpecCommands::Show { id, .. } => Some((
-                            "patina:slate/control.show-spec".to_string(),
+                            "patina:slate/control@0.1.0.show-spec".to_string(),
                             serde_json::json!([{
                                 "project": project_value,
                                 "id": id,
                             }]),
                         )),
                         patina::spec::SpecCommands::Prompt { id, .. } => Some((
-                            "patina:slate/control.prompt-spec".to_string(),
+                            "patina:slate/control@0.1.0.prompt-spec".to_string(),
                             serde_json::json!([{
                                 "project": project_value,
                                 "id": id,
                             }]),
                         )),
                         patina::spec::SpecCommands::Handoff { id, .. } => Some((
-                            "patina:slate/control.handoff-spec".to_string(),
+                            "patina:slate/control@0.1.0.handoff-spec".to_string(),
                             serde_json::json!([{
                                 "project": project_value,
                                 "id": id,
                             }]),
                         )),
                         patina::spec::SpecCommands::Packet { id, .. } => Some((
-                            "patina:slate/control.packet-spec".to_string(),
+                            "patina:slate/control@0.1.0.packet-spec".to_string(),
                             serde_json::json!([{
                                 "project": project_value,
                                 "id": id,
@@ -456,7 +456,7 @@ impl ApiRuntime for ServerState {
                         patina::spec::SpecCommands::Complete {
                             id, major, force, ..
                         } => Some((
-                            "patina:slate/control.complete-spec".to_string(),
+                            "patina:slate/control@0.1.0.complete-spec".to_string(),
                             serde_json::json!([{
                                 "project": project_value,
                                 "id": id,
@@ -465,7 +465,7 @@ impl ApiRuntime for ServerState {
                             }]),
                         )),
                         patina::spec::SpecCommands::Archive { id, dry_run, stale } => Some((
-                            "patina:slate/control.archive-spec".to_string(),
+                            "patina:slate/control@0.1.0.archive-spec".to_string(),
                             serde_json::json!([{
                                 "project": project_value,
                                 "id": id,
@@ -490,7 +490,7 @@ impl ApiRuntime for ServerState {
                             "Failed to serialize fallback spec dispatch envelope as string",
                         )?;
                         (
-                            "patina:slate/control.dispatch".to_string(),
+                            "patina:slate/control@0.1.0.dispatch".to_string(),
                             serde_json::json!([command_json]),
                         )
                     };
@@ -597,7 +597,7 @@ impl ApiRuntime for ServerState {
                     Err(error) => serde_json::json!({
                         "status": "unavailable",
                         "child": "slate-manager",
-                        "operation_id": "patina:slate/control.dispatch",
+                        "operation_id": "patina:slate/control@0.1.0.dispatch",
                         "error": error.to_string(),
                     }),
                 };

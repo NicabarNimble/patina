@@ -278,6 +278,18 @@ fn resolve_project_root_from_hint(project: Option<&str>) -> Result<PathBuf, Stri
             if is_patina_project_root(&resolved) {
                 return Ok(resolved);
             }
+
+            // Mother passes host-absolute project roots. In WASI, filesystem access is
+            // scoped to guest preopens (commonly mounted at /input), so host absolute
+            // paths may need remapping to guest-visible paths.
+            if resolved.is_absolute() {
+                let remapped = PathBuf::from("/input")
+                    .join(resolved.strip_prefix("/").unwrap_or(resolved.as_path()));
+                if is_patina_project_root(&remapped) {
+                    return Ok(remapped);
+                }
+            }
+
             return Err(format!(
                 "invalid project root in slate envelope: {}",
                 resolved.display()
@@ -296,7 +308,7 @@ fn with_project_root_cwd<T>(
     project_root: &Path,
     f: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
-    let original = std::env::current_dir().map_err(|e| e.to_string())?;
+    let original = std::env::current_dir().ok();
     std::env::set_current_dir(project_root).map_err(|e| {
         format!(
             "failed to enter project root {}: {}",
@@ -307,15 +319,11 @@ fn with_project_root_cwd<T>(
 
     let result = f();
 
-    let restore = std::env::set_current_dir(&original)
-        .map_err(|e| format!("failed to restore cwd {}: {}", original.display(), e));
-
-    match (result, restore) {
-        (Ok(value), Ok(())) => Ok(value),
-        (Err(error), Ok(())) => Err(error),
-        (Ok(_), Err(restore_error)) => Err(restore_error),
-        (Err(error), Err(_)) => Err(error),
+    if let Some(original) = original {
+        let _ = std::env::set_current_dir(&original);
     }
+
+    result
 }
 
 fn extract_frontmatter_and_body(content: &str) -> Option<(&str, &str)> {

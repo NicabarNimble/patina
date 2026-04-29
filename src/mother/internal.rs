@@ -161,8 +161,18 @@ impl Client {
             let body = serde_json::to_vec(payload)?;
             if let Some((status, resp_body)) = uds_request("POST", &path, Some(&body)) {
                 if (200..300).contains(&status) {
-                    return serde_json::from_slice(&resp_body)
-                        .context("Failed to parse child response from UDS");
+                    return serde_json::from_slice(&resp_body).with_context(|| {
+                        let preview = String::from_utf8_lossy(&resp_body)
+                            .chars()
+                            .take(200)
+                            .collect::<String>();
+                        format!(
+                            "Failed to parse child response from UDS (status={}, bytes={}, preview={:?})",
+                            status,
+                            resp_body.len(),
+                            preview
+                        )
+                    });
                 }
                 let msg = String::from_utf8_lossy(&resp_body).to_string();
                 anyhow::bail!("child request failed ({}): {}", status, msg);
@@ -644,11 +654,13 @@ fn uds_get(path: &str) -> Option<Vec<u8>> {
     let mut stream = std::os::unix::net::UnixStream::connect(&sock_path).ok()?;
     stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
 
-    let request = format!("GET {} HTTP/1.1\r\nHost: localhost\r\n\r\n", path);
+    let request = format!(
+        "GET {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+        path
+    );
     stream.write_all(request.as_bytes()).ok()?;
 
-    let mut response_buf = Vec::new();
-    stream.read_to_end(&mut response_buf).ok()?;
+    let response_buf = read_http_response(&mut stream)?;
 
     parse_http_body(&response_buf)
 }
@@ -673,7 +685,7 @@ fn uds_request(method: &str, path: &str, json_body: Option<&[u8]>) -> Option<(u1
 
     let body_len = json_body.map(|b| b.len()).unwrap_or(0);
     let mut request = format!(
-        "{} {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+        "{} {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
         method, path, body_len
     )
     .into_bytes();
@@ -682,10 +694,85 @@ fn uds_request(method: &str, path: &str, json_body: Option<&[u8]>) -> Option<(u1
     }
     stream.write_all(&request).ok()?;
 
-    let mut response_buf = Vec::new();
-    stream.read_to_end(&mut response_buf).ok()?;
+    let response_buf = read_http_response(&mut stream)?;
 
     parse_http_status_body(&response_buf)
+}
+
+fn read_http_response(stream: &mut std::os::unix::net::UnixStream) -> Option<Vec<u8>> {
+    let mut response_buf = Vec::new();
+    let mut chunk = [0u8; 8192];
+    let mut idle_timeouts = 0usize;
+
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                idle_timeouts = 0;
+                response_buf.extend_from_slice(&chunk[..n]);
+                if let Some(expected) = expected_http_response_len(&response_buf) {
+                    if response_buf.len() >= expected {
+                        response_buf.truncate(expected);
+                        return Some(response_buf);
+                    }
+                }
+            }
+            Err(error)
+                if error.kind() == std::io::ErrorKind::WouldBlock
+                    || error.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                if let Some(expected) = expected_http_response_len(&response_buf) {
+                    if response_buf.len() >= expected {
+                        response_buf.truncate(expected);
+                        return Some(response_buf);
+                    }
+                }
+
+                // Avoid returning a partial response on the first timeout.
+                // Some local handlers flush response bytes, then close shortly after.
+                idle_timeouts += 1;
+                if idle_timeouts < 10 {
+                    continue;
+                }
+
+                if !response_buf.is_empty() {
+                    break;
+                }
+                return None;
+            }
+            Err(_) => {
+                if response_buf.is_empty() {
+                    return None;
+                }
+                break;
+            }
+        }
+    }
+
+    if response_buf.is_empty() {
+        None
+    } else {
+        Some(response_buf)
+    }
+}
+
+fn expected_http_response_len(response: &[u8]) -> Option<usize> {
+    let separator = b"\r\n\r\n";
+    let headers_end = response.windows(4).position(|w| w == separator)?;
+    let body_start = headers_end + 4;
+
+    let header_text = std::str::from_utf8(&response[..headers_end]).ok()?;
+    for line in header_text.split("\r\n").skip(1) {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.trim().eq_ignore_ascii_case("content-length") {
+            let len = value.trim().parse::<usize>().ok()?;
+            return Some(body_start + len);
+        }
+    }
+
+    None
 }
 
 /// Extract HTTP response body (everything after \r\n\r\n) if status is 2xx.
@@ -699,17 +786,80 @@ fn parse_http_body(response: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn parse_http_status_body(response: &[u8]) -> Option<(u16, Vec<u8>)> {
-    let status_end = response.iter().position(|&b| b == b'\r')?;
-    let first_line = std::str::from_utf8(&response[..status_end]).ok()?;
-    let status: u16 = first_line.split_whitespace().nth(1)?.parse().ok()?;
-
     let separator = b"\r\n\r\n";
-    let body_start = response
-        .windows(4)
-        .position(|w| w == separator)
-        .map(|p| p + 4)?;
+    let headers_end = response.windows(4).position(|w| w == separator)?;
+    let body_start = headers_end + 4;
 
-    Some((status, response[body_start..].to_vec()))
+    let header_text = std::str::from_utf8(&response[..headers_end]).ok()?;
+    let mut lines = header_text.split("\r\n");
+
+    let status_line = lines.next()?;
+    let status: u16 = status_line.split_whitespace().nth(1)?.parse().ok()?;
+
+    let mut content_length: Option<usize> = None;
+    let mut chunked = false;
+    for line in lines {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        let name = name.trim().to_ascii_lowercase();
+        let value = value.trim();
+        if name == "content-length" {
+            content_length = value.parse::<usize>().ok();
+        } else if name == "transfer-encoding"
+            && value
+                .to_ascii_lowercase()
+                .split(',')
+                .any(|part| part.trim() == "chunked")
+        {
+            chunked = true;
+        }
+    }
+
+    let raw_body = &response[body_start..];
+    let body = if chunked {
+        decode_chunked_body(raw_body)?
+    } else if let Some(len) = content_length {
+        // Be tolerant of oversized Content-Length values from local UDS handlers.
+        // If the peer closed the stream and we have bytes, treat those bytes as the body
+        // instead of failing closed and spuriously falling back to TCP.
+        let end = len.min(raw_body.len());
+        raw_body[..end].to_vec()
+    } else {
+        raw_body.to_vec()
+    };
+
+    Some((status, body))
+}
+
+fn decode_chunked_body(input: &[u8]) -> Option<Vec<u8>> {
+    let mut cursor = 0usize;
+    let mut out = Vec::new();
+
+    loop {
+        let size_line_end_rel = input[cursor..].windows(2).position(|w| w == b"\r\n")?;
+        let size_line_end = cursor + size_line_end_rel;
+        let size_line = std::str::from_utf8(&input[cursor..size_line_end]).ok()?;
+        let size_hex = size_line.split(';').next()?.trim();
+        let size = usize::from_str_radix(size_hex, 16).ok()?;
+        cursor = size_line_end + 2;
+
+        if size == 0 {
+            return Some(out);
+        }
+
+        if input.len() < cursor + size + 2 {
+            return None;
+        }
+
+        out.extend_from_slice(&input[cursor..cursor + size]);
+        cursor += size;
+
+        if &input[cursor..cursor + 2] != b"\r\n" {
+            return None;
+        }
+        cursor += 2;
+    }
 }
 
 // === Token + localhost detection ===
@@ -865,6 +1015,34 @@ mod tests {
     #[test]
     fn test_parse_http_body_empty() {
         assert!(parse_http_body(b"").is_none());
+    }
+
+    #[test]
+    fn test_parse_http_body_respects_content_length() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}TRAILING";
+        let body = parse_http_body(response);
+        assert_eq!(body, Some(b"{}".to_vec()));
+    }
+
+    #[test]
+    fn test_parse_http_body_tolerates_oversized_content_length() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: 999\r\n\r\n{}";
+        let body = parse_http_body(response);
+        assert_eq!(body, Some(b"{}".to_vec()));
+    }
+
+    #[test]
+    fn test_parse_http_body_chunked() {
+        let response = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n";
+        let body = parse_http_body(response);
+        assert_eq!(body, Some(b"{}".to_vec()));
+    }
+
+    #[test]
+    fn test_expected_http_response_len_content_length() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}TRAIL";
+        let expected = expected_http_response_len(response);
+        assert_eq!(expected, Some(40));
     }
 
     #[test]

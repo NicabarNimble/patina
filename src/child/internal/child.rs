@@ -1150,9 +1150,17 @@ impl ChildEngine {
         let mut store = Store::new(wasm_engine(), host_state);
         let instance_pre = linker.instantiate_pre(component)?;
         let component_instance = instance_pre.instantiate(&mut store)?;
-        let instance = bindings::Child::new(&mut store, &component_instance)?;
-        instance.call_init(&mut store)?;
-        let name = instance.call_name(&mut store)?;
+        let runtime_instance = if manifest.ingress_mode == ChildIngressMode::WitOnly {
+            None
+        } else {
+            let instance = bindings::Child::new(&mut store, &component_instance)?;
+            instance.call_init(&mut store)?;
+            Some(instance)
+        };
+        let name = runtime_instance
+            .as_ref()
+            .and_then(|instance| instance.call_name(&mut store).ok())
+            .unwrap_or_else(|| manifest.name.clone());
         let driver_mode = selected_typed_invocation_driver_mode();
         let invocation_driver: Box<dyn InvocationDriver + Send + Sync> = match driver_mode {
             TypedInvocationDriverMode::StrictTypedComponent => {
@@ -1177,7 +1185,7 @@ impl ChildEngine {
             name,
             inner: Mutex::new(WasmChildInner {
                 store,
-                instance,
+                runtime_instance,
                 component_instance,
             }),
             invocation_driver,
@@ -1193,7 +1201,7 @@ struct WasmChild {
 
 struct WasmChildInner {
     store: Store<HostState>,
-    instance: bindings::Child,
+    runtime_instance: Option<bindings::Child>,
     component_instance: wasmtime::component::Instance,
 }
 
@@ -1669,8 +1677,19 @@ impl InvocationDriver for HandleBridgeInvocationDriver {
         let op = resolve_typed_operation(&request.operation_id)?;
         let payload_json = encode_typed_args_for_handle(&request.args)?;
         let WasmChildInner {
-            store, instance, ..
+            store,
+            runtime_instance,
+            ..
         } = inner;
+        let Some(instance) = runtime_instance.as_mut() else {
+            return Err(typed_invocation_error(
+                TypedInvocationErrorCode::NotImplemented,
+                format!(
+                    "typed handle-bridge unavailable for child '{}' (no runtime handle export)",
+                    child_name
+                ),
+            ));
+        };
 
         match instance.call_handle(store, &op.action, &payload_json) {
             Ok(Ok(json)) => serde_json::from_str(&json)
@@ -1821,8 +1840,13 @@ impl Child for WasmChild {
     fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let WasmChildInner {
-            store, instance, ..
+            store,
+            runtime_instance,
+            ..
         } = &mut *inner;
+        let Some(instance) = runtime_instance.as_mut() else {
+            return Ok(());
+        };
         match instance.call_on_load(store)? {
             Ok(()) => Ok(()),
             Err(e) => Err(anyhow::anyhow!("WASM on_load failed: {}", e)),
@@ -1832,16 +1856,25 @@ impl Child for WasmChild {
     fn on_unload(&mut self) {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let WasmChildInner {
-            store, instance, ..
+            store,
+            runtime_instance,
+            ..
         } = &mut *inner;
-        let _ = instance.call_on_unload(store);
+        if let Some(instance) = runtime_instance.as_mut() {
+            let _ = instance.call_on_unload(store);
+        }
     }
 
     fn health(&self) -> ChildHealth {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let WasmChildInner {
-            store, instance, ..
+            store,
+            runtime_instance,
+            ..
         } = &mut *inner;
+        let Some(instance) = runtime_instance.as_mut() else {
+            return ChildHealth::Healthy;
+        };
         match instance.call_health(store) {
             Ok(h) => {
                 let reason = h.reason.unwrap_or_default();
@@ -1872,8 +1905,16 @@ impl Child for WasmChild {
     fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let WasmChildInner {
-            store, instance, ..
+            store,
+            runtime_instance,
+            ..
         } = &mut *inner;
+        let Some(instance) = runtime_instance.as_mut() else {
+            anyhow::bail!(
+                "handle call not supported for typed-only child '{}'",
+                self.name
+            );
+        };
         let payload_json = serde_json::to_string(&request.payload)?;
         match instance.call_handle(store, &request.action, &payload_json)? {
             Ok(json) => Ok(ChildResponse {
@@ -1891,8 +1932,13 @@ impl Child for WasmChild {
     fn drain(&mut self, limit: u32) -> Result<Vec<PendingEvent>> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let WasmChildInner {
-            store, instance, ..
+            store,
+            runtime_instance,
+            ..
         } = &mut *inner;
+        let Some(instance) = runtime_instance.as_mut() else {
+            return Ok(vec![]);
+        };
         match instance.call_drain(store, limit)? {
             Ok(events) => Ok(events
                 .into_iter()
@@ -1912,8 +1958,13 @@ impl Child for WasmChild {
     fn tick(&mut self) -> Vec<TaskIntent> {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let WasmChildInner {
-            store, instance, ..
+            store,
+            runtime_instance,
+            ..
         } = &mut *inner;
+        let Some(instance) = runtime_instance.as_mut() else {
+            return vec![];
+        };
         match instance.call_tick(store) {
             Ok(intents) => intents
                 .into_iter()
