@@ -63,6 +63,7 @@ freshness_scope:
 - mother/src/child_registry/mod.rs
 - mother/src/child_registry/sync.rs
 - mother/src/child_registry/github.rs
+- src/commands/mother/mod.rs
 ---
 # feat: Mother child registry control plane (GitHub-first, provider-pluggable)
 
