@@ -45,6 +45,7 @@ last_freshness_check: 2026-04-29T02:12:02Z
 freshness_scope:
 - mother/src/state/children_registry.rs
 - mother/src/child_registry/sync.rs
+- mother/src/child_registry/github.rs
 ---
 # feat: Child registry control plane completion (remaining criteria)
 
