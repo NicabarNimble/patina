@@ -306,6 +306,59 @@ Acceptance path:
 
 ---
 
+## Why This Design
+
+This design isolates authority from adapters: Mother owns policy state while providers only supply normalized discovery data. That keeps trust and assignment semantics stable across forge providers and prevents policy leakage into network adapters.
+
+## Build Target
+
+- Stable Mother control-plane registry state for child distribution.
+- GitHub-first discovery path with provider seam for Gitea/custom.
+- Minimal operator commands to manage sources and sync entries.
+
+## Resolved Decisions
+
+- Child registry state must live behind a dedicated seam (`ChildRegistryStore`).
+- Provider abstraction is trait-based and fail-closed for unsupported kinds.
+- GitHub adapter resolves release artifacts and checksums into normalized entry rows.
+- Operator surface is incremental: land minimal safe commands before full matrix.
+
+## Commits
+
+- `c2595fc3` — mother/state: split child registry into dedicated store seam
+- `3170587a` — mother/state: remove legacy single-file state module
+- `5f58ef4c` — mother/state: add child registry source and entry lookup helpers
+- `c66b78b9` — mother: add child registry sync engine and GitHub provider adapter
+- `07b170ff` — mother: add children sync command path through registry engine
+- `8190a1fe` — mother: add json output mode for children sources and sync
+- `bc13705e` — mother: add sources add github command for child registry
+- `93961d64` — mother: add children source enable and disable operations
+
+## Direct Code Targets
+
+- `mother/src/state/mod.rs`
+- `mother/src/state/children_registry.rs`
+- `mother/src/child_registry/mod.rs`
+- `mother/src/child_registry/sync.rs`
+- `mother/src/child_registry/github.rs`
+- `src/commands/mother/mod.rs`
+- `src/commands/mother/children.rs`
+
+## Verification Plan
+
+1. `cargo fmt --all`
+2. `cargo check -q`
+3. `cargo test -p mother state::tests --quiet`
+4. `cargo test -p mother child_registry::sync::tests --quiet`
+5. `cargo test -p mother child_registry::github::tests --quiet`
+6. `cargo test -p patina-ai commands::mother::children::tests --quiet`
+
+## Build Readiness
+
+- Source sync flow is usable end-to-end for GitHub sources.
+- JSON/text operator outputs exist for list/add/enable/disable/sync.
+- Remaining slices (install/assignment runtime enforcement/external proof) are tracked in spec exit criteria.
+
 ## Open decisions
 
 1. Signature policy default: warn-only vs strict required.
