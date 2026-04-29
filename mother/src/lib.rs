@@ -33,8 +33,10 @@ pub use runtime::{
     PandoRefreshResult, PendingEvent, ReadinessState, TaskIntent, TaskIntentKind, Toy,
 };
 pub use state::{
-    LakeCursorUpdate, MotherRuntimeStore, MotherSessionParticipant, MotherSessionRecord,
-    MotherSessionStatus, ProjectBeliefStateRecord, ProjectBeliefStateUpdate, QueuedTask, RunStatus,
-    StartupAttemptRecord, TaskStatus,
+    ChildInstallRecord, ChildInstallUpdate, ChildRegistryEntryRecord, ChildRegistryEntryUpdate,
+    ChildRegistrySourceRecord, ChildRegistrySourceUpdate, LakeCursorUpdate, MotherRuntimeStore,
+    MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus, ProjectBeliefStateRecord,
+    ProjectBeliefStateUpdate, ProjectChildAssignmentRecord, ProjectChildAssignmentUpdate,
+    QueuedTask, RunStatus, StartupAttemptRecord, TaskStatus,
 };
 pub use toys::{GrantedIngressSource, GrantedToys};

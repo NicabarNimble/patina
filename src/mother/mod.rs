@@ -48,9 +48,11 @@ pub use crate::child::runtime::{
     PendingEvent, TaskIntent, TaskIntentKind, Toy,
 };
 pub use mother_crate::state::{
-    InterfaceKindId, LakeCursorUpdate, MotherRuntimeStore, MotherSessionParticipant,
-    MotherSessionRecord, MotherSessionStatus, ProjectBeliefStateRecord, ProjectBeliefStateUpdate,
-    ProjectUid, QueuedTask, RunStatus, TaskStatus, VoiceUid,
+    ChildInstallRecord, ChildInstallUpdate, ChildRegistryEntryRecord, ChildRegistryEntryUpdate,
+    ChildRegistrySourceRecord, ChildRegistrySourceUpdate, InterfaceKindId, LakeCursorUpdate,
+    MotherRuntimeStore, MotherSessionParticipant, MotherSessionRecord, MotherSessionStatus,
+    ProjectBeliefStateRecord, ProjectBeliefStateUpdate, ProjectChildAssignmentRecord,
+    ProjectChildAssignmentUpdate, ProjectUid, QueuedTask, RunStatus, TaskStatus, VoiceUid,
 };
 pub use mother_crate::toys::{GrantedIngressSource, GrantedToys};
 
