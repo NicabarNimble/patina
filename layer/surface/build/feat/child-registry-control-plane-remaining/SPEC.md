@@ -41,6 +41,7 @@ exit_criteria:
   text: External Slate proof is executed end-to-end (source sync -> approval -> install -> assign -> routed usage verification) with reproducible verification steps captured in spec artifacts.
   checked: false
 validated_against_commit: e0c87f8aaecaa5c79693676ca623e910c1bdc630
+last_freshness_check: 2026-04-29T02:12:02Z
 ---
 # feat: Child registry control plane completion (remaining criteria)
 
