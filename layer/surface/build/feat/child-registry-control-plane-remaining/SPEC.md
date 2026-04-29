@@ -1,7 +1,7 @@
 ---
 type: feat
 id: child-registry-control-plane-remaining
-status: ready
+status: active
 created: 2026-04-29
 updated: 2026-04-29
 sessions:
