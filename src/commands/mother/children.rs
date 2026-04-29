@@ -967,6 +967,7 @@ fn assignment_id_for(project_uid: &str, child_name: &str) -> String {
     format!("asg_{}", hex_lower(&digest[..12]))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_audit(
     store: &patina::mother::MotherRuntimeStore,
     event_kind: &str,
