@@ -1,69 +1,60 @@
 ---
 type: feat
 id: child-registry-control-plane
-status: draft
+status: ready
 created: 2026-04-24
 updated: 2026-04-24
 related:
-  - mother/src/registry.rs
-  - mother/src/runtime.rs
-  - mother/src/state/mod.rs
-  - mother/src/state/children_registry.rs
-  - src/commands/mother/mod.rs
-  - src/commands/mother/daemon.rs
-  - src/paths.rs
-  - children/slate-manager/
-  - crates/patina-protocol/src/lib.rs
-references:
-  - layer/core/values/spec-driven-design.md
-  - layer/core/values/safety-boundaries.md
-  - layer/core/values/dependable-rust.md
-  - layer/core/values/adapter-pattern.md
+- mother/src/registry.rs
+- mother/src/runtime.rs
+- mother/src/state/mod.rs
+- mother/src/state/children_registry.rs
+- src/commands/mother/mod.rs
+- src/commands/mother/daemon.rs
+- src/paths.rs
+- children/slate-manager/
+- crates/patina-protocol/src/lib.rs
 beliefs:
-  - '[[spec-driven-design]]'
-  - '[[safety-boundaries]]'
-  - '[[dependable-rust]]'
-  - '[[adapter-pattern]]'
+- '[[spec-driven-design]]'
+- '[[safety-boundaries]]'
+- '[[dependable-rust]]'
+- '[[adapter-pattern]]'
+references:
+- layer/core/values/spec-driven-design.md
+- layer/core/values/safety-boundaries.md
+- layer/core/values/dependable-rust.md
+- layer/core/values/adapter-pattern.md
 exit_criteria:
-  - id: crc1-registry-model
-    text: "Mother has a first-class child registry model (index, source, version, artifact, trust, compatibility, approval state) persisted in state DB and queryable via CLI/API."
-    checked: false
-
-  - id: crc2-github-first-source
-    text: "Registry can ingest child entries from GitHub repositories/releases by default (owner/repo, tag/version, asset URL, checksums, optional signature metadata)."
-    checked: false
-
-  - id: crc3-provider-abstraction
-    text: "Registry source adapter contract supports GitHub now and allows Gitea/other git forge providers without changing core registry semantics."
-    checked: false
-
-  - id: crc4-approval-lockdown
-    text: "Mother enforces explicit approval states (untrusted -> candidate -> approved -> blocked/deprecated) and denies install/assignment for non-approved entries unless force policy explicitly allows it."
-    checked: false
-
-  - id: crc5-pin-and-verify
-    text: "Install and assignment flows are pin-first (name@version or digest), verify artifact hash/signature metadata, and fail closed on mismatch."
-    checked: false
-
-  - id: crc6-project-assignment
-    text: "Project-level child assignment exists as Mother authority data (which projects may use which approved child versions) with clear audit events for grant/deny changes."
-    checked: false
-
-  - id: crc7-operator-surface
-    text: "Operator surface exists under `patina mother children ...` for search/list/show/approve/block/pull/install/assign/sync with dry-run where side effects occur."
-    checked: false
-
-  - id: crc8-external-child-ready
-    text: "Out-of-repo child workflow is validated by onboarding at least one external child repository (Slate), proving build->publish->registry sync->install->project assignment end-to-end."
-    checked: false
-
-  - id: crc9-backward-compat
-    text: "Existing local child loading from ~/.patina/children remains operational; registry-backed install is additive and can coexist during migration."
-    checked: false
-
-  - id: crc10-state-seam-modularity
-    text: "Mother state implementation follows dependable-rust/unix boundaries for this feature: child-registry state logic is isolated behind a dedicated store seam/module (`ChildRegistryStore`) rather than growing monolithic `state.rs`."
-    checked: false
+- id: crc1-registry-model
+  text: Mother has a first-class child registry model (index, source, version, artifact, trust, compatibility, approval state) persisted in state DB and queryable via CLI/API.
+  checked: true
+- id: crc2-github-first-source
+  text: Registry can ingest child entries from GitHub repositories/releases by default (owner/repo, tag/version, asset URL, checksums, optional signature metadata).
+  checked: true
+- id: crc3-provider-abstraction
+  text: Registry source adapter contract supports GitHub now and allows Gitea/other git forge providers without changing core registry semantics.
+  checked: true
+- id: crc4-approval-lockdown
+  text: Mother enforces explicit approval states (untrusted -> candidate -> approved -> blocked/deprecated) and denies install/assignment for non-approved entries unless force policy explicitly allows it.
+  checked: false
+- id: crc5-pin-and-verify
+  text: Install and assignment flows are pin-first (name@version or digest), verify artifact hash/signature metadata, and fail closed on mismatch.
+  checked: false
+- id: crc6-project-assignment
+  text: Project-level child assignment exists as Mother authority data (which projects may use which approved child versions) with clear audit events for grant/deny changes.
+  checked: false
+- id: crc7-operator-surface
+  text: Operator surface exists under `patina mother children ...` for search/list/show/approve/block/pull/install/assign/sync with dry-run where side effects occur.
+  checked: false
+- id: crc8-external-child-ready
+  text: Out-of-repo child workflow is validated by onboarding at least one external child repository (Slate), proving build->publish->registry sync->install->project assignment end-to-end.
+  checked: false
+- id: crc9-backward-compat
+  text: Existing local child loading from ~/.patina/children remains operational; registry-backed install is additive and can coexist during migration.
+  checked: true
+- id: crc10-state-seam-modularity
+  text: 'Mother state implementation follows dependable-rust/unix boundaries for this feature: child-registry state logic is isolated behind a dedicated store seam/module (`ChildRegistryStore`) rather than growing monolithic `state.rs`.'
+  checked: true
 ---
 # feat: Mother child registry control plane (GitHub-first, provider-pluggable)
 
@@ -206,6 +197,50 @@ Before implementing provider/CLI slices, child-registry state logic must be isol
 - Boundary target: `ChildRegistryStore` (or equivalent) with a small, honest API.
 - Existing `MotherRuntimeStore` may delegate to this seam.
 - This refactor is in-scope and required by `crc10-state-seam-modularity`.
+
+## Status
+
+- State seam refactor completed (`ChildRegistryStore` extracted from monolithic state file).
+- Slice A schema + state APIs completed.
+- Slice B provider abstraction + GitHub sync ingestion completed.
+- Minimal operator surface landed for sources/sync/add/enable/disable with JSON output.
+- Remaining slices (approval/install/assignment-runtime/external proof) are still open.
+
+## Solution
+
+Mother owns child-registry authority state while provider adapters only supply discoverable release metadata.
+The implemented path is now:
+
+1. source records in Mother state DB,
+2. provider-selected sync (`github` implemented),
+3. normalized release ingestion into registry entries,
+4. operator control-plane commands under `patina mother children`.
+
+This preserves fail-closed behavior for unknown providers and non-approved assignment guardrails.
+
+## Implementation Order
+
+1. ✅ Slice A0 — state seam modularity (`ChildRegistryStore`).
+2. ✅ Slice A — registry schema and state CRUD/guardrails.
+3. ✅ Slice B — provider trait + GitHub release ingestion.
+4. 🔲 Slice C — approval + install pin/verify workflow.
+5. 🔲 Slice D — assignment runtime enforcement + audit flow.
+6. 🔲 Slice E — full operator surface parity (`search/show/approve/block/install/assign/...`).
+7. 🔲 Slice F — external Slate proof end-to-end.
+
+## Resolved Decisions
+
+- Child-registry persistence stays behind a dedicated store seam (dependable-rust boundary).
+- GitHub is the first provider; provider trait is stable seam for Gitea/custom follow-on.
+- Unknown/unimplemented providers fail closed (no implicit fallback).
+- Registry-backed install remains additive to existing local child loading.
+
+## Build Readiness
+
+- `cargo fmt --all` passes.
+- `cargo check -q` passes.
+- Mother state + child-registry tests pass.
+- CLI command tests for `mother children` paths pass.
 
 ## Verification
 
