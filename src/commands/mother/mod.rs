@@ -17,6 +17,7 @@
 //! patina mother install            # Install system supervisor (launchd/systemd-user)
 //! patina mother uninstall          # Remove system supervisor
 //! patina mother graph              # Graph operations (sync, link, unlink, stats, learn)
+//! patina mother children           # Child registry source/sync operations
 //! ```
 //!
 //! # Transport Model
@@ -42,6 +43,7 @@
 
 pub(crate) mod adapters;
 pub(crate) mod audit;
+pub(crate) mod children;
 pub(crate) mod daemon;
 pub(crate) mod federation;
 pub(crate) mod graph;
@@ -175,6 +177,10 @@ pub enum MotherCommands {
     #[command(subcommand)]
     Federation(FederationCommands),
 
+    /// Child registry control-plane operations
+    #[command(subcommand)]
+    Children(ChildrenCommands),
+
     /// Lifecycle operations
     #[command(subcommand)]
     Lifecycle(LifecycleCommands),
@@ -240,6 +246,19 @@ pub enum FederationCommands {
     },
     /// Install required federation extensions into DuckDB
     InstallExtensions,
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum ChildrenCommands {
+    /// List configured child registry sources and sync status
+    Sources,
+
+    /// Sync child registry entries from provider sources
+    Sync {
+        /// Sync a specific source id (defaults to all configured sources)
+        #[arg(long)]
+        source: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -436,6 +455,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("  patina mother graph    Graph operations");
             println!("  patina mother toys     Toy registry operations");
             println!("  patina mother federation Federation query surface");
+            println!("  patina mother children Child registry control-plane");
             println!("  patina mother lifecycle Lifecycle operations");
             println!("  patina mother projects Project check-in/list/sync");
             println!("  patina mother search   Cross-project belief search\n");
@@ -515,6 +535,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             }
         }
         Some(MotherCommands::Federation(command)) => execute_federation(command),
+        Some(MotherCommands::Children(command)) => children::execute_children(command),
         Some(MotherCommands::Lifecycle(command)) => execute_lifecycle(command),
         Some(MotherCommands::Projects(command)) => execute_projects(command),
     }
@@ -2002,6 +2023,9 @@ mod tests {
 
         let projects = MotherCommands::Projects(ProjectsCommands::List);
         assert!(matches!(projects, MotherCommands::Projects(_)));
+
+        let children = MotherCommands::Children(ChildrenCommands::Sources);
+        assert!(matches!(children, MotherCommands::Children(_)));
 
         let projects_prune = MotherCommands::Projects(ProjectsCommands::Prune {
             ephemeral_ttl_days: 3,
