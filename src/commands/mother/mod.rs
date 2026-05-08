@@ -1226,6 +1226,13 @@ fn install_supervisor() -> Result<()> {
         let mut selected_domain = None;
         let mut last_error = None;
         for domain in launchctl_domains() {
+            // `patina mother uninstall` disables the service after bootout. On
+            // macOS, a disabled user service may fail bootstrap with error 119
+            // (surfaced by launchctl as I/O error 5), so clear that marker
+            // before attempting to bootstrap the freshly written plist.
+            let service = format!("{}/{}", domain, MOTHER_LAUNCHD_LABEL);
+            let _ = run_launchctl(&["enable", &service]);
+
             match run_launchctl(&["bootstrap", &domain, &plist_arg]) {
                 Ok(()) => {
                     selected_domain = Some(domain);
