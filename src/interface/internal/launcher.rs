@@ -317,7 +317,12 @@ fn check_tmux_version_ok() -> bool {
 
 #[cfg(unix)]
 fn derive_tmux_socket_name(session_name: &str) -> String {
-    format!("{}_sock", session_name)
+    // tmux -L places the server socket under a platform-specific directory
+    // (e.g. /private/tmp/tmux-501/<name> on macOS). Unix domain socket paths
+    // have a small fixed limit, so deriving the socket name from the full
+    // human-readable session name fails for long project names. Keep the tmux
+    // session name descriptive, but make the socket label compact and stable.
+    format!("patina_{:08x}_sock", fnv1a_32(session_name.as_bytes()))
 }
 
 #[cfg(unix)]
@@ -377,6 +382,30 @@ mod tests {
         let path = Path::new("/tmp/patina");
         let lane = derive_interface_session_name(path, "pi", Some("20260416-080506-702140000"));
         assert!(lane.contains("_pi_"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tmux_socket_name_is_short_for_long_session_names() {
+        let session_name =
+            "patina_inbusiness_fence_drawing_tool_patina_9fdc917c_pi_20260504_093616_79589900";
+        let socket_name = derive_tmux_socket_name(session_name);
+        assert!(socket_name.starts_with("patina_"));
+        assert!(socket_name.ends_with("_sock"));
+        assert!(
+            socket_name.len() <= 20,
+            "socket name too long: {socket_name}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn tmux_socket_name_is_stable() {
+        let session_name = "patina_project_deadbeef_pi_20260504_093616";
+        assert_eq!(
+            derive_tmux_socket_name(session_name),
+            derive_tmux_socket_name(session_name)
+        );
     }
 
     #[cfg(unix)]
