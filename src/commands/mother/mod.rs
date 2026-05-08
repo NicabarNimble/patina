@@ -1527,10 +1527,53 @@ fn stop_daemon() -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+struct ProjectStatusContext {
+    uid: String,
+    events_db_bytes: Option<u64>,
+    patina_db_bytes: Option<u64>,
+    runtime_db_bytes: Option<u64>,
+}
+
+fn file_size_if_exists(path: &Path) -> Option<u64> {
+    std::fs::metadata(path).ok().map(|metadata| metadata.len())
+}
+
+fn project_status_context_from_current_dir() -> Option<ProjectStatusContext> {
+    let project_root = SessionManager::find_project_root().ok()?;
+    let uid = patina::project::get_uid(&project_root)?;
+    Some(ProjectStatusContext {
+        events_db_bytes: paths::mother::projects::events_db(&uid)
+            .ok()
+            .and_then(|path| file_size_if_exists(&path)),
+        patina_db_bytes: paths::mother::projects::patina_db(&uid)
+            .ok()
+            .and_then(|path| file_size_if_exists(&path)),
+        runtime_db_bytes: paths::mother::projects::runtime_db(&uid)
+            .ok()
+            .and_then(|path| file_size_if_exists(&path)),
+        uid,
+    })
+}
+
+fn print_project_status_context(label: &str, context: &ProjectStatusContext) {
+    println!("   {}: {}", label, context.uid);
+    if let Some(bytes) = context.events_db_bytes {
+        println!("   Project events.db bytes: {}", bytes);
+    }
+    if let Some(bytes) = context.patina_db_bytes {
+        println!("   Project patina.db bytes: {}", bytes);
+    }
+    if let Some(bytes) = context.runtime_db_bytes {
+        println!("   Project runtime.db bytes: {}", bytes);
+    }
+}
+
 /// Show daemon status
 fn show_status() -> Result<()> {
     let pid_path = paths::serve::pid_path();
     let socket_path = paths::serve::socket_path();
+    let current_project = project_status_context_from_current_dir();
 
     let status = mother_crate::lifecycle::probe_status(&pid_path, &socket_path)?;
     let supervisor = detect_supervisor_backend();
@@ -1622,18 +1665,20 @@ fn show_status() -> Result<()> {
             if let Some(state_db_bytes) = health.state_db_bytes {
                 println!("   State DB bytes: {}", state_db_bytes);
             }
-            if let Some(project_uid) = &health.active_project_uid {
-                println!("   Active project: {}", project_uid);
-            }
-            if let Some(databases) = &health.active_project_databases {
-                if let Some(bytes) = databases.events_db_bytes {
-                    println!("   Active events.db bytes: {}", bytes);
-                }
-                if let Some(bytes) = databases.patina_db_bytes {
-                    println!("   Active patina.db bytes: {}", bytes);
-                }
-                if let Some(bytes) = databases.runtime_db_bytes {
-                    println!("   Active runtime.db bytes: {}", bytes);
+            if let Some(project) = &current_project {
+                print_project_status_context("Project context", project);
+            } else if let Some(project_uid) = &health.active_project_uid {
+                println!("   Daemon startup project: {}", project_uid);
+                if let Some(databases) = &health.active_project_databases {
+                    if let Some(bytes) = databases.events_db_bytes {
+                        println!("   Project events.db bytes: {}", bytes);
+                    }
+                    if let Some(bytes) = databases.patina_db_bytes {
+                        println!("   Project patina.db bytes: {}", bytes);
+                    }
+                    if let Some(bytes) = databases.runtime_db_bytes {
+                        println!("   Project runtime.db bytes: {}", bytes);
+                    }
                 }
             }
             let loaded_children: std::collections::HashSet<String> =
