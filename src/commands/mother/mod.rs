@@ -1042,6 +1042,42 @@ fn enforce_start_conflict_guard() -> Result<()> {
 }
 
 #[cfg(target_os = "macos")]
+fn launchd_service_loaded(domain: &str, label: &str) -> bool {
+    let service = format!("{}/{}", domain, label);
+    Command::new("launchctl")
+        .arg("print")
+        .arg(&service)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn wait_for_launchd_service_absent(label: &str, timeout: std::time::Duration) -> Result<()> {
+    let domains = launchctl_domains();
+    let deadline = std::time::Instant::now() + timeout;
+
+    loop {
+        if !domains
+            .iter()
+            .any(|domain| launchd_service_loaded(domain, label))
+        {
+            return Ok(());
+        }
+        if std::time::Instant::now() >= deadline {
+            bail!(
+                "launchd service '{}' did not finish bootout within {}s",
+                label,
+                timeout.as_secs()
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn restart_launchd_label(label: &str) -> Result<()> {
     let mut last_error = None;
     for domain in launchctl_domains() {
@@ -1222,6 +1258,7 @@ fn install_supervisor() -> Result<()> {
                 .arg(&service)
                 .status();
         }
+        wait_for_launchd_service_absent(MOTHER_LAUNCHD_LABEL, std::time::Duration::from_secs(5))?;
         let plist_arg = plist_path.to_string_lossy().to_string();
         let mut selected_domain = None;
         let mut last_error = None;
