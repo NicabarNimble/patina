@@ -1,0 +1,397 @@
+-- allium: 3
+-- mother-view-composer-target.allium
+
+-- Scope: Target Projects activity view composer v1.
+-- Includes:
+--   - agent request to project activity display plan
+--   - reusable view recipes keyed by user, vision, project, data domain, and intent
+--   - ephemeral buffer replacement on correction intent
+--   - immutable correction/artifact events
+--   - renderer-neutral view contract for Svelte first and TUI later
+--   - WIT-framed boundaries with versioned JSON payloads that can mature into typed WIT
+-- Excludes:
+--   - implementation framework choice beyond renderer-neutral contract
+--   - non-project data domains
+--   - direct mutation of project data from the view
+--   - hard-coded request thresholds; thresholds come from interpreted user intent
+-- Builds on current code:
+--   - project_registry checked-in timestamps from Mother state
+--   - mother_project_identities user_id and vision_id bindings
+--   - append-only eventlog semantics
+
+entity ViewUser {
+    user_id: String
+    display_name: String?
+}
+
+entity ViewAgent {
+    agent_id: String
+}
+
+entity ViewRenderer {
+    renderer_kind: svelte | tui | other
+}
+
+entity ProjectActivityDataset {
+    records: ProjectActivityRecord with dataset = this
+    record_count: records.count
+}
+
+entity ProjectActivityRecord {
+    dataset: ProjectActivityDataset
+
+    project_uid: String
+    project_id: String?
+    project_path: String
+    user_id: String?
+    vision_id: String?
+    checked_in_at: Timestamp
+}
+
+value CheckInAgeFilter {
+    threshold: Duration
+}
+
+entity VisionProfile {
+    user: ViewUser
+    vision_id: String
+    recipes: ViewRecipe with vision_profile = this
+}
+
+entity ProjectViewSettings {
+    project_uid: String
+    user: ViewUser
+    vision_id: String
+    recipes: ViewRecipe with project_settings = this
+    transferable_with_project: Boolean
+}
+
+entity ViewRecipe {
+    recipe_id: String
+    vision_profile: VisionProfile?
+    project_settings: ProjectViewSettings?
+
+    owner_scope: system_default | vision_profile | project_settings
+    data_domain: projects_activity
+    normalized_intent: list_projects_by_check_in | isolate_projects_by_check_in_age
+
+    version: Integer
+    active: Boolean
+    code_ref: String
+    renderer_contract: String
+    boundary_frame: wit_component | direct_http
+    payload_contract: versioned_json | typed_wit
+    payload_maturity: exploratory | candidate | stable | promoted
+    replaced_by: ViewRecipe?
+}
+
+entity DisplayRequest {
+    request_id: String
+    user: ViewUser
+    agent: ViewAgent
+    raw_request: String
+    project_uid: String?
+    vision_id: String
+    requested_at: Timestamp
+    interpretation_state: pending | clarified | ready | unable
+
+    transitions interpretation_state {
+        pending -> clarified
+        pending -> ready
+        pending -> unable
+        clarified -> ready
+        clarified -> unable
+        terminal: ready, unable
+    }
+}
+
+entity DisplayIntent {
+    request: DisplayRequest
+    data_domain: projects_activity
+    normalized_intent: list_projects_by_check_in | isolate_projects_by_check_in_age
+    confidence: Decimal
+    check_in_age_filter: CheckInAgeFilter?
+}
+
+entity ViewBuffer {
+    buffer_id: String
+    request: DisplayRequest
+    recipe: ViewRecipe
+    renderer: ViewRenderer
+
+    buffer_state: active | replaced | closed
+    title: String
+    created_at: Timestamp
+    replaced_at: Timestamp?
+
+    transitions buffer_state {
+        active -> replaced
+        active -> closed
+        terminal: replaced, closed
+    }
+}
+
+entity ViewRecipeArtifact {
+    artifact_id: String
+    recipe: ViewRecipe
+    event_kind: created | revised | superseded
+    reason: String
+    created_at: Timestamp
+}
+
+entity ViewCorrectionEvent {
+    correction_id: String
+    user: ViewUser
+    agent: ViewAgent
+    previous_buffer: ViewBuffer
+    correction_intent: String
+    created_at: Timestamp
+}
+
+config {
+    clarification_confidence_threshold: Decimal = 0.60
+}
+
+given {
+    dataset: ProjectActivityDataset
+}
+
+rule InterpretProjectsActivityRequest {
+    when: UserAsksAgentForDisplay(user, agent, raw_request, project_uid?, vision_id)
+    requires: raw_request != ""
+    ensures: DisplayRequest.created(
+        request_id: agent.agent_id + "::" + now,
+        user: user,
+        agent: agent,
+        raw_request: raw_request,
+        project_uid: project_uid,
+        vision_id: vision_id,
+        requested_at: now,
+        interpretation_state: pending
+    )
+    ensures: DisplayInterpretationRequested(user: user, agent: agent, raw_request: raw_request, project_uid: project_uid, vision_id: vision_id)
+}
+
+rule AskForClarificationWhenIntentConfidenceIsLow {
+    when: DisplayIntentProposed(request, data_domain, normalized_intent, confidence, check_in_age_filter?)
+    requires: request.interpretation_state = pending
+    requires: confidence < config.clarification_confidence_threshold
+    ensures: request.interpretation_state = clarified
+    ensures: AgentClarificationRequested(request: request, reason: "low_confidence_display_intent")
+}
+
+rule AcceptProjectsActivityIntentWhenConfident {
+    when: DisplayIntentProposed(request, data_domain, normalized_intent, confidence, check_in_age_filter?)
+    requires: request.interpretation_state = pending
+    requires: confidence >= config.clarification_confidence_threshold
+    requires: data_domain = projects_activity
+    ensures: DisplayIntent.created(
+        request: request,
+        data_domain: projects_activity,
+        normalized_intent: normalized_intent,
+        confidence: confidence,
+        check_in_age_filter: check_in_age_filter
+    )
+    ensures: request.interpretation_state = ready
+}
+
+rule AcceptClarifiedProjectsActivityIntent {
+    when: UserClarifiesDisplayIntent(request, data_domain, normalized_intent, check_in_age_filter?)
+    requires: request.interpretation_state = clarified
+    requires: data_domain = projects_activity
+    ensures: DisplayIntent.created(
+        request: request,
+        data_domain: projects_activity,
+        normalized_intent: normalized_intent,
+        confidence: 1.0,
+        check_in_age_filter: check_in_age_filter
+    )
+    ensures: request.interpretation_state = ready
+}
+
+rule SelectProjectRecipeBeforeVisionRecipe {
+    when: intent: DisplayIntent.created
+    requires: intent.request.project_uid != null
+    for settings in ProjectViewSettings where settings.project_uid = intent.request.project_uid and settings.user = intent.request.user and settings.vision_id = intent.request.vision_id:
+        for recipe in settings.recipes where active and data_domain = intent.data_domain and normalized_intent = intent.normalized_intent:
+            ensures: ViewRecipeSelected(request: intent.request, intent: intent, recipe: recipe, selection_basis: "project_settings")
+}
+
+rule SelectVisionRecipeWhenProjectRecipeIsAbsent {
+    when: intent: DisplayIntent.created
+    requires: intent.request.project_uid = null or not ProjectViewSettings.any(settings => settings.project_uid = intent.request.project_uid and settings.user = intent.request.user and settings.vision_id = intent.request.vision_id and settings.recipes.any(recipe => recipe.active and recipe.data_domain = intent.data_domain and recipe.normalized_intent = intent.normalized_intent))
+    for profile in VisionProfile where profile.user = intent.request.user and profile.vision_id = intent.request.vision_id:
+        for recipe in profile.recipes where active and data_domain = intent.data_domain and normalized_intent = intent.normalized_intent:
+            ensures: ViewRecipeSelected(request: intent.request, intent: intent, recipe: recipe, selection_basis: "vision_profile")
+}
+
+rule OpenProjectsActivityBuffer {
+    when: ViewRecipeSelected(request, intent, recipe, selection_basis)
+    requires: recipe.data_domain = projects_activity
+    ensures: ViewContractFrameApplied(
+        request: request,
+        recipe: recipe,
+        boundary_frame: recipe.boundary_frame,
+        payload_contract: recipe.payload_contract,
+        payload_maturity: recipe.payload_maturity
+    )
+    ensures: ProjectActivityViewPlanCreated(
+        request: request,
+        recipe: recipe,
+        sort_basis: "checked_in_at",
+        sort_direction: "ascending_oldest_first",
+        check_in_age_filter: intent.check_in_age_filter
+    )
+    ensures: ViewBuffer.created(
+        buffer_id: request.request_id + "::projects-activity",
+        request: request,
+        recipe: recipe,
+        renderer: default,
+        buffer_state: active,
+        title: "Projects by last check-in",
+        created_at: now,
+        replaced_at: null
+    )
+}
+
+rule IsolateProjectsMatchingRequestedCheckInAgeFilter {
+    when: ProjectActivityViewPlanCreated(request, recipe, _, _, check_in_age_filter)
+    requires: check_in_age_filter != null
+    for record in dataset.records where record.checked_in_at <= now - check_in_age_filter.threshold:
+        ensures: ProjectIsolatedByRequestedCheckInAge(
+            request: request,
+            project_uid: record.project_uid,
+            checked_in_at: record.checked_in_at,
+            threshold: check_in_age_filter.threshold
+        )
+}
+
+rule RecordCorrectionIntentAndReplaceBuffer {
+    when: UserCorrectsDisplayedView(user, agent, buffer, correction_intent)
+    requires: buffer.buffer_state = active
+    ensures: ViewCorrectionEvent.created(
+        correction_id: buffer.buffer_id + "::correction::" + now,
+        user: user,
+        agent: agent,
+        previous_buffer: buffer,
+        correction_intent: correction_intent,
+        created_at: now
+    )
+    ensures: buffer.buffer_state = replaced
+    ensures: buffer.replaced_at = now
+    ensures: ViewRecipeRevisionRequested(buffer: buffer, correction_intent: correction_intent)
+}
+
+rule ReviseProjectRecipeFromCorrection {
+    when: ViewRecipeRevisionAccepted(buffer, revised_code_ref, reason)
+    requires: buffer.buffer_state = replaced
+    ensures: buffer.recipe.active = false
+    ensures: ViewRecipe.created(
+        recipe_id: buffer.recipe.recipe_id + "::v" + (buffer.recipe.version + 1),
+        vision_profile: buffer.recipe.vision_profile,
+        project_settings: buffer.recipe.project_settings,
+        owner_scope: buffer.recipe.owner_scope,
+        data_domain: buffer.recipe.data_domain,
+        normalized_intent: buffer.recipe.normalized_intent,
+        version: buffer.recipe.version + 1,
+        active: true,
+        code_ref: revised_code_ref,
+        renderer_contract: buffer.recipe.renderer_contract,
+        boundary_frame: buffer.recipe.boundary_frame,
+        payload_contract: buffer.recipe.payload_contract,
+        payload_maturity: candidate,
+        replaced_by: null
+    )
+    ensures: ViewRecipeArtifact.created(
+        artifact_id: buffer.recipe.recipe_id + "::artifact::" + now,
+        recipe: buffer.recipe,
+        event_kind: revised,
+        reason: reason,
+        created_at: now
+    )
+}
+
+rule PromoteStableJsonViewPlanToTypedWitContract {
+    when: ViewPayloadShapeStabilized(recipe, typed_contract_ref)
+    requires: recipe.boundary_frame = wit_component
+    requires: recipe.payload_contract = versioned_json
+    requires: recipe.payload_maturity = stable
+    ensures: recipe.payload_contract = typed_wit
+    ensures: recipe.payload_maturity = promoted
+    ensures: recipe.renderer_contract = typed_contract_ref
+    ensures: ViewRecipeArtifact.created(
+        artifact_id: recipe.recipe_id + "::promotion::" + now,
+        recipe: recipe,
+        event_kind: revised,
+        reason: "stable_view_plan_promoted_to_typed_wit",
+        created_at: now
+    )
+}
+
+rule PreserveProjectViewSettingsDuringProjectTransfer {
+    when: ProjectTransferred(project_uid, from_node, to_node)
+    for settings in ProjectViewSettings where project_uid = project_uid and transferable_with_project:
+        ensures: ProjectViewSettingsTransferred(project_uid: project_uid, settings: settings, from_node: from_node, to_node: to_node)
+}
+
+surface AgentDrivenProjectActivityView {
+    facing user: ViewUser
+    context dataset: ProjectActivityDataset
+
+    exposes:
+        user.user_id
+        user.display_name
+        dataset.record_count
+
+        for record in dataset.records:
+            record.project_uid
+            record.project_id
+            record.project_path
+            record.user_id
+            record.vision_id
+            record.checked_in_at
+
+    provides:
+        UserAsksAgentForDisplay(user, agent, raw_request, project_uid?, vision_id)
+        UserClarifiesDisplayIntent(request, data_domain, normalized_intent, check_in_age_filter?)
+        UserCorrectsDisplayedView(user, agent, buffer, correction_intent)
+}
+
+surface ViewComposerRuntime {
+    facing agent: ViewAgent
+
+    exposes:
+        agent.agent_id
+
+    provides:
+        DisplayIntentProposed(request, data_domain, normalized_intent, confidence, check_in_age_filter?)
+        ViewRecipeRevisionAccepted(buffer, revised_code_ref, reason)
+        ProjectTransferred(project_uid, from_node, to_node)
+}
+
+surface RendererNeutralViewContract {
+    facing renderer: ViewRenderer
+    context buffer: ViewBuffer
+
+    exposes:
+        renderer.renderer_kind
+        buffer.buffer_id
+        buffer.buffer_state
+        buffer.title
+        buffer.created_at
+        buffer.replaced_at
+        buffer.recipe.recipe_id
+        buffer.recipe.code_ref
+        buffer.recipe.renderer_contract
+        buffer.recipe.boundary_frame
+        buffer.recipe.payload_contract
+        buffer.recipe.payload_maturity
+
+    provides:
+        ViewRecipeSelected(request, intent, recipe, selection_basis)
+        ViewPayloadShapeStabilized(recipe, typed_contract_ref)
+}
+
+open question "Should revised recipes after correction always remain project-scoped, or can a correction promote to the user's vision profile when the user says it is a general preference?"
+open question "Should Svelte be the first renderer implementation while the Allium contract remains renderer-neutral?"
+open question "What evidence is required before a versioned JSON view-plan shape is considered stable enough to promote into typed WIT?"
