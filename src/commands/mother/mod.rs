@@ -59,8 +59,8 @@ use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::process::Command;
+#[cfg(unix)]
+use std::process::{Command, Stdio};
 use walkdir::{DirEntry, WalkDir};
 
 use patina::paths;
@@ -1041,15 +1041,6 @@ fn enforce_start_conflict_guard() -> Result<()> {
     Ok(())
 }
 
-fn default_daemon_options() -> DaemonOptions {
-    DaemonOptions {
-        host: None,
-        port: 50051,
-        profile: DaemonStartupProfile::Full,
-        rivet: RivetIntegrationProfile::Disabled,
-    }
-}
-
 #[cfg(target_os = "macos")]
 fn restart_launchd_label(label: &str) -> Result<()> {
     let mut last_error = None;
@@ -1062,6 +1053,96 @@ fn restart_launchd_label(label: &str) -> Result<()> {
     }
 
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("launchctl kickstart failed")))
+}
+
+fn manual_restart_log_path() -> PathBuf {
+    paths::patina_home()
+        .join("mother")
+        .join("logs")
+        .join("manual-restart.log")
+}
+
+#[cfg(unix)]
+fn spawn_manual_daemon_detached() -> Result<PathBuf> {
+    let log_path = manual_restart_log_path();
+    if let Some(parent) = log_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+
+    let stdout = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .with_context(|| format!("opening {}", log_path.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .with_context(|| format!("cloning {}", log_path.display()))?;
+
+    let exe = std::env::current_exe().context("resolving current executable")?;
+    Command::new(exe)
+        .arg("mother")
+        .arg("start")
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr))
+        .spawn()
+        .context("starting Mother in background")?;
+
+    Ok(log_path)
+}
+
+fn wait_for_daemon_ready(
+    timeout: std::time::Duration,
+) -> Result<mother_crate::lifecycle::StatusReport> {
+    let pid_path = paths::serve::pid_path();
+    let socket_path = paths::serve::socket_path();
+    let deadline = std::time::Instant::now() + timeout;
+    let mut last_health_error = None;
+
+    loop {
+        let status = mother_crate::lifecycle::probe_status(&pid_path, &socket_path)?;
+        if status.running && status.health.is_some() {
+            return Ok(status);
+        }
+        if let Some(error) = status.health_error {
+            last_health_error = Some(error);
+        }
+        if std::time::Instant::now() >= deadline {
+            let detail = last_health_error
+                .map(|error| format!(" last health error: {error}"))
+                .unwrap_or_default();
+            bail!(
+                "Mother did not become ready within {}s.{}",
+                timeout.as_secs(),
+                detail
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
+fn restart_manual_daemon_detached() -> Result<()> {
+    stop_daemon()?;
+    println!("Restarting Mother in background (manual backend)...");
+
+    #[cfg(unix)]
+    {
+        let log_path = spawn_manual_daemon_detached()?;
+        let status = wait_for_daemon_ready(std::time::Duration::from_secs(15))?;
+        println!("Mother daemon restarted.");
+        if let Some(pid) = status.pid {
+            println!("   PID: {}", pid);
+        }
+        println!("   Socket: {}", paths::serve::socket_path().display());
+        println!("   Logs: {}", log_path.display());
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    {
+        bail!("manual background restart is unsupported on this platform")
+    }
 }
 
 fn restart_daemon() -> Result<()> {
@@ -1108,11 +1189,7 @@ fn restart_daemon() -> Result<()> {
                 bail!("systemd --user supervisor is unavailable on this platform");
             }
         }
-        SupervisorBackend::Manual => {
-            stop_daemon()?;
-            println!("Restarting Mother in foreground (manual backend)...");
-            daemon::run_server(default_daemon_options())
-        }
+        SupervisorBackend::Manual => restart_manual_daemon_detached(),
     }
 }
 
