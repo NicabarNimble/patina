@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-view-request-composer
-status: ready
+status: active
 created: 2026-05-09
 sessions:
   origin: 20260508-144836-859149000
