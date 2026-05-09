@@ -8,6 +8,7 @@ mod catalog;
 mod model;
 mod payload;
 mod service;
+pub(crate) mod store;
 
 pub use catalog::{DataCatalog, MotherStatusFacts, MOTHER_STATUS_SHAPE_ID};
 pub use model::{

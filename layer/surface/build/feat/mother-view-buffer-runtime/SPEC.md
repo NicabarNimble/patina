@@ -26,7 +26,7 @@ exit_criteria:
   checked: true
 - id: mvbr1-buffer-model
   text: 'Mother has a first-class persisted buffer model with Emacs vocabulary: buffer, frame, window, major mode, minor modes, live/stale/blocked/replaced/killed states.'
-  checked: false
+  checked: true
 - id: mvbr2-buffer-api
   text: Mother exposes read-only/control-plane buffer APIs for listing buffers, opening a buffer from a known shape, connecting/disconnecting a window, and killing a buffer.
   checked: false
@@ -152,7 +152,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 ## Exit Criteria
 
 - [x] `mvbr0-read-before-write`
-- [ ] `mvbr1-buffer-model`
+- [x] `mvbr1-buffer-model`
 - [ ] `mvbr2-buffer-api`
 - [x] `mvbr3-catalog-guardrail`
 - [x] `mvbr4-observability-gap`

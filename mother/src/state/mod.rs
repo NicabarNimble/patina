@@ -3,7 +3,10 @@ use chrono::{Duration, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 
-use crate::{TaskIntent, TaskIntentKind};
+use crate::{
+    view_buffer::{self, Buffer, Frame, ObservabilityGap, Window},
+    TaskIntent, TaskIntentKind,
+};
 
 mod children_registry;
 pub use children_registry::{
@@ -800,6 +803,7 @@ impl MotherRuntimeStore {
             "ALTER TABLE mother_session_participants RENAME COLUMN adapter_name TO interface_name",
             [],
         );
+        view_buffer::store::init_schema(conn)?;
         Ok(())
     }
 
@@ -1815,6 +1819,46 @@ impl MotherRuntimeStore {
         Ok(())
     }
 
+    pub fn save_view_buffer(&self, buffer: &Buffer) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_buffer(&conn, buffer)
+    }
+
+    pub fn list_view_buffers(&self) -> Result<Vec<Buffer>> {
+        let conn = self.open()?;
+        view_buffer::store::list_buffers(&conn)
+    }
+
+    pub fn save_view_frame(&self, frame: &Frame) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_frame(&conn, frame)
+    }
+
+    pub fn list_view_frames(&self) -> Result<Vec<Frame>> {
+        let conn = self.open()?;
+        view_buffer::store::list_frames(&conn)
+    }
+
+    pub fn save_view_window(&self, window: &Window) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_window(&conn, window)
+    }
+
+    pub fn list_view_windows(&self) -> Result<Vec<Window>> {
+        let conn = self.open()?;
+        view_buffer::store::list_windows(&conn)
+    }
+
+    pub fn save_view_observability_gap(&self, gap: &ObservabilityGap) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_gap(&conn, gap)
+    }
+
+    pub fn list_view_observability_gaps(&self) -> Result<Vec<ObservabilityGap>> {
+        let conn = self.open()?;
+        view_buffer::store::list_gaps(&conn)
+    }
+
     pub fn path(&self) -> &PathBuf {
         &self.state_path
     }
@@ -1860,6 +1904,63 @@ mod tests {
             std::env::temp_dir().join(format!("patina-knowledge-runtime-{}", uuid::Uuid::new_v4()));
         let path = root.join("mother/state.db");
         MotherRuntimeStore::new_with_project(path, ProjectUid::new("2bdc808e").unwrap())
+    }
+
+    #[test]
+    fn view_buffer_records_are_persistent() {
+        // obligation: entity-state.Buffer + entity-state.Frame + entity-state.Window
+        // obligation: entity-state.ObservabilityGap
+        use crate::view_buffer::{
+            mother_status_shape, Buffer, BufferState, Frame, FrameKind, MinorMode,
+            ObservabilityGap, ObservabilityGapStatus, Window, WindowConnectionState,
+        };
+
+        let store = temp_store();
+        let now = chrono::DateTime::parse_from_rfc3339("2026-05-09T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let shape = mother_status_shape();
+        let mut buffer = Buffer::live_from_shape("buf_persisted".to_string(), &shape, now);
+        buffer.state = BufferState::Stale;
+        buffer.stale_at = Some(now);
+        buffer.minor_modes = vec![MinorMode::Pinned];
+        let frame = Frame {
+            frame_id: "frame_tui".to_string(),
+            frame_kind: FrameKind::Tui,
+            connected_at: now,
+        };
+        let window = Window {
+            window_id: "win_1".to_string(),
+            frame_id: frame.frame_id.clone(),
+            buffer_id: Some(buffer.buffer_id.clone()),
+            connection_state: WindowConnectionState::Connected,
+            connected_at: Some(now),
+            disconnected_at: None,
+        };
+        let gap = ObservabilityGap {
+            gap_id: "gap_1".to_string(),
+            shape_id: Some(shape.shape_id.clone()),
+            missing_fact_path: "mother.status.children_total".to_string(),
+            missing_source_id: Some("mother.status".to_string()),
+            reason: "test gap".to_string(),
+            status: ObservabilityGapStatus::Open,
+            created_at: now,
+            resolved_at: None,
+        };
+
+        store.save_view_buffer(&buffer).unwrap();
+        store.save_view_frame(&frame).unwrap();
+        store.save_view_window(&window).unwrap();
+        store.save_view_observability_gap(&gap).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(reopened.list_view_buffers().unwrap(), vec![buffer]);
+        assert_eq!(reopened.list_view_frames().unwrap(), vec![frame]);
+        assert_eq!(reopened.list_view_windows().unwrap(), vec![window]);
+        assert_eq!(reopened.list_view_observability_gaps().unwrap(), vec![gap]);
     }
 
     #[test]
