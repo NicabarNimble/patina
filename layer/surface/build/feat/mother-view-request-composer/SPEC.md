@@ -40,6 +40,13 @@ exit_criteria:
   checked: true
 validated_against_commit: 0cbc03c7997a5b5d506dd672a7f891a19a24105e
 last_freshness_check: 2026-05-09T10:43:30-04:00
+freshness_scope:
+- mother/src/view_buffer
+- mother/src/http_api.rs
+- mother/src/http_api/view_buffer.rs
+- mother/src/http_routes.rs
+- mother/src/state/mod.rs
+- src/commands/mother/daemon/dispatch.rs
 ---
 # feat: Mother View Request Composer
 
