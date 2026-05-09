@@ -255,6 +255,19 @@ Before the first code edit, inspect:
 
 Record any discovered boundary mismatch in this DESIGN or a linked fix spec before coding around it.
 
+## Read-before-write findings
+
+Read pass completed before implementation code edits:
+
+- `mother/src/http_routes.rs`: routes are wired through `RouteTable` handler fields and guarded per route with bearer auth when `require_auth` is enabled. View-buffer routes should follow the same explicit match-arm pattern and have deterministic 404 behavior when absent.
+- `mother/src/http_api.rs`: API modules use small per-domain traits over `ApiRuntime` (`HealthApi`, `BridgeApi`, etc.) and `build_route_table` clones the runtime per handler. View-buffer should add one focused API trait/module rather than expanding unrelated handlers.
+- `src/commands/mother/daemon/dispatch.rs`: `ServerState` implements `ApiRuntime`; health details already expose suitable observed facts for the first proof shape. The first catalog should derive from existing health/readiness data rather than creating new observability.
+- `mother/src/state/mod.rs`: Mother state uses SQLite schema initialization inside `MotherRuntimeStore::init_schema`, with additive `CREATE TABLE IF NOT EXISTS` migrations and narrow public store methods. Buffer persistence should follow that store style if persisted in state.db.
+- `mother/src/http_api/health.rs`: health response construction is a good source for the minimal `mother.status.*` catalog facts.
+- `mother/src/http_api/tests/mod.rs` and `mother/src/http_routes.rs` tests: deterministic stub-runtime and route-table tests are the preferred proof style for this slice.
+
+No boundary mismatch found that requires a separate fix spec before implementation.
+
 ## First implementation order
 
 1. Add model types and serialization.

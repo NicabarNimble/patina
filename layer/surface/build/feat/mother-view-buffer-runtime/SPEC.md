@@ -23,7 +23,7 @@ beliefs:
 exit_criteria:
 - id: mvbr0-read-before-write
   text: Implementation begins from documented reads of existing Mother route/runtime/state code before adding new view-buffer code.
-  checked: false
+  checked: true
 - id: mvbr1-buffer-model
   text: 'Mother has a first-class persisted buffer model with Emacs vocabulary: buffer, frame, window, major mode, minor modes, live/stale/blocked/replaced/killed states.'
   checked: false
@@ -151,7 +151,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 
 ## Exit Criteria
 
-- [ ] `mvbr0-read-before-write`
+- [x] `mvbr0-read-before-write`
 - [ ] `mvbr1-buffer-model`
 - [ ] `mvbr2-buffer-api`
 - [ ] `mvbr3-catalog-guardrail`
