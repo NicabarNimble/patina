@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-view-initial-shape-creation
-status: ready
+status: active
 created: 2026-05-09
 target: mother-view-composer
 release_bump: patch
