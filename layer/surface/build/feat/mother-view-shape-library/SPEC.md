@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-view-shape-library
-status: ready
+status: active
 created: 2026-05-09
 sessions:
   origin: 20260508-144836-859149000
@@ -42,6 +42,13 @@ exit_criteria:
   checked: true
 validated_against_commit: 5c53a451879e9271c3c9ede3de73bad2c8f65154
 last_freshness_check: 2026-05-09T10:26:14-04:00
+freshness_scope:
+- mother/src/view_buffer
+- mother/src/http_api.rs
+- mother/src/http_api/view_buffer.rs
+- mother/src/http_routes.rs
+- mother/src/state/mod.rs
+- src/commands/mother/daemon/dispatch.rs
 ---
 # feat: Mother View Shape Library
 
