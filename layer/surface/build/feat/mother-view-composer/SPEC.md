@@ -36,7 +36,7 @@ exit_criteria:
   checked: true
 - id: mvc5-revision-and-replacement
   text: User corrections create shape revisions and replace live/stale/blocked buffers while preserving history.
-  checked: false
+  checked: true
 - id: mvc6-observability-workflow
   text: Observability gaps can be linked to work items and resolved when catalog facts become observed.
   checked: false
@@ -71,7 +71,7 @@ Mother View Composer / Mother View System
 ├── v0.70.1: [[mother-view-shape-adaptation]]
 ├── v0.70.2: [[mother-view-initial-shape-creation]]
 ├── v0.70.3: [[mother-view-request-ux]]
-├── future: [[mother-view-buffer-revision]]
+├── v0.70.4: [[mother-view-buffer-revision]]
 ├── future: [[mother-view-observability-workflow]]
 ├── future: [[mother-view-maturation]]
 └── future: [[mother-sveltekit-frame]]
@@ -89,6 +89,7 @@ Completed backend slices:
 - [[mother-view-shape-adaptation]] — `v0.70.1`
 - [[mother-view-initial-shape-creation]] — `v0.70.2`
 - [[mother-view-request-ux]] — `v0.70.3`
+- [[mother-view-buffer-revision]] — `v0.70.4`
 
 Current honest system label:
 
@@ -152,10 +153,10 @@ The parent/umbrella completion may use a minor or major bump when the whole Moth
 - [[mother-view-shape-adaptation]]: similar-shape adaptation into exploratory shapes.
 - [[mother-view-initial-shape-creation]]: initial structured shapes for no-match requests.
 - [[mother-view-request-ux]]: persisted request details and explicit linked-shape open actions.
+- [[mother-view-buffer-revision]]: structured corrections, shape history, and buffer replacement.
 
 ### Planned
 
-- [[mother-view-buffer-revision]]: apply corrections, create revisions, and replace buffers.
 - [[mother-view-observability-workflow]]: link/resolve observability gaps.
 - [[mother-view-maturation]]: mature shapes, derivations, patterns, and observability-improvement artifacts.
 - [[mother-sveltekit-frame]]: first visible renderer frame.
@@ -177,7 +178,7 @@ Implementation slices carry their own tests and releases.
 - [x] `mvc2-request-to-buffer-path`
 - [x] `mvc3-shape-adaptation`
 - [x] `mvc4-initial-shape-creation`
-- [ ] `mvc5-revision-and-replacement`
+- [x] `mvc5-revision-and-replacement`
 - [ ] `mvc6-observability-workflow`
 - [ ] `mvc7-maturation`
 - [ ] `mvc8-renderer-frame`
