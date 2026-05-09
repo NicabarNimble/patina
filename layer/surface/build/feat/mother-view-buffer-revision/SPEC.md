@@ -44,6 +44,7 @@ exit_criteria:
 - id: mvbr8-tests-and-trace
   text: Deterministic tests cover successful shape revision, buffer replacement, persistence, API response shape, fail-closed behavior, and Allium/spec obligation comments.
   checked: true
+validated_against_commit: 9c67081b055f65deaacc9f5e30e3f56ff3420491
 ---
 # feat: Mother View Buffer Revision
 
