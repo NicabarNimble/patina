@@ -1,6 +1,6 @@
 # Design: Mother View Shape Library
 
-## Design intent
+## Why This Design
 
 `mother-view-buffer-runtime` made buffers real. This spec makes shapes real.
 
@@ -13,6 +13,12 @@ The Allium target says agents create, adapt, and revise view shapes instead of g
 - `layer/core/unix-philosophy.md` — separate shape library, buffer lifecycle, catalog validation, and rendering.
 - `layer/core/adapter-pattern.md` — no speculative renderer/compiler traits before real boundaries exist.
 - `layer/core/values/contract-first-execution.md` — shapes declare backing contracts; Mother validates before opening buffers.
+
+## Build Target
+
+Build a Mother-owned persistent view-shape library that stores structured `ViewShape` and `ViewRequirement` records, exposes narrow control-plane APIs, seeds `mother.status.default` as data, and lets `open_buffer(shape_id)` resolve active persisted shapes before built-in fallback.
+
+The target is backend/runtime only. SvelteKit, TUI, and Emacs remain future frames/renderers.
 
 ## Relationship to completed kernel
 
@@ -30,6 +36,17 @@ Kernel capabilities now available:
 
 This spec should reuse those seams rather than introduce a parallel display stack.
 
+Guiding belief: [[allium-as-business-backlog]]. Passing a scoped implementation spec does not mean the full Allium target is done; this slice explicitly converts the next Allium obligation into durable Mother data.
+
+## Resolved Decisions
+
+- Mother owns view shapes; renderers do not own or mutate shape source-of-truth state.
+- Shapes are structured metadata/guardrails, not executable UI code.
+- Explicit shape-id lookup is in scope; natural-language request matching and adaptation are deferred.
+- `required = true` requirements block opening; optional requirements can be stored but cannot invent data or block required-data views.
+- Allium `vision` and `project` references are stored as `vision_id` and `project_uid` projections in this slice.
+- The existing `mother.status.default` proof shape must become seeded library data so built-in-only lookup is no longer the only path.
+
 ## Allium slice map
 
 ### In this spec
@@ -40,8 +57,8 @@ This spec should reuse those seams rather than introduce a parallel display stac
 | `ViewRequirement` | Persist and validate required catalog facts |
 | `MotherDisplayContext.shapes` | Represent shapes as Mother-owned library data |
 | `SelectExplicitUserRequestedShape` | Enable explicit shape-id selection as a stored-shape lookup |
-| `OpenLiveBufferWhenRequiredFactsAreObserved` | Open buffers from library shapes |
-| `RecordObservabilityGapWhenRequiredFactIsMissing` | Preserve missing-data gap behavior for library shapes |
+| `OpenLiveBufferWhenRequiredFactsAreObserved` | Open buffers from library shapes after required requirements are observed and their sources are available |
+| `RecordObservabilityGapWhenRequiredFactIsMissing` | Preserve missing-data gap behavior for library shapes when a required requirement is missing/unavailable |
 
 ### Deferred follow-on specs
 
@@ -53,6 +70,22 @@ This spec should reuse those seams rather than introduce a parallel display stac
 | `LinkObservabilityGapToWorkItem` / `ResolveObservabilityGapWhenFactBecomesObserved` | `mother-view-observability-workflow` |
 | `ViewMaturationEvent` / `ObservabilityImprovementArtifact` | `mother-view-maturation` |
 | `FrameBufferSurface` renderer behavior | `mother-sveltekit-frame` first, TUI/Emacs later |
+
+## Direct Code Targets
+
+Primary files expected to change:
+
+- `mother/src/view_buffer/model.rs`
+- `mother/src/view_buffer/store.rs`
+- `mother/src/view_buffer/service.rs`
+- `mother/src/view_buffer/catalog.rs`
+- `mother/src/view_buffer/mod.rs`
+- `mother/src/http_api/view_buffer.rs` or a sibling `mother/src/http_api/view_shape.rs`
+- `mother/src/http_api.rs`
+- `mother/src/http_routes.rs`
+- `src/commands/mother/daemon/dispatch.rs`
+- `mother/src/state/mod.rs`
+- `mother/src/http_api/tests/mod.rs`
 
 ## Proposed Rust layout
 
@@ -89,6 +122,8 @@ Needed for Allium alignment:
 - `vision_id: Option<String>`
 - `project_uid: Option<String>`
 - `replaced_by: Option<String>`
+
+`vision_id` and `project_uid` are the Rust/SQLite storage projection of Allium's optional `vision: VisionContext?` and `project: ProjectContext?` relationships. They preserve identity without pulling full context records into this slice.
 
 Derivations and display patterns can be represented as empty/preserved metadata in this slice only if useful, but their maturation behavior is deferred.
 
@@ -129,6 +164,12 @@ Store methods should stay narrow:
 - `deactivate_view_shape(shape_id)`
 - `seed_view_shape(shape)` or idempotent upsert for built-ins
 
+Requirement semantics:
+
+- `required = true` requirements block buffer opening unless the catalog fact is `observed` and the backing source is `available`.
+- `required = false` requirements may be stored as optional enrichment metadata, but this slice must not invent optional values or let optional gaps block required-data views.
+- The seeded `mother.status.default` shape should use required requirements only, matching the existing fail-closed proof behavior.
+
 ## API sketch
 
 Candidate routes:
@@ -150,7 +191,7 @@ Shape upsert accepts only structured JSON fields. It must not accept renderer-ow
 2. seeded built-in/library default if no persisted record exists during bootstrap;
 3. otherwise fail with unknown/inactive shape error.
 
-If the shape exists but required facts are missing or source is unavailable, preserve current gap behavior.
+If the shape exists but required facts are missing or source is unavailable, preserve current gap behavior. Optional requirements can be ignored for opening in this slice; renderer enrichment or optional-data display affordances belong to later shape-composition work.
 
 ## Read-before-write checklist
 
@@ -163,6 +204,35 @@ Before implementation, read and record findings for:
 - `mother/src/http_routes.rs`
 - `src/commands/mother/daemon/dispatch.rs`
 - `mother/src/state/mod.rs`
+
+## Verification Plan
+
+Run at minimum:
+
+```bash
+cargo check -q
+cargo test -q -p mother view_buffer
+cargo test -q -p mother view_shape
+patina spec check mother-view-shape-library --json
+allium check layer/allium/mother/mother-view-composer-target.allium
+```
+
+Tests should cover:
+
+- shape persistence list/get/upsert/deactivate;
+- requirement persistence and optional-vs-required semantics;
+- API shape list/read/upsert/deactivate;
+- inactive/missing shape fail-closed behavior;
+- opening a buffer from seeded and persisted library shapes;
+- observability gaps for missing required facts or unavailable sources.
+
+## Commits
+
+No implementation commits yet. Promotion/polish changes prepare the spec for `mvsl0-read-before-write`.
+
+## Build Readiness
+
+Ready to promote as the next implementation spec. Implementation must begin with the documented read-before-write pass, then proceed through the exit criteria in [[mother-view-shape-library]].
 
 ## Risks
 
