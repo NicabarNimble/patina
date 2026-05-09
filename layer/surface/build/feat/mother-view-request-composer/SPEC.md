@@ -38,6 +38,7 @@ exit_criteria:
 - id: mvrc7-follow-on-backlog
   text: Behaviors outside this slice are explicitly split into follow-on specs for similar-shape adaptation, initial-shape creation, request UX, revision, maturation, and renderer frames.
   checked: true
+validated_against_commit: 0cbc03c7997a5b5d506dd672a7f891a19a24105e
 ---
 # feat: Mother View Request Composer
 
