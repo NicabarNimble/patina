@@ -300,6 +300,17 @@ Integrated active library shapes into buffer opening:
 
 Required data validation still uses `DataCatalog::observed_required_fact`, so library shapes inherit the existing fail-closed observability-gap behavior.
 
+### `mvsl5-proof-shapes-seeded`
+
+Moved the Mother status proof shape onto the library path:
+
+- added `MotherRuntimeStore::seed_view_shape`, which inserts a built-in shape only when no persisted shape with that id exists;
+- added an idempotence test proving seed does not overwrite user-edited/library-owned shape data;
+- added `ServerState::ensure_builtin_view_shapes` and call it before listing, reading, or opening shapes;
+- removed the open-time “if no shapes, push built-in proof shape” fallback, so daemon buffer opening now reads shapes from Mother state after seeding.
+
+`mother_status_shape()` still exists as the seed fixture/source of built-in defaults, but runtime lookup is no longer built-in-only.
+
 ## Commits
 
 No implementation commits yet. Promotion/polish changes prepared the spec for `mvsl0-read-before-write`. `mvsl1-shape-model` implementation should be committed as the next scalpel commit.

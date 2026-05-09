@@ -33,7 +33,7 @@ exit_criteria:
   checked: true
 - id: mvsl5-proof-shapes-seeded
   text: The existing Mother status proof shape is seeded or represented as a library shape so built-in-only shape lookup is no longer the only path.
-  checked: false
+  checked: true
 - id: mvsl6-tests-and-trace
   text: Deterministic tests cover shape persistence, shape APIs, inactive/missing shape fail-closed behavior, opening from library shape, and Allium obligation trace comments.
   checked: false
@@ -171,7 +171,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 - [x] `mvsl2-shape-persistence`
 - [x] `mvsl3-shape-api`
 - [x] `mvsl4-open-from-library`
-- [ ] `mvsl5-proof-shapes-seeded`
+- [x] `mvsl5-proof-shapes-seeded`
 - [ ] `mvsl6-tests-and-trace`
 - [ ] `mvsl7-follow-on-backlog`
 

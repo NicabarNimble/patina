@@ -1824,6 +1824,15 @@ impl MotherRuntimeStore {
         view_buffer::store::upsert_shape(&conn, shape)
     }
 
+    pub fn seed_view_shape(&self, shape: &ViewShape) -> Result<bool> {
+        let conn = self.open()?;
+        if view_buffer::store::get_shape(&conn, &shape.shape_id)?.is_some() {
+            return Ok(false);
+        }
+        view_buffer::store::upsert_shape(&conn, shape)?;
+        Ok(true)
+    }
+
     pub fn get_view_shape(&self, shape_id: &str) -> Result<Option<ViewShape>> {
         let conn = self.open()?;
         view_buffer::store::get_shape(&conn, shape_id)
@@ -1984,6 +1993,36 @@ mod tests {
             .expect("shape remains after deactivation");
         assert!(!deactivated.active);
         assert!(!reopened.deactivate_view_shape("missing.shape").unwrap());
+    }
+
+    #[test]
+    fn seed_view_shape_is_idempotent_and_preserves_existing_shape() {
+        // obligation: spec.mother-view-shape-library.mvsl5-proof-shapes-seeded
+        let store = temp_store();
+        let mut shape = crate::view_buffer::mother_status_shape();
+        shape
+            .requirements
+            .sort_by(|left, right| left.fact_path.cmp(&right.fact_path));
+
+        assert!(store.seed_view_shape(&shape).unwrap());
+        assert_eq!(
+            store.get_view_shape(&shape.shape_id).unwrap(),
+            Some(shape.clone())
+        );
+
+        shape.title = "User Edited Mother Status".to_string();
+        store.upsert_view_shape(&shape).unwrap();
+        assert!(!store
+            .seed_view_shape(&crate::view_buffer::mother_status_shape())
+            .unwrap());
+        assert_eq!(
+            store
+                .get_view_shape(&shape.shape_id)
+                .unwrap()
+                .expect("seeded shape should exist")
+                .title,
+            "User Edited Mother Status"
+        );
     }
 
     #[test]

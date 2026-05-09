@@ -2,6 +2,14 @@ use super::*;
 use crate::commands::mother::{integrity, loader};
 use anyhow::Context;
 
+impl ServerState {
+    fn ensure_builtin_view_shapes(&self) -> anyhow::Result<()> {
+        self.runtime_store
+            .seed_view_shape(&mother_crate::view_buffer::mother_status_shape())?;
+        Ok(())
+    }
+}
+
 impl ApiRuntime for ServerState {
     fn version(&self) -> String {
         self.version.clone()
@@ -644,6 +652,7 @@ impl ApiRuntime for ServerState {
     }
 
     fn view_shapes_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::ViewShape>> {
+        self.ensure_builtin_view_shapes()?;
         self.runtime_store.list_view_shapes()
     }
 
@@ -651,6 +660,7 @@ impl ApiRuntime for ServerState {
         &self,
         shape_id: &str,
     ) -> anyhow::Result<Option<mother_crate::view_buffer::ViewShape>> {
+        self.ensure_builtin_view_shapes()?;
         self.runtime_store.get_view_shape(shape_id)
     }
 
@@ -688,10 +698,8 @@ impl ApiRuntime for ServerState {
                 observed_at: Utc::now(),
             },
         );
-        let mut shapes = self.runtime_store.list_view_shapes()?;
-        if shapes.is_empty() {
-            shapes.push(mother_crate::view_buffer::mother_status_shape());
-        }
+        self.ensure_builtin_view_shapes()?;
+        let shapes = self.runtime_store.list_view_shapes()?;
         let mut service =
             mother_crate::view_buffer::ViewBufferService::with_catalog_and_shapes(catalog, shapes);
         let outcome = service.open_buffer(request)?;
