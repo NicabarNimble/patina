@@ -70,7 +70,7 @@ Mother View Composer / Mother View System
 ├── v0.70.0: [[mother-view-request-composer]]
 ├── v0.70.1: [[mother-view-shape-adaptation]]
 ├── v0.70.2: [[mother-view-initial-shape-creation]]
-├── future: [[mother-view-request-ux]]
+├── v0.70.3: [[mother-view-request-ux]]
 ├── future: [[mother-view-buffer-revision]]
 ├── future: [[mother-view-observability-workflow]]
 ├── future: [[mother-view-maturation]]
@@ -88,6 +88,7 @@ Completed backend slices:
 - [[mother-view-request-composer]] — `v0.70.0`
 - [[mother-view-shape-adaptation]] — `v0.70.1`
 - [[mother-view-initial-shape-creation]] — `v0.70.2`
+- [[mother-view-request-ux]] — `v0.70.3`
 
 Current honest system label:
 
@@ -150,10 +151,10 @@ The parent/umbrella completion may use a minor or major bump when the whole Moth
 - [[mother-view-request-composer]]: structured request capture, shape-match persistence, explicit/exact safe opening.
 - [[mother-view-shape-adaptation]]: similar-shape adaptation into exploratory shapes.
 - [[mother-view-initial-shape-creation]]: initial structured shapes for no-match requests.
+- [[mother-view-request-ux]]: persisted request details and explicit linked-shape open actions.
 
 ### Planned
 
-- [[mother-view-request-ux]]: expose request statuses and flows to users/agents/renderers.
 - [[mother-view-buffer-revision]]: apply corrections, create revisions, and replace buffers.
 - [[mother-view-observability-workflow]]: link/resolve observability gaps.
 - [[mother-view-maturation]]: mature shapes, derivations, patterns, and observability-improvement artifacts.
