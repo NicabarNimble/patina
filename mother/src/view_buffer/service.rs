@@ -6,14 +6,33 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
-    Buffer, FramedJsonPayload, MajorMode, MinorMode, ObservabilityGap, PayloadContract,
-    ViewRequirement, ViewShape, ViewShapeScope,
+    Buffer, BufferState, Frame, FrameKind, FramedJsonPayload, MajorMode, MinorMode,
+    ObservabilityGap, PayloadContract, ViewRequirement, ViewShape, ViewShapeScope, Window,
+    WindowConnectionState,
 };
 use crate::view_buffer::catalog::{DataCatalog, MOTHER_STATUS_SHAPE_ID, MOTHER_STATUS_SOURCE_ID};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OpenBufferRequest {
     pub shape_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectWindowRequest {
+    pub frame_id: String,
+    pub frame_kind: FrameKind,
+    pub window_id: String,
+    pub buffer_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisconnectWindowRequest {
+    pub window_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KillBufferRequest {
+    pub buffer_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -34,8 +53,9 @@ pub struct ViewBufferService {
     catalog: DataCatalog,
     shapes: BTreeMap<String, ViewShape>,
     buffers: BTreeMap<String, Buffer>,
+    frames: BTreeMap<String, Frame>,
+    windows: BTreeMap<String, Window>,
     gaps: BTreeMap<String, ObservabilityGap>,
-    next_id: u64,
 }
 
 impl ViewBufferService {
@@ -45,13 +65,22 @@ impl ViewBufferService {
             catalog,
             shapes: BTreeMap::from([(proof_shape.shape_id.clone(), proof_shape)]),
             buffers: BTreeMap::new(),
+            frames: BTreeMap::new(),
+            windows: BTreeMap::new(),
             gaps: BTreeMap::new(),
-            next_id: 1,
         }
     }
 
     pub fn list_buffers(&self) -> Vec<Buffer> {
         self.buffers.values().cloned().collect()
+    }
+
+    pub fn list_frames(&self) -> Vec<Frame> {
+        self.frames.values().cloned().collect()
+    }
+
+    pub fn list_windows(&self) -> Vec<Window> {
+        self.windows.values().cloned().collect()
     }
 
     pub fn list_gaps(&self) -> Vec<ObservabilityGap> {
@@ -82,14 +111,83 @@ impl ViewBufferService {
         Ok(OpenBufferOutcome::Opened(OpenedBuffer { buffer, payload }))
     }
 
+    pub fn connect_window(&mut self, request: ConnectWindowRequest) -> Result<Window> {
+        let buffer = self
+            .buffers
+            .get(&request.buffer_id)
+            .ok_or_else(|| anyhow!("unknown view buffer '{}'", request.buffer_id))?;
+        if !buffer.state.is_connectable() {
+            return Err(anyhow!(
+                "view buffer '{}' is not connectable in state {:?}",
+                buffer.buffer_id,
+                buffer.state
+            ));
+        }
+
+        let now = Utc::now();
+        let frame = Frame {
+            frame_id: request.frame_id,
+            frame_kind: request.frame_kind,
+            connected_at: now,
+        };
+        let window = Window {
+            window_id: request.window_id,
+            frame_id: frame.frame_id.clone(),
+            buffer_id: Some(buffer.buffer_id.clone()),
+            connection_state: WindowConnectionState::Connected,
+            connected_at: Some(now),
+            disconnected_at: None,
+        };
+        self.frames.insert(frame.frame_id.clone(), frame);
+        self.windows
+            .insert(window.window_id.clone(), window.clone());
+        Ok(window)
+    }
+
+    pub fn disconnect_window(&mut self, request: DisconnectWindowRequest) -> Result<Window> {
+        let window = self
+            .windows
+            .get_mut(&request.window_id)
+            .ok_or_else(|| anyhow!("unknown view window '{}'", request.window_id))?;
+        if window.connection_state != WindowConnectionState::Connected {
+            return Err(anyhow!(
+                "view window '{}' is not connected",
+                request.window_id
+            ));
+        }
+        window.connection_state = WindowConnectionState::Disconnected;
+        window.disconnected_at = Some(Utc::now());
+        Ok(window.clone())
+    }
+
+    pub fn kill_buffer(&mut self, request: KillBufferRequest) -> Result<Buffer> {
+        let buffer = self
+            .buffers
+            .get_mut(&request.buffer_id)
+            .ok_or_else(|| anyhow!("unknown view buffer '{}'", request.buffer_id))?;
+        if !buffer.state.is_connectable() {
+            return Err(anyhow!(
+                "view buffer '{}' cannot be killed from state {:?}",
+                request.buffer_id,
+                buffer.state
+            ));
+        }
+        buffer.state = BufferState::Killed;
+        buffer.killed_at = Some(Utc::now());
+        Ok(buffer.clone())
+    }
+
     fn record_gap(
         &mut self,
         shape: &ViewShape,
         missing: &ViewRequirement,
         created_at: DateTime<Utc>,
     ) -> ObservabilityGap {
-        let gap_id = format!("gap_{}_{}", self.next_id, sanitize_id(&missing.fact_path));
-        self.next_id += 1;
+        let gap_id = format!(
+            "gap_{}_{}",
+            sanitize_id(&missing.fact_path),
+            uuid::Uuid::new_v4().simple()
+        );
         let missing_source_id = self
             .catalog
             .fact(&missing.fact_path)
@@ -108,9 +206,11 @@ impl ViewBufferService {
     }
 
     fn next_buffer_id(&mut self, shape: &ViewShape) -> String {
-        let id = format!("buf_{}_{}", self.next_id, sanitize_id(&shape.shape_id));
-        self.next_id += 1;
-        id
+        format!(
+            "buf_{}_{}",
+            sanitize_id(&shape.shape_id),
+            uuid::Uuid::new_v4().simple()
+        )
     }
 
     fn payload_json_for_shape(&self, shape: &ViewShape) -> serde_json::Value {
@@ -189,7 +289,8 @@ mod tests {
 
     use super::*;
     use crate::view_buffer::{
-        BufferState, MotherStatusFacts, ObservabilityGapStatus, SourceAvailability,
+        BufferState, FrameKind, MotherStatusFacts, ObservabilityGapStatus, SourceAvailability,
+        WindowConnectionState,
     };
 
     fn status_catalog() -> DataCatalog {
@@ -273,5 +374,51 @@ mod tests {
         );
         assert_eq!(service.list_buffers().len(), 0);
         assert_eq!(service.list_gaps().len(), 1);
+    }
+
+    #[test]
+    fn connects_disconnects_and_kills_live_buffer() {
+        // obligation: rule-success.ConnectWindowToExistingBuffer
+        // obligation: rule-success.DisconnectWindowWithoutKillingBuffer
+        // obligation: rule-success.KillBufferWhenUserClosesBuffer
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+        let outcome = service
+            .open_buffer(OpenBufferRequest {
+                shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
+            })
+            .expect("open should evaluate");
+        let OpenBufferOutcome::Opened(opened) = outcome else {
+            panic!("expected opened buffer");
+        };
+
+        let connected = service
+            .connect_window(ConnectWindowRequest {
+                frame_id: "frame_tui".to_string(),
+                frame_kind: FrameKind::Tui,
+                window_id: "win_1".to_string(),
+                buffer_id: opened.buffer.buffer_id.clone(),
+            })
+            .expect("window should connect");
+        assert_eq!(connected.connection_state, WindowConnectionState::Connected);
+        assert_eq!(service.list_frames().len(), 1);
+        assert_eq!(service.list_windows().len(), 1);
+
+        let disconnected = service
+            .disconnect_window(DisconnectWindowRequest {
+                window_id: connected.window_id,
+            })
+            .expect("window should disconnect");
+        assert_eq!(
+            disconnected.connection_state,
+            WindowConnectionState::Disconnected
+        );
+        assert_eq!(service.list_buffers()[0].state, BufferState::Live);
+
+        let killed = service
+            .kill_buffer(KillBufferRequest {
+                buffer_id: opened.buffer.buffer_id,
+            })
+            .expect("buffer should be killed");
+        assert_eq!(killed.state, BufferState::Killed);
     }
 }

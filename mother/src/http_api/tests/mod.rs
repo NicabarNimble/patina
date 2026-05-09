@@ -249,6 +249,81 @@ impl ApiRuntime for StubRuntime {
         })
     }
 
+    fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>> {
+        Ok(vec![])
+    }
+
+    fn view_buffer_open(
+        &self,
+        request: crate::view_buffer::OpenBufferRequest,
+    ) -> Result<crate::view_buffer::OpenBufferOutcome> {
+        let catalog =
+            crate::view_buffer::DataCatalog::mother_status(crate::view_buffer::MotherStatusFacts {
+                version: ApiRuntime::version(self),
+                uptime_secs: ApiRuntime::uptime_secs(self),
+                control_plane_ready: true,
+                registered_projects: 2,
+                children_ready_count: 1,
+                children_total: 2,
+                startup_profile: "full".to_string(),
+                memory_pressure: "ok".to_string(),
+                observed_at: chrono::Utc::now(),
+            });
+        let mut service = crate::view_buffer::ViewBufferService::with_catalog(catalog);
+        service.open_buffer(request)
+    }
+
+    fn view_buffer_connect_window(
+        &self,
+        request: crate::view_buffer::ConnectWindowRequest,
+    ) -> Result<crate::view_buffer::Window> {
+        Ok(crate::view_buffer::Window {
+            window_id: request.window_id,
+            frame_id: request.frame_id,
+            buffer_id: Some(request.buffer_id),
+            connection_state: crate::view_buffer::WindowConnectionState::Connected,
+            connected_at: Some(chrono::Utc::now()),
+            disconnected_at: None,
+        })
+    }
+
+    fn view_buffer_disconnect_window(
+        &self,
+        request: crate::view_buffer::DisconnectWindowRequest,
+    ) -> Result<crate::view_buffer::Window> {
+        Ok(crate::view_buffer::Window {
+            window_id: request.window_id,
+            frame_id: "frame_tui".to_string(),
+            buffer_id: None,
+            connection_state: crate::view_buffer::WindowConnectionState::Disconnected,
+            connected_at: None,
+            disconnected_at: Some(chrono::Utc::now()),
+        })
+    }
+
+    fn view_buffer_kill(
+        &self,
+        request: crate::view_buffer::KillBufferRequest,
+    ) -> Result<crate::view_buffer::Buffer> {
+        let shape = crate::view_buffer::mother_status_shape();
+        let mut buffer = crate::view_buffer::Buffer::live_from_shape(
+            request.buffer_id,
+            &shape,
+            chrono::Utc::now(),
+        );
+        buffer.state = crate::view_buffer::BufferState::Killed;
+        buffer.killed_at = Some(chrono::Utc::now());
+        Ok(buffer)
+    }
+
+    fn view_buffer_windows_list(&self) -> Result<Vec<crate::view_buffer::Window>> {
+        Ok(vec![])
+    }
+
+    fn view_buffer_gaps_list(&self) -> Result<Vec<crate::view_buffer::ObservabilityGap>> {
+        Ok(vec![])
+    }
+
     fn builtin_secrets_dispatch(&self, _payload: serde_json::Value) -> HttpResponse {
         HttpResponse::json(200, &serde_json::json!({}))
     }
@@ -336,6 +411,59 @@ fn ready_route_returns_204_when_runtime_is_ready() {
     let response = handle_ready(&StubRuntime);
     assert_eq!(response.status, 204);
     assert!(response.body.is_empty());
+}
+
+#[test]
+fn view_buffer_open_handler_returns_framed_payload() {
+    // obligation: rule-success.OpenLiveBufferWhenRequiredFactsAreObserved
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-buffers/open".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::OpenBufferRequest {
+            shape_id: crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string(),
+        })
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_open_view_buffer(&request, &StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload
+            .get("payload")
+            .and_then(|payload| payload.get("frame"))
+            .and_then(|frame| frame.get("protocol"))
+            .and_then(|value| value.as_str()),
+        Some("patina:view-buffer")
+    );
+}
+
+#[test]
+fn view_buffer_connect_handler_returns_window() {
+    // obligation: rule-success.ConnectWindowToExistingBuffer
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-buffers/connect".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::ConnectWindowRequest {
+            frame_id: "frame_tui".to_string(),
+            frame_kind: crate::view_buffer::FrameKind::Tui,
+            window_id: "win_1".to_string(),
+            buffer_id: "buf_1".to_string(),
+        })
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_connect_view_buffer_window(&request, &StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload
+            .get("connection_state")
+            .and_then(|value| value.as_str()),
+        Some("connected")
+    );
 }
 
 #[test]

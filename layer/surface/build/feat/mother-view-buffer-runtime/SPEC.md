@@ -29,7 +29,7 @@ exit_criteria:
   checked: true
 - id: mvbr2-buffer-api
   text: Mother exposes read-only/control-plane buffer APIs for listing buffers, opening a buffer from a known shape, connecting/disconnecting a window, and killing a buffer.
-  checked: false
+  checked: true
 - id: mvbr3-catalog-guardrail
   text: Opening a buffer validates declared backing requirements against a minimal Mother data catalog and refuses to open when required facts are missing.
   checked: true
@@ -41,10 +41,10 @@ exit_criteria:
   checked: true
 - id: mvbr6-tests
   text: Deterministic tests cover buffer lifecycle, source requirement validation, missing-data gaps, route/API behavior, and fail-closed paths.
-  checked: false
+  checked: true
 - id: mvbr7-docs-and-allium-trace
   text: Implementation docs and test names reference the Allium obligations from `mother-view-composer-target.plan.json` so the build spec remains traceable to the behavior spec.
-  checked: false
+  checked: true
 ---
 # feat: Mother View Buffer Runtime
 
@@ -153,9 +153,9 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 
 - [x] `mvbr0-read-before-write`
 - [x] `mvbr1-buffer-model`
-- [ ] `mvbr2-buffer-api`
+- [x] `mvbr2-buffer-api`
 - [x] `mvbr3-catalog-guardrail`
 - [x] `mvbr4-observability-gap`
 - [x] `mvbr5-proof-shape`
-- [ ] `mvbr6-tests`
-- [ ] `mvbr7-docs-and-allium-trace`
+- [x] `mvbr6-tests`
+- [x] `mvbr7-docs-and-allium-trace`

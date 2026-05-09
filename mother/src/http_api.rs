@@ -15,6 +15,7 @@ mod pando;
 mod rivet;
 mod scry;
 mod secrets;
+mod view_buffer;
 
 pub use child::handle_child_request;
 pub use health::{handle_health, handle_ready, handle_version};
@@ -104,6 +105,25 @@ pub trait ApiRuntime {
     ) -> Result<serde_json::Value>;
     fn builtin_doctor_run(&self) -> Result<patina_protocol::DoctorRunResult>;
     fn builtin_secrets_dispatch(&self, payload: serde_json::Value) -> HttpResponse;
+    fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>>;
+    fn view_buffer_open(
+        &self,
+        request: crate::view_buffer::OpenBufferRequest,
+    ) -> Result<crate::view_buffer::OpenBufferOutcome>;
+    fn view_buffer_connect_window(
+        &self,
+        request: crate::view_buffer::ConnectWindowRequest,
+    ) -> Result<crate::view_buffer::Window>;
+    fn view_buffer_disconnect_window(
+        &self,
+        request: crate::view_buffer::DisconnectWindowRequest,
+    ) -> Result<crate::view_buffer::Window>;
+    fn view_buffer_kill(
+        &self,
+        request: crate::view_buffer::KillBufferRequest,
+    ) -> Result<crate::view_buffer::Buffer>;
+    fn view_buffer_windows_list(&self) -> Result<Vec<crate::view_buffer::Window>>;
+    fn view_buffer_gaps_list(&self) -> Result<Vec<crate::view_buffer::ObservabilityGap>>;
 }
 
 pub trait HealthApi {
@@ -302,6 +322,70 @@ impl<T: ApiRuntime + ?Sized> InspectorApi for T {
     }
 }
 
+pub trait ViewBufferApi {
+    fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>>;
+    fn view_buffer_open(
+        &self,
+        request: crate::view_buffer::OpenBufferRequest,
+    ) -> Result<crate::view_buffer::OpenBufferOutcome>;
+    fn view_buffer_connect_window(
+        &self,
+        request: crate::view_buffer::ConnectWindowRequest,
+    ) -> Result<crate::view_buffer::Window>;
+    fn view_buffer_disconnect_window(
+        &self,
+        request: crate::view_buffer::DisconnectWindowRequest,
+    ) -> Result<crate::view_buffer::Window>;
+    fn view_buffer_kill(
+        &self,
+        request: crate::view_buffer::KillBufferRequest,
+    ) -> Result<crate::view_buffer::Buffer>;
+    fn view_buffer_windows_list(&self) -> Result<Vec<crate::view_buffer::Window>>;
+    fn view_buffer_gaps_list(&self) -> Result<Vec<crate::view_buffer::ObservabilityGap>>;
+}
+
+impl<T: ApiRuntime + ?Sized> ViewBufferApi for T {
+    fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>> {
+        ApiRuntime::view_buffers_list(self)
+    }
+
+    fn view_buffer_open(
+        &self,
+        request: crate::view_buffer::OpenBufferRequest,
+    ) -> Result<crate::view_buffer::OpenBufferOutcome> {
+        ApiRuntime::view_buffer_open(self, request)
+    }
+
+    fn view_buffer_connect_window(
+        &self,
+        request: crate::view_buffer::ConnectWindowRequest,
+    ) -> Result<crate::view_buffer::Window> {
+        ApiRuntime::view_buffer_connect_window(self, request)
+    }
+
+    fn view_buffer_disconnect_window(
+        &self,
+        request: crate::view_buffer::DisconnectWindowRequest,
+    ) -> Result<crate::view_buffer::Window> {
+        ApiRuntime::view_buffer_disconnect_window(self, request)
+    }
+
+    fn view_buffer_kill(
+        &self,
+        request: crate::view_buffer::KillBufferRequest,
+    ) -> Result<crate::view_buffer::Buffer> {
+        ApiRuntime::view_buffer_kill(self, request)
+    }
+
+    fn view_buffer_windows_list(&self) -> Result<Vec<crate::view_buffer::Window>> {
+        ApiRuntime::view_buffer_windows_list(self)
+    }
+
+    fn view_buffer_gaps_list(&self) -> Result<Vec<crate::view_buffer::ObservabilityGap>> {
+        ApiRuntime::view_buffer_gaps_list(self)
+    }
+}
+
 pub trait ChildApi {
     fn child_health(&self, child_name: &str) -> Result<crate::ChildHealth>;
     fn child_handle(
@@ -447,6 +531,13 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let interface_control_runtime = Arc::clone(&runtime);
     let rivet_dispatch_runtime = Arc::clone(&runtime);
     let inspector_typed_calls_runtime = Arc::clone(&runtime);
+    let view_buffers_list_runtime = Arc::clone(&runtime);
+    let view_buffer_open_runtime = Arc::clone(&runtime);
+    let view_buffer_connect_runtime = Arc::clone(&runtime);
+    let view_buffer_disconnect_runtime = Arc::clone(&runtime);
+    let view_buffer_kill_runtime = Arc::clone(&runtime);
+    let view_buffer_windows_runtime = Arc::clone(&runtime);
+    let view_buffer_gaps_runtime = Arc::clone(&runtime);
     let child_runtime = Arc::clone(&runtime);
 
     RouteTable {
@@ -499,6 +590,30 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         }),
         post_inspector_typed_calls: Arc::new(move |request| {
             inspector::handle_inspector_typed_calls(request, &*inspector_typed_calls_runtime)
+        }),
+        get_view_buffers: Arc::new(move |_request| {
+            view_buffer::handle_list_view_buffers(&*view_buffers_list_runtime)
+        }),
+        post_view_buffer_open: Arc::new(move |request| {
+            view_buffer::handle_open_view_buffer(request, &*view_buffer_open_runtime)
+        }),
+        post_view_buffer_connect: Arc::new(move |request| {
+            view_buffer::handle_connect_view_buffer_window(request, &*view_buffer_connect_runtime)
+        }),
+        post_view_buffer_disconnect: Arc::new(move |request| {
+            view_buffer::handle_disconnect_view_buffer_window(
+                request,
+                &*view_buffer_disconnect_runtime,
+            )
+        }),
+        post_view_buffer_kill: Arc::new(move |request| {
+            view_buffer::handle_kill_view_buffer(request, &*view_buffer_kill_runtime)
+        }),
+        get_view_buffer_windows: Arc::new(move |_request| {
+            view_buffer::handle_list_view_buffer_windows(&*view_buffer_windows_runtime)
+        }),
+        get_view_buffer_gaps: Arc::new(move |_request| {
+            view_buffer::handle_list_view_buffer_gaps(&*view_buffer_gaps_runtime)
         }),
         child_request: Arc::new(move |request| {
             child::handle_child_request(request, &*child_runtime)

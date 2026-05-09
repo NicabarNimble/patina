@@ -245,6 +245,22 @@ fn opens_live_buffer_when_required_facts_are_observed() { ... }
 fn records_gap_and_refuses_buffer_when_required_fact_missing() { ... }
 ```
 
+Current implementation trace to `layer/allium/mother/mother-view-composer-target.plan.json`:
+
+| Allium obligation | Implementation evidence |
+|---|---|
+| `entity-state.Buffer` | `mother/src/view_buffer/model.rs`, `mother/src/view_buffer/store.rs`, `view_buffer_records_are_persistent` |
+| `entity-state.Frame` | `mother/src/view_buffer/model.rs`, `mother/src/view_buffer/store.rs`, `view_buffer_records_are_persistent` |
+| `entity-state.Window` | `mother/src/view_buffer/model.rs`, `mother/src/view_buffer/store.rs`, `view_buffer_records_are_persistent` |
+| `entity-state.MotherDataCatalog` | `mother/src/view_buffer/catalog.rs`, `mother_status_catalog_exposes_observed_status_facts` |
+| `entity-state.CataloguedFact` | `mother/src/view_buffer/catalog.rs`, `mother_status_catalog_exposes_observed_status_facts` |
+| `rule-success.OpenLiveBufferWhenRequiredFactsAreObserved` | `opens_live_buffer_when_required_facts_are_observed`, `view_buffer_open_handler_returns_framed_payload` |
+| `rule-failure.OpenLiveBufferWhenRequiredFactsAreObserved.2` | `missing_required_fact_is_not_observed`, `unavailable_source_means_required_fact_is_not_observed_for_opening`, `records_gap_and_refuses_buffer_when_required_source_unavailable` |
+| `rule-success.RecordObservabilityGapWhenRequiredFactIsMissing` | `records_gap_and_refuses_buffer_when_required_fact_missing`, `records_gap_and_refuses_buffer_when_required_source_unavailable` |
+| `rule-success.ConnectWindowToExistingBuffer` | `connects_disconnects_and_kills_live_buffer`, `view_buffer_connect_handler_returns_window` |
+| `rule-success.DisconnectWindowWithoutKillingBuffer` | `connects_disconnects_and_kills_live_buffer` |
+| `rule-success.KillBufferWhenUserClosesBuffer` | `connects_disconnects_and_kills_live_buffer` |
+
 ## Read-before-write checklist
 
 Before the first code edit, inspect:

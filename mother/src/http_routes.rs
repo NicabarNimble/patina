@@ -26,6 +26,13 @@ pub struct RouteTable {
     pub post_interface_call: RouteHandler,
     pub post_rivet_dispatch: RouteHandler,
     pub post_inspector_typed_calls: RouteHandler,
+    pub get_view_buffers: RouteHandler,
+    pub post_view_buffer_open: RouteHandler,
+    pub post_view_buffer_connect: RouteHandler,
+    pub post_view_buffer_disconnect: RouteHandler,
+    pub post_view_buffer_kill: RouteHandler,
+    pub get_view_buffer_windows: RouteHandler,
+    pub get_view_buffer_gaps: RouteHandler,
     pub child_request: RouteHandler,
 }
 
@@ -168,6 +175,55 @@ impl Router {
                     (self.routes.post_inspector_typed_calls)(request)
                 }
             }
+            ("GET", "/api/view-buffers") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_buffers)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/open") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_open)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/connect") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_connect)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/disconnect") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_disconnect)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/kill") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_kill)(request)
+                }
+            }
+            ("GET", "/api/view-buffers/windows") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_buffer_windows)(request)
+                }
+            }
+            ("GET", "/api/view-buffers/gaps") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_buffer_gaps)(request)
+                }
+            }
             _ if request.path.starts_with("/child/") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -220,6 +276,13 @@ mod tests {
             post_interface_call: Arc::new(|_| ok_json()),
             post_rivet_dispatch: Arc::new(|_| ok_json()),
             post_inspector_typed_calls: Arc::new(|_| ok_json()),
+            get_view_buffers: Arc::new(|_| ok_json()),
+            post_view_buffer_open: Arc::new(|_| ok_json()),
+            post_view_buffer_connect: Arc::new(|_| ok_json()),
+            post_view_buffer_disconnect: Arc::new(|_| ok_json()),
+            post_view_buffer_kill: Arc::new(|_| ok_json()),
+            get_view_buffer_windows: Arc::new(|_| ok_json()),
+            get_view_buffer_gaps: Arc::new(|_| ok_json()),
             child_request: Arc::new(|_| ok_json()),
         }
     }
@@ -252,6 +315,26 @@ mod tests {
         let router = Router::new(false, "token-123".to_string(), test_routes());
         let response = router.route(&request("POST", "/api/lifecycle/warmup-children", None));
         assert_eq!(response.status, 200);
+    }
+
+    #[test]
+    fn view_buffer_routes_are_wired_and_auth_guarded() {
+        let router = Router::new(true, "token-123".to_string(), test_routes());
+        let unauthorized = router.route(&request("GET", "/api/view-buffers", None));
+        assert_eq!(unauthorized.status, 401);
+
+        for (method, path) in [
+            ("GET", "/api/view-buffers"),
+            ("POST", "/api/view-buffers/open"),
+            ("POST", "/api/view-buffers/connect"),
+            ("POST", "/api/view-buffers/disconnect"),
+            ("POST", "/api/view-buffers/kill"),
+            ("GET", "/api/view-buffers/windows"),
+            ("GET", "/api/view-buffers/gaps"),
+        ] {
+            let authorized = router.route(&request(method, path, Some("Bearer token-123")));
+            assert_eq!(authorized.status, 200, "{method} {path} should route");
+        }
     }
 
     #[test]

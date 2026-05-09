@@ -643,6 +643,130 @@ impl ApiRuntime for ServerState {
         )
     }
 
+    fn view_buffers_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::Buffer>> {
+        self.runtime_store.list_view_buffers()
+    }
+
+    fn view_buffer_open(
+        &self,
+        request: mother_crate::view_buffer::OpenBufferRequest,
+    ) -> anyhow::Result<mother_crate::view_buffer::OpenBufferOutcome> {
+        let details = self.health_details()?;
+        let catalog = mother_crate::view_buffer::DataCatalog::mother_status(
+            mother_crate::view_buffer::MotherStatusFacts {
+                version: self.version(),
+                uptime_secs: self.uptime_secs(),
+                control_plane_ready: details.control_plane_ready,
+                registered_projects: details.registered_projects,
+                children_ready_count: details.children_ready_count,
+                children_total: details.children_total,
+                startup_profile: details.startup_profile,
+                memory_pressure: details.memory.pressure,
+                observed_at: Utc::now(),
+            },
+        );
+        let mut service = mother_crate::view_buffer::ViewBufferService::with_catalog(catalog);
+        let outcome = service.open_buffer(request)?;
+        match &outcome {
+            mother_crate::view_buffer::OpenBufferOutcome::Opened(opened) => {
+                self.runtime_store.save_view_buffer(&opened.buffer)?;
+            }
+            mother_crate::view_buffer::OpenBufferOutcome::ObservabilityGap(gap) => {
+                self.runtime_store.save_view_observability_gap(gap)?;
+            }
+        }
+        Ok(outcome)
+    }
+
+    fn view_buffer_connect_window(
+        &self,
+        request: mother_crate::view_buffer::ConnectWindowRequest,
+    ) -> anyhow::Result<mother_crate::view_buffer::Window> {
+        let buffer = self
+            .runtime_store
+            .list_view_buffers()?
+            .into_iter()
+            .find(|buffer| buffer.buffer_id == request.buffer_id)
+            .ok_or_else(|| anyhow::anyhow!("unknown view buffer '{}'", request.buffer_id))?;
+        if !buffer.state.is_connectable() {
+            anyhow::bail!(
+                "view buffer '{}' is not connectable in state {:?}",
+                buffer.buffer_id,
+                buffer.state
+            );
+        }
+
+        let now = Utc::now();
+        let frame = mother_crate::view_buffer::Frame {
+            frame_id: request.frame_id,
+            frame_kind: request.frame_kind,
+            connected_at: now,
+        };
+        let window = mother_crate::view_buffer::Window {
+            window_id: request.window_id,
+            frame_id: frame.frame_id.clone(),
+            buffer_id: Some(buffer.buffer_id),
+            connection_state: mother_crate::view_buffer::WindowConnectionState::Connected,
+            connected_at: Some(now),
+            disconnected_at: None,
+        };
+        self.runtime_store.save_view_frame(&frame)?;
+        self.runtime_store.save_view_window(&window)?;
+        Ok(window)
+    }
+
+    fn view_buffer_disconnect_window(
+        &self,
+        request: mother_crate::view_buffer::DisconnectWindowRequest,
+    ) -> anyhow::Result<mother_crate::view_buffer::Window> {
+        let mut window = self
+            .runtime_store
+            .list_view_windows()?
+            .into_iter()
+            .find(|window| window.window_id == request.window_id)
+            .ok_or_else(|| anyhow::anyhow!("unknown view window '{}'", request.window_id))?;
+        if window.connection_state != mother_crate::view_buffer::WindowConnectionState::Connected {
+            anyhow::bail!("view window '{}' is not connected", request.window_id);
+        }
+        window.connection_state = mother_crate::view_buffer::WindowConnectionState::Disconnected;
+        window.disconnected_at = Some(Utc::now());
+        self.runtime_store.save_view_window(&window)?;
+        Ok(window)
+    }
+
+    fn view_buffer_kill(
+        &self,
+        request: mother_crate::view_buffer::KillBufferRequest,
+    ) -> anyhow::Result<mother_crate::view_buffer::Buffer> {
+        let mut buffer = self
+            .runtime_store
+            .list_view_buffers()?
+            .into_iter()
+            .find(|buffer| buffer.buffer_id == request.buffer_id)
+            .ok_or_else(|| anyhow::anyhow!("unknown view buffer '{}'", request.buffer_id))?;
+        if !buffer.state.is_connectable() {
+            anyhow::bail!(
+                "view buffer '{}' cannot be killed from state {:?}",
+                request.buffer_id,
+                buffer.state
+            );
+        }
+        buffer.state = mother_crate::view_buffer::BufferState::Killed;
+        buffer.killed_at = Some(Utc::now());
+        self.runtime_store.save_view_buffer(&buffer)?;
+        Ok(buffer)
+    }
+
+    fn view_buffer_windows_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::Window>> {
+        self.runtime_store.list_view_windows()
+    }
+
+    fn view_buffer_gaps_list(
+        &self,
+    ) -> anyhow::Result<Vec<mother_crate::view_buffer::ObservabilityGap>> {
+        self.runtime_store.list_view_observability_gaps()
+    }
+
     fn federation_status(&self) -> anyhow::Result<serde_json::Value> {
         let runtime = self
             .federation_runtime

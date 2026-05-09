@@ -19,5 +19,6 @@ pub use model::{
 };
 pub use payload::{FramedJsonPayload, PayloadFrame};
 pub use service::{
-    mother_status_shape, OpenBufferOutcome, OpenBufferRequest, OpenedBuffer, ViewBufferService,
+    mother_status_shape, ConnectWindowRequest, DisconnectWindowRequest, KillBufferRequest,
+    OpenBufferOutcome, OpenBufferRequest, OpenedBuffer, ViewBufferService,
 };
