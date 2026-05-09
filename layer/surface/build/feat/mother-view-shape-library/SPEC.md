@@ -18,7 +18,7 @@ beliefs:
 exit_criteria:
 - id: mvsl0-read-before-write
   text: Implementation begins from documented reads of the completed view-buffer runtime, Mother store, and API route patterns before changing shape-library code.
-  checked: false
+  checked: true
 - id: mvsl1-shape-model
   text: 'Mother has a first-class ViewShape library model aligned with Allium v1 fields: shape id, title, source_ref, scope, version, active, major/minor modes, maturity, payload contract/version, optional vision/project/replaced_by, and requirements.'
   checked: false
@@ -166,7 +166,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 
 ## Exit Criteria
 
-- [ ] `mvsl0-read-before-write`
+- [x] `mvsl0-read-before-write`
 - [ ] `mvsl1-shape-model`
 - [ ] `mvsl2-shape-persistence`
 - [ ] `mvsl3-shape-api`

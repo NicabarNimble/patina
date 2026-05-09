@@ -197,13 +197,34 @@ If the shape exists but required facts are missing or source is unavailable, pre
 
 Before implementation, read and record findings for:
 
-- `mother/src/view_buffer/model.rs`
-- `mother/src/view_buffer/store.rs`
-- `mother/src/view_buffer/service.rs`
-- `mother/src/http_api/view_buffer.rs`
-- `mother/src/http_routes.rs`
-- `src/commands/mother/daemon/dispatch.rs`
-- `mother/src/state/mod.rs`
+- [x] `mother/src/view_buffer/model.rs`
+- [x] `mother/src/view_buffer/store.rs`
+- [x] `mother/src/view_buffer/service.rs`
+- [x] `mother/src/view_buffer/catalog.rs`
+- [x] `mother/src/view_buffer/mod.rs`
+- [x] `mother/src/view_buffer/payload.rs`
+- [x] `mother/src/http_api/view_buffer.rs`
+- [x] `mother/src/http_api.rs`
+- [x] `mother/src/http_routes.rs`
+- [x] `src/commands/mother/daemon/dispatch.rs`
+- [x] `mother/src/state/mod.rs`
+- [x] `mother/src/http_api/tests/mod.rs`
+
+### Read-before-write findings
+
+- `mother/src/view_buffer/model.rs` already contains most Allium-aligned enums and core records for buffers, frames, windows, gaps, catalog facts/sources, requirements, and proof `ViewShape`s. Missing shape-library fields are `source_ref`, `maturity`, `vision_id`, `project_uid`, and `replaced_by`; adding them to `ViewShape` is the first model change for `mvsl1-shape-model`.
+- `ViewRequirement.required` already has the desired semantics in `ViewShape::requires_fact` and catalog validation: only required requirements are blockers. The shape-library implementation should preserve that behavior when persisting requirements.
+- `mother/src/view_buffer/catalog.rs` cleanly separates `SourceAvailability` from `ObservationState`; `DataCatalog::observed_required_fact` already implements the Allium rule that a required fact must be observed and its source must be available. The shape library can reuse this without inventing data.
+- `mother/src/view_buffer/service.rs` currently keeps `shapes` as an in-memory `BTreeMap` seeded with `mother_status_shape()`. That is the key seam to replace: construct the service with active persisted shapes, or inject a shape resolver/library, while keeping the same `OpenBufferOutcome::{Opened, ObservabilityGap}` contract.
+- `mother_status_shape()` is still Rust-only built-in data. `mvsl5-proof-shapes-seeded` should move this representation into seedable library data while retaining the helper for bootstrap/test fixtures if useful.
+- `mother/src/view_buffer/store.rs` initializes only buffers, frames, windows, and observability gaps. Shape persistence should extend this schema with `mother_view_shapes` and `mother_view_shape_requirements`, following the existing narrow free-function pattern and enum-as-kebab-string JSON helpers.
+- `mother/src/state/mod.rs` calls `view_buffer::store::init_schema(conn)` from Mother runtime schema init and exposes thin `save_*/list_*` wrappers. Add shape wrappers here rather than introducing a second database owner.
+- `mother/src/http_api/view_buffer.rs` uses small handler functions, generic API traits, `parse_json`, JSON wrappers, 400 for invalid JSON, 409 for observability gaps, and 500 for runtime errors. Shape APIs should follow this style; unknown/inactive shape behavior may need a typed error later if we want 404/409 instead of generic 500.
+- `mother/src/http_api.rs` has one `ApiRuntime` plus narrower `ViewBufferApi` adapter trait and wires handlers through `build_route_table`. Shape API support should add a sibling narrow trait (`ViewShapeApi`) or extend view-buffer API only if it stays cohesive.
+- `mother/src/http_routes.rs` centralizes auth-guarded route matching in `RouteTable`; add `/api/view-shapes` routes there and mirror route tests so auth behavior remains explicit.
+- `src/commands/mother/daemon/dispatch.rs` currently reconstructs a fresh `ViewBufferService` per open request from live Mother health data, then persists only the resulting buffer or gap. Library shapes must be loaded from `runtime_store` before opening; otherwise persisted shapes will not affect daemon behavior.
+- `mother/src/http_api/tests/mod.rs` uses a large `StubRuntime` implementing `ApiRuntime`. New shape API methods will require stub implementations and handler tests; keep tests deterministic by avoiding live daemon state.
+- `mother/src/view_buffer/payload.rs` frames payloads from `Buffer` plus `ViewShape`. Adding shape metadata must not alter the WIT-style frame unless shape version/contract semantics change intentionally.
 
 ## Verification Plan
 
