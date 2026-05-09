@@ -30,7 +30,7 @@ exit_criteria:
   checked: true
 - id: mvc3-shape-adaptation
   text: Similar-shape matches can create/adapt exploratory shapes without arbitrary generated UI code.
-  checked: false
+  checked: true
 - id: mvc4-initial-shape-creation
   text: No-match requests can create initial structured shapes with explicit backing requirements and no invented data.
   checked: false
@@ -68,7 +68,7 @@ Mother View Composer / Mother View System
 ├── v0.68.0: [[mother-view-buffer-runtime]]
 ├── v0.69.0: [[mother-view-shape-library]]
 ├── v0.70.0: [[mother-view-request-composer]]
-├── future: [[mother-view-shape-adaptation]]
+├── v0.70.1: [[mother-view-shape-adaptation]]
 ├── future: [[mother-view-initial-shape-creation]]
 ├── future: [[mother-view-request-ux]]
 ├── future: [[mother-view-buffer-revision]]
@@ -86,6 +86,7 @@ Completed backend slices:
 - [[mother-view-buffer-runtime]] — `v0.68.0`
 - [[mother-view-shape-library]] — `v0.69.0`
 - [[mother-view-request-composer]] — `v0.70.0`
+- [[mother-view-shape-adaptation]] — `v0.70.1`
 
 Current honest system label:
 
@@ -122,14 +123,22 @@ A product-complete Mother View Composer means:
 
 ## Release Naming Guidance
 
-Going forward, release titles for this effort should use umbrella + slice naming:
+Going forward, release titles for this effort should use umbrella + slice naming and child/slice patch versions while the parent feature remains open:
 
 - `Mother View Composer: Buffer Runtime`
 - `Mother View Composer: Shape Library`
 - `Mother View Composer: Request Composer`
+- `Mother View Composer: Shape Adaptation`
 - `Mother View Composer: SvelteKit Frame`
 
-Existing releases remain unchanged; this is guidance for future titles and handoffs.
+Implementation slice specs under this umbrella should carry:
+
+```yaml
+target: mother-view-composer
+release_bump: patch
+```
+
+The parent/umbrella completion may use a minor or major bump when the whole Mother View Composer product feature is complete.
 
 ## Implementation Slices
 
@@ -138,10 +147,10 @@ Existing releases remain unchanged; this is guidance for future titles and hando
 - [[mother-view-buffer-runtime]]: persistent Mother-owned buffer/window/frame/gap kernel.
 - [[mother-view-shape-library]]: persistent Mother-owned `ViewShape` and `ViewRequirement` records.
 - [[mother-view-request-composer]]: structured request capture, shape-match persistence, explicit/exact safe opening.
+- [[mother-view-shape-adaptation]]: similar-shape adaptation into exploratory shapes.
 
 ### Planned
 
-- [[mother-view-shape-adaptation]]: implement similar-shape adaptation into exploratory shapes.
 - [[mother-view-initial-shape-creation]]: create initial shapes for no-match requests.
 - [[mother-view-request-ux]]: expose request statuses and flows to users/agents/renderers.
 - [[mother-view-buffer-revision]]: apply corrections, create revisions, and replace buffers.
@@ -164,7 +173,7 @@ Implementation slices carry their own tests and releases.
 
 - [x] `mvc1-backend-substrate`
 - [x] `mvc2-request-to-buffer-path`
-- [ ] `mvc3-shape-adaptation`
+- [x] `mvc3-shape-adaptation`
 - [ ] `mvc4-initial-shape-creation`
 - [ ] `mvc5-revision-and-replacement`
 - [ ] `mvc6-observability-workflow`
