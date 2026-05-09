@@ -64,12 +64,12 @@ Guiding belief: [[allium-as-business-backlog]]. Passing a scoped implementation 
 
 | Allium construct/rule | Follow-on spec |
 |---|---|
-| `CaptureUserDisplayRequest` | `mother-view-request-composer` |
-| `SelectExactShapeMatch` / `AdaptSimilarShapeWhenNoExactShapeExists` / `CreateInitialShapeWhenNoShapeMatches` | `mother-view-request-composer` |
-| `ReplaceBufferWhenUserRevisesViewShape` / `ViewShapeRevision` | `mother-view-buffer-revision` |
-| `LinkObservabilityGapToWorkItem` / `ResolveObservabilityGapWhenFactBecomesObserved` | `mother-view-observability-workflow` |
-| `ViewMaturationEvent` / `ObservabilityImprovementArtifact` | `mother-view-maturation` |
-| `FrameBufferSurface` renderer behavior | `mother-sveltekit-frame` first, TUI/Emacs later |
+| `CaptureUserDisplayRequest` | [[mother-view-request-composer]] |
+| `SelectExactShapeMatch` / `AdaptSimilarShapeWhenNoExactShapeExists` / `CreateInitialShapeWhenNoShapeMatches` | [[mother-view-request-composer]] |
+| `ReplaceBufferWhenUserRevisesViewShape` / `ViewShapeRevision` | [[mother-view-buffer-revision]] |
+| `LinkObservabilityGapToWorkItem` / `ResolveObservabilityGapWhenFactBecomesObserved` | [[mother-view-observability-workflow]] |
+| `ViewMaturationEvent` / `ObservabilityImprovementArtifact` | [[mother-view-maturation]] |
+| `FrameBufferSurface` renderer behavior | [[mother-sveltekit-frame]] first, TUI/Emacs later |
 
 ## Direct Code Targets
 
@@ -323,6 +323,18 @@ Completed deterministic test and trace coverage for the implemented slice:
 - Allium/spec obligation comments are present on the relevant tests.
 
 Verification used focused Mother test filters plus `cargo check -q -p mother`.
+
+### `mvsl7-follow-on-backlog`
+
+Split the remaining Allium display-composer obligations into explicit draft follow-on specs:
+
+- [[mother-view-request-composer]] for display request capture, explicit/exact/similar matching, adaptation, and initial shape creation;
+- [[mother-view-buffer-revision]] for user corrections, `ViewShapeRevision`, and buffer replacement;
+- [[mother-view-observability-workflow]] for linking and resolving observability gaps;
+- [[mother-view-maturation]] for shape/derivation/pattern maturation and observability improvement artifacts;
+- [[mother-sveltekit-frame]] for the first TypeScript/SvelteKit renderer frame over Mother-owned buffers.
+
+This completes the [[allium-as-business-backlog]] split for work intentionally outside [[mother-view-shape-library]].
 
 ## Commits
 

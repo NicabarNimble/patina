@@ -39,7 +39,7 @@ exit_criteria:
   checked: true
 - id: mvsl7-follow-on-backlog
   text: Remaining Allium business goals outside this slice are explicitly split into follow-on specs for request composition, shape revision/replacement, observability workflow, maturation, and renderer frames.
-  checked: false
+  checked: true
 ---
 # feat: Mother View Shape Library
 
@@ -95,7 +95,13 @@ Primary Allium rules partially enabled here:
 - SvelteKit/TUI/Emacs renderer implementation.
 - Arbitrary generated Svelte/TypeScript or executable scripts inside a shape.
 
-These are follow-on specs, not hidden work in this slice.
+These are follow-on specs, not hidden work in this slice:
+
+- [[mother-view-request-composer]]
+- [[mother-view-buffer-revision]]
+- [[mother-view-observability-workflow]]
+- [[mother-view-maturation]]
+- [[mother-sveltekit-frame]]
 
 ## Target Shape
 
@@ -173,7 +179,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 - [x] `mvsl4-open-from-library`
 - [x] `mvsl5-proof-shapes-seeded`
 - [x] `mvsl6-tests-and-trace`
-- [ ] `mvsl7-follow-on-backlog`
+- [x] `mvsl7-follow-on-backlog`
 
 ## Build Readiness
 
