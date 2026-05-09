@@ -44,6 +44,7 @@ exit_criteria:
 - id: mvisc8-follow-on-boundaries
   text: Behaviors outside this slice are explicitly left to request UX, revision, maturation, observability workflow, and renderer-frame specs.
   checked: true
+validated_against_commit: c4ce9cb0a6ff4792d4d75b8b72ea2838997c8e01
 ---
 # feat: Mother View Initial Shape Creation
 
