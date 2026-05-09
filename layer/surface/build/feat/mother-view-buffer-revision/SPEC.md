@@ -45,6 +45,7 @@ exit_criteria:
   text: Deterministic tests cover successful shape revision, buffer replacement, persistence, API response shape, fail-closed behavior, and Allium/spec obligation comments.
   checked: true
 validated_against_commit: 9c67081b055f65deaacc9f5e30e3f56ff3420491
+last_freshness_check: 2026-05-09T21:15:18Z
 ---
 # feat: Mother View Buffer Revision
 
