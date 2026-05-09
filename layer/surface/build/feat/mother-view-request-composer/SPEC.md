@@ -19,7 +19,7 @@ exit_criteria:
   checked: true
 - id: mvrc1-request-model
   text: Mother has first-class DisplayRequest and ShapeMatch model records aligned with Allium v1 fields, including pending/buffer_opened/observability_gap_reported/unable outcomes and exact/explicit_user_choice/similar/none match kinds.
-  checked: false
+  checked: true
 - id: mvrc2-request-persistence
   text: Display requests and shape matches persist in Mother state with deterministic create/get/list/update behavior independent of renderer state.
   checked: false
@@ -185,7 +185,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 ## Exit Criteria
 
 - [x] `mvrc0-allium-code-alignment`
-- [ ] `mvrc1-request-model`
+- [x] `mvrc1-request-model`
 - [ ] `mvrc2-request-persistence`
 - [ ] `mvrc3-compose-api`
 - [ ] `mvrc4-explicit-exact-open`

@@ -139,6 +139,24 @@ pub enum ObservabilityGapStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisplayRequestOutcome {
+    Pending,
+    BufferOpened,
+    ObservabilityGapReported,
+    Unable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShapeMatchKind {
+    Exact,
+    ExplicitUserChoice,
+    Similar,
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CataloguedSource {
     pub source_id: String,
     pub source_kind: CataloguedSourceKind,
@@ -192,6 +210,43 @@ impl ViewShape {
             .iter()
             .any(|requirement| requirement.required && requirement.fact_path == fact_path)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisplayRequest {
+    pub request_id: String,
+    pub user_id: String,
+    pub agent_id: String,
+    pub raw_request: String,
+    pub requested_at: DateTime<Utc>,
+    pub outcome: DisplayRequestOutcome,
+}
+
+impl DisplayRequest {
+    pub fn pending(
+        request_id: String,
+        user_id: String,
+        agent_id: String,
+        raw_request: String,
+        requested_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            request_id,
+            user_id,
+            agent_id,
+            raw_request,
+            requested_at,
+            outcome: DisplayRequestOutcome::Pending,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShapeMatch {
+    pub request_id: String,
+    pub shape_id: Option<String>,
+    pub match_kind: ShapeMatchKind,
+    pub confidence: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -328,6 +383,37 @@ mod tests {
         assert_eq!(buffer.minor_modes, vec![MinorMode::Pinned]);
         assert_eq!(buffer.payload_contract, PayloadContract::FramedJson);
         assert!(shape.requires_fact("mother.status.control_plane_ready"));
+    }
+
+    #[test]
+    fn display_request_and_shape_match_use_allium_vocabulary() {
+        // obligation: spec.mother-view-request-composer.mvrc1-request-model
+        // obligation: entity-state.DisplayRequest + entity-state.ShapeMatch
+        let requested_at = Utc::now();
+        let request = DisplayRequest::pending(
+            "req_1".to_string(),
+            "local-user".to_string(),
+            "pi".to_string(),
+            "show mother status".to_string(),
+            requested_at,
+        );
+        let shape_match = ShapeMatch {
+            request_id: request.request_id.clone(),
+            shape_id: Some("mother.status.default".to_string()),
+            match_kind: ShapeMatchKind::ExplicitUserChoice,
+            confidence: 1.0,
+        };
+
+        assert_eq!(request.outcome, DisplayRequestOutcome::Pending);
+        assert_eq!(shape_match.match_kind, ShapeMatchKind::ExplicitUserChoice);
+        assert_eq!(
+            serde_json::to_value(&shape_match.match_kind).unwrap(),
+            serde_json::json!("explicit_user_choice")
+        );
+        assert_eq!(
+            serde_json::to_value(&DisplayRequestOutcome::BufferOpened).unwrap(),
+            serde_json::json!("buffer_opened")
+        );
     }
 
     #[test]

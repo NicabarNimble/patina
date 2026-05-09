@@ -102,17 +102,17 @@ ShapeMatch {
 }
 ```
 
-`DisplayRequestOutcome` should serialize as:
+`DisplayRequestOutcome` should serialize in Allium-aligned snake case:
 
 - `pending`
-- `buffer-opened`
-- `observability-gap-reported`
+- `buffer_opened`
+- `observability_gap_reported`
 - `unable`
 
-`ShapeMatchKind` should serialize as:
+`ShapeMatchKind` should serialize in Allium-aligned snake case:
 
 - `exact`
-- `explicit-user-choice`
+- `explicit_user_choice`
 - `similar`
 - `none`
 
@@ -165,9 +165,23 @@ Tests should cover:
 - similar/none outcomes recorded without invented shape data;
 - missing required fact still records an observability gap.
 
+## Implementation Notes
+
+### `mvrc1-request-model`
+
+Implemented the Allium request-composer vocabulary in `mother/src/view_buffer/model.rs`:
+
+- `DisplayRequestOutcome::{Pending, BufferOpened, ObservabilityGapReported, Unable}`;
+- `ShapeMatchKind::{Exact, ExplicitUserChoice, Similar, None}`;
+- `DisplayRequest` with request id, user id, agent id, raw request, request timestamp, and outcome;
+- `ShapeMatch` with request id, optional shape id, match kind, and confidence;
+- snake_case serde representation for request outcomes and match kinds, matching the Allium enum spellings.
+
+This is model-only; persistence, APIs, and composition behavior remain later exit criteria.
+
 ## Commits
 
-No implementation commits yet. This design prepares the spec for implementation slices.
+No implementation commits yet. This design prepared the spec for implementation slices.
 
 ## Build Readiness
 
