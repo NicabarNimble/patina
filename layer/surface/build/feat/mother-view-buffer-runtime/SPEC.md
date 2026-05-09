@@ -32,13 +32,13 @@ exit_criteria:
   checked: false
 - id: mvbr3-catalog-guardrail
   text: Opening a buffer validates declared backing requirements against a minimal Mother data catalog and refuses to open when required facts are missing.
-  checked: false
+  checked: true
 - id: mvbr4-observability-gap
   text: When required data is missing, Mother records an observability-gap artifact and the caller receives a truthful missing-data response; no display payload is invented.
-  checked: false
+  checked: true
 - id: mvbr5-proof-shape
   text: A minimal built-in proof shape opens a live buffer over existing Mother data, using WIT-framed JSON payload semantics without generating Svelte/TypeScript code.
-  checked: false
+  checked: true
 - id: mvbr6-tests
   text: Deterministic tests cover buffer lifecycle, source requirement validation, missing-data gaps, route/API behavior, and fail-closed paths.
   checked: false
@@ -154,8 +154,8 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 - [x] `mvbr0-read-before-write`
 - [ ] `mvbr1-buffer-model`
 - [ ] `mvbr2-buffer-api`
-- [ ] `mvbr3-catalog-guardrail`
-- [ ] `mvbr4-observability-gap`
-- [ ] `mvbr5-proof-shape`
+- [x] `mvbr3-catalog-guardrail`
+- [x] `mvbr4-observability-gap`
+- [x] `mvbr5-proof-shape`
 - [ ] `mvbr6-tests`
 - [ ] `mvbr7-docs-and-allium-trace`
