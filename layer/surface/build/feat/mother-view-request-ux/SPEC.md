@@ -43,6 +43,8 @@ exit_criteria:
   checked: true
 validated_against_commit: 19d38db22289732d5cccc4084661c3ad78605cce
 last_freshness_check: 2026-05-09T20:58:25Z
+freshness_scope:
+- Mother view request UX detail/action models, artifact persistence, HTTP routes, daemon/store open-linked-shape action, fail-closed tests
 ---
 # feat: Mother View Request UX
 
