@@ -413,33 +413,6 @@ enum Commands {
         json: bool,
     },
 
-    /// Build deterministic spec + MCT visibility atlas (JSON/HTML/server)
-    Atlas {
-        /// Output path. Defaults: stdout for JSON, layer/surface/reports/atlas/spec-atlas.html for HTML.
-        #[arg(long, short)]
-        output: Option<String>,
-
-        /// Emit standalone HTML dashboard
-        #[arg(long)]
-        html: bool,
-
-        /// Emit JSON snapshot
-        #[arg(long)]
-        json: bool,
-
-        /// Serve a local read-only dashboard server
-        #[arg(long)]
-        serve: bool,
-
-        /// Bind host for --serve mode
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-
-        /// Bind port for --serve mode
-        #[arg(long, default_value_t = 7417)]
-        port: u16,
-    },
-
     /// Show project health from measurement data
     Measure {
         /// Show raw metrics and history (maintainer view)
@@ -1246,24 +1219,6 @@ fn main() -> Result<()> {
         Some(Commands::Report { output, repo, json }) => {
             let options = commands::report::ReportOptions { output, repo, json };
             commands::report::execute(options)?;
-        }
-        Some(Commands::Atlas {
-            output,
-            html,
-            json,
-            serve,
-            host,
-            port,
-        }) => {
-            let options = commands::atlas::AtlasOptions {
-                output,
-                html,
-                json,
-                serve,
-                host,
-                port,
-            };
-            commands::atlas::execute(options)?;
         }
         Some(Commands::Measure {
             system,

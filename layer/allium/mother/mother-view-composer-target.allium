@@ -1,0 +1,657 @@
+-- allium: 3
+-- mother-view-composer-target.allium
+
+-- Scope: Target Mother view composer behavior.
+--
+-- Mental model:
+--   - Allium is the first pass at agents-as-Lisp for Mother display behavior.
+--   - Mother owns Emacs-like live buffers over existing observed data.
+--   - Agents create, adapt, and revise view shapes instead of writing arbitrary UI code.
+--   - Frames such as SvelteKit, TUI, and future Emacs clients connect windows to buffers.
+--
+-- Includes:
+--   - user requests for live displays over catalogued Mother sources
+--   - local/user editable Allium view shapes compiled into Mother view records
+--   - shape matching, similar-shape adaptation, and new shape creation
+--   - explicit backing requirements for every shape
+--   - fail-closed observability gaps when required data is missing
+--   - Emacs vocabulary: buffer, window, frame, major mode, minor modes
+--   - buffer lifecycle outside agent session lifetime
+--   - buffer replacement when a user revises a shape
+--   - WIT-framed JSON payloads that can mature toward typed WIT
+--   - maturation of shapes, derivations, and display patterns
+-- Excludes:
+--   - mutation of Mother operational data from a display view
+--   - arbitrary generated Svelte/TypeScript per view request
+--   - multiplayer/shared buffer semantics beyond not blocking future sharing
+--   - concrete domain dashboards as a fixed roadmap
+--
+-- First renderer target:
+--   - TypeScript + SvelteKit should be the first frame implementation.
+--   - SvelteKit is a frame/renderer client, not the owner of buffers.
+
+entity MotherUser {
+    user_id: String
+    display_name: String?
+}
+
+entity ViewAgent {
+    agent_id: String
+}
+
+entity MotherInstance {
+    mother_id: String
+    display_capability: limited | normal | large_screen | multi_display
+}
+
+entity VisionContext {
+    vision_id: String
+    user: MotherUser
+}
+
+entity ProjectContext {
+    project_uid: String
+    project_path: String
+    transferable_with_project: Boolean
+}
+
+entity MotherDisplayContext {
+    mother: MotherInstance
+    user: MotherUser
+    vision: VisionContext?
+    project: ProjectContext?
+
+    shapes: ViewShape with context = this
+    buffers: Buffer with context = this
+    gaps: ObservabilityGap with context = this
+}
+
+entity MotherDataCatalog {
+    sources: CataloguedSource with catalog = this
+    facts: CataloguedFact with catalog = this
+
+    source_count: sources.count
+    fact_count: facts.count
+}
+
+entity CataloguedSource {
+    catalog: MotherDataCatalog
+
+    source_id: String
+    source_kind: registry | eventlog | database | artifact | file | log | indexed_external_source | derived_index
+    availability: available | unavailable | stale
+    last_observed_at: Timestamp?
+
+    facts: CataloguedFact with source = this
+}
+
+entity CataloguedFact {
+    catalog: MotherDataCatalog
+    source: CataloguedSource
+
+    fact_path: String
+    fact_kind: raw | derived
+    observation_state: observed | stale | missing
+    inputs: Set<CataloguedFact>
+}
+
+value MinorMode {
+    name: compact | filtered | grouped | pinned | alerting | follow_tail | highlighted | sorted
+}
+
+entity ViewShape {
+    context: MotherDisplayContext
+
+    shape_id: String
+    title: String
+    source_ref: String
+    scope: mother_user | vision | project | buffer_local
+    version: Integer
+    active: Boolean
+
+    major_mode: table | list | graph | timeline | log | markdown | document | browser | image | artifact | custom
+    minor_modes: Set<MinorMode>
+
+    maturity: exploratory | candidate | stable | promoted
+    payload_contract: framed_json | typed_wit | hybrid
+    payload_version: Integer
+
+    vision: VisionContext?
+    project: ProjectContext?
+
+    requirements: ViewRequirement with shape = this
+    derivations: ViewDerivation with shape = this
+    patterns: DisplayPattern with shape = this
+
+    replaced_by: ViewShape?
+}
+
+entity ViewRequirement {
+    shape: ViewShape
+    fact: CataloguedFact
+    required: Boolean
+    purpose: String
+}
+
+entity ViewDerivation {
+    shape: ViewShape
+
+    derivation_id: String
+    label: String
+    expression_ref: String
+    inputs: Set<CataloguedFact>
+    maturity: exploratory | candidate | stable | promoted
+}
+
+entity DisplayPattern {
+    shape: ViewShape
+
+    pattern_id: String
+    pattern_kind: grouping | sorting | filtering | highlighting | alerting | sectioning | mode_behavior
+    maturity: exploratory | candidate | stable | promoted
+}
+
+entity DisplayRequest {
+    request_id: String
+    context: MotherDisplayContext
+    user: MotherUser
+    agent: ViewAgent
+    raw_request: String
+    requested_at: Timestamp
+
+    outcome: pending | buffer_opened | observability_gap_reported | unable
+
+    transitions outcome {
+        pending -> buffer_opened
+        pending -> observability_gap_reported
+        pending -> unable
+        terminal: buffer_opened, observability_gap_reported, unable
+    }
+}
+
+entity ShapeMatch {
+    request: DisplayRequest
+    shape: ViewShape?
+    match_kind: exact | explicit_user_choice | similar | none
+    confidence: Decimal
+}
+
+entity Buffer {
+    context: MotherDisplayContext
+    shape: ViewShape
+
+    buffer_id: String
+    name: String
+    state: live | stale | blocked | replaced | killed
+    created_at: Timestamp
+    stale_at: Timestamp?
+    blocked_at: Timestamp?
+    replaced_at: Timestamp?
+    killed_at: Timestamp?
+    has_last_known_payload: Boolean
+
+    replacement: Buffer?
+    windows: Window with buffer = this
+
+    transitions state {
+        live -> stale
+        stale -> live
+        live -> blocked
+        stale -> blocked
+        blocked -> live
+        live -> replaced
+        stale -> replaced
+        blocked -> replaced
+        live -> killed
+        stale -> killed
+        blocked -> killed
+        terminal: replaced, killed
+    }
+}
+
+entity Frame {
+    context: MotherDisplayContext
+
+    frame_id: String
+    frame_kind: sveltekit | tui | emacs | other
+    implementation_language: typescript | rust | elisp | other
+    connected_at: Timestamp
+
+    windows: Window with frame = this
+}
+
+entity Window {
+    frame: Frame
+    buffer: Buffer?
+
+    window_id: String
+    connection_state: connected | disconnected
+    connected_at: Timestamp?
+    disconnected_at: Timestamp?
+
+    transitions connection_state {
+        connected -> disconnected
+        disconnected -> connected
+    }
+}
+
+entity ObservabilityGap {
+    context: MotherDisplayContext
+
+    gap_id: String
+    request: DisplayRequest?
+    shape: ViewShape?
+    missing_fact_path: String
+    missing_source_id: String?
+    reason: String
+    status: open | linked_to_work_item | resolved
+    created_at: Timestamp
+    resolved_at: Timestamp?
+
+    transitions status {
+        open -> linked_to_work_item
+        open -> resolved
+        linked_to_work_item -> resolved
+        terminal: resolved
+    }
+}
+
+entity ViewShapeRevision {
+    revision_id: String
+    user: MotherUser
+    agent: ViewAgent
+    previous_shape: ViewShape
+    previous_buffer: Buffer?
+    revision_scope: buffer_local | mother_user | vision | project
+    revision_origin: user_correction | user_request | agent_adaptation
+    revision_state: applied | proposed | rejected | reverted
+    reason: String
+    created_at: Timestamp
+}
+
+entity ViewMaturationEvent {
+    maturation_id: String
+    target_kind: shape | derivation | pattern
+    shape: ViewShape?
+    derivation: ViewDerivation?
+    pattern: DisplayPattern?
+    origin: user_requested | mother_suggested | agent_inferred
+    from_maturity: exploratory | candidate | stable
+    to_maturity: candidate | stable | promoted
+    created_at: Timestamp
+}
+
+entity ObservabilityImprovementArtifact {
+    artifact_id: String
+    context: MotherDisplayContext
+    source_gap: ObservabilityGap?
+    source_maturation: ViewMaturationEvent?
+    desired_fact_path: String
+    reason: String
+    created_at: Timestamp
+    work_item_created: Boolean
+}
+
+config {
+    shape_match_confidence_threshold: Decimal = 0.60
+}
+
+given {
+    catalog: MotherDataCatalog
+}
+
+rule CaptureUserDisplayRequest {
+    when: UserAsksAgentForMotherDisplay(context, user, agent, raw_request)
+    requires: raw_request != ""
+    ensures: DisplayRequest.created(
+        request_id: agent.agent_id + "::display::" + now,
+        context: context,
+        user: user,
+        agent: agent,
+        raw_request: raw_request,
+        requested_at: now,
+        outcome: pending
+    )
+    ensures: ViewShapeDiscoveryRequested(context: context, user: user, agent: agent, raw_request: raw_request)
+}
+
+rule SelectExplicitUserRequestedShape {
+    when: AgentProposesShapeMatch(request, shape, match_kind, confidence)
+    requires: request.outcome = pending
+    requires: match_kind = explicit_user_choice
+    requires: shape.active
+    ensures: ShapeMatch.created(
+        request: request,
+        shape: shape,
+        match_kind: explicit_user_choice,
+        confidence: confidence
+    )
+    ensures: ViewRequirementsCheckRequested(request: request, shape: shape)
+}
+
+rule SelectExactShapeMatch {
+    when: AgentProposesShapeMatch(request, shape, match_kind, confidence)
+    requires: request.outcome = pending
+    requires: match_kind = exact
+    requires: confidence >= config.shape_match_confidence_threshold
+    requires: shape.active
+    ensures: ShapeMatch.created(
+        request: request,
+        shape: shape,
+        match_kind: exact,
+        confidence: confidence
+    )
+    ensures: ViewRequirementsCheckRequested(request: request, shape: shape)
+}
+
+rule AdaptSimilarShapeWhenNoExactShapeExists {
+    when: AgentProposesShapeMatch(request, similar_shape, match_kind, confidence)
+    requires: request.outcome = pending
+    requires: match_kind = similar
+    requires: confidence >= config.shape_match_confidence_threshold
+    ensures: ShapeMatch.created(
+        request: request,
+        shape: similar_shape,
+        match_kind: similar,
+        confidence: confidence
+    )
+    ensures: ViewShape.created(
+        context: request.context,
+        shape_id: similar_shape.shape_id + "::adapted::" + now,
+        title: "Adapted " + similar_shape.title,
+        source_ref: "local-allium-view-library",
+        scope: mother_user,
+        version: 1,
+        active: true,
+        major_mode: similar_shape.major_mode,
+        minor_modes: similar_shape.minor_modes,
+        maturity: exploratory,
+        payload_contract: framed_json,
+        payload_version: 1,
+        vision: request.context.vision,
+        project: request.context.project,
+        replaced_by: null
+    )
+    ensures: ViewShapeAdaptationRequested(request: request, precedent: similar_shape)
+}
+
+rule CreateInitialShapeWhenNoShapeMatches {
+    when: AgentFindsNoUsableShape(request)
+    requires: request.outcome = pending
+    ensures: ShapeMatch.created(
+        request: request,
+        shape: null,
+        match_kind: none,
+        confidence: 0.0
+    )
+    ensures: ViewShapeCreationRequested(request: request, source_ref: "local-allium-view-library")
+}
+
+rule OpenLiveBufferWhenRequiredFactsAreObserved {
+    when: ViewRequirementsSatisfied(request, shape)
+    requires: request.outcome = pending
+    requires: shape.requirements.all(req => req.fact.observation_state = observed and req.fact.source.availability = available)
+    ensures: Buffer.created(
+        context: request.context,
+        shape: shape,
+        buffer_id: request.request_id + "::buffer",
+        name: "*" + shape.title + "*",
+        state: live,
+        created_at: now,
+        stale_at: null,
+        blocked_at: null,
+        replaced_at: null,
+        killed_at: null,
+        has_last_known_payload: false,
+        replacement: null
+    )
+    ensures: request.outcome = buffer_opened
+    ensures: WitFramedJsonPayloadStarted(request: request, shape: shape, payload_version: shape.payload_version)
+}
+
+rule RecordObservabilityGapWhenRequiredFactIsMissing {
+    when: ViewRequirementMissing(request, shape, missing_fact_path, missing_source_id, reason)
+    requires: request.outcome = pending
+    ensures: ObservabilityGap.created(
+        context: request.context,
+        gap_id: request.request_id + "::gap::" + missing_fact_path,
+        request: request,
+        shape: shape,
+        missing_fact_path: missing_fact_path,
+        missing_source_id: missing_source_id,
+        reason: reason,
+        status: open,
+        created_at: now,
+        resolved_at: null
+    )
+    ensures: request.outcome = observability_gap_reported
+    ensures: AgentInformsUserViewCannotOpen(request: request, missing_fact_path: missing_fact_path, reason: reason)
+}
+
+rule ConnectWindowToExistingBuffer {
+    when: FrameConnectsWindowToBuffer(frame, window, buffer)
+    requires: buffer.state = live or buffer.state = stale or buffer.state = blocked
+    ensures: window.buffer = buffer
+    ensures: window.connection_state = connected
+    ensures: window.connected_at = now
+}
+
+rule DisconnectWindowWithoutKillingBuffer {
+    when: FrameDisconnectsWindow(window)
+    requires: window.connection_state = connected
+    ensures: window.connection_state = disconnected
+    ensures: window.disconnected_at = now
+}
+
+rule KillBufferWhenUserClosesBuffer {
+    when: UserKillsBuffer(user, buffer)
+    requires: buffer.context.user = user
+    requires: buffer.state = live or buffer.state = stale or buffer.state = blocked
+    ensures: buffer.state = killed
+    ensures: buffer.killed_at = now
+}
+
+rule MarkLiveBufferStaleWhenBackingSourceIsUnavailable {
+    when: BackingRequirementBecomesUnavailable(buffer, requirement, reason)
+    requires: buffer.state = live
+    requires: buffer.has_last_known_payload
+    ensures: buffer.state = stale
+    ensures: buffer.stale_at = now
+    ensures: BufferStalenessReported(buffer: buffer, requirement: requirement, reason: reason)
+}
+
+rule MarkLiveBufferBlockedWhenRequiredBackingCannotBeTrusted {
+    when: BackingRequirementBecomesUnavailable(buffer, requirement, reason)
+    requires: buffer.state = live or buffer.state = stale
+    requires: not buffer.has_last_known_payload
+    ensures: buffer.state = blocked
+    ensures: buffer.blocked_at = now
+    ensures: ObservabilityGap.created(
+        context: buffer.context,
+        gap_id: buffer.buffer_id + "::gap::" + requirement.fact.fact_path,
+        request: null,
+        shape: buffer.shape,
+        missing_fact_path: requirement.fact.fact_path,
+        missing_source_id: requirement.fact.source.source_id,
+        reason: reason,
+        status: open,
+        created_at: now,
+        resolved_at: null
+    )
+}
+
+rule ReplaceBufferWhenUserRevisesViewShape {
+    when: UserCorrectsBufferView(user, agent, buffer, correction_intent, revision_scope)
+    requires: buffer.context.user = user
+    requires: buffer.state = live or buffer.state = stale or buffer.state = blocked
+    ensures: ViewShapeRevision.created(
+        revision_id: buffer.buffer_id + "::revision::" + now,
+        user: user,
+        agent: agent,
+        previous_shape: buffer.shape,
+        previous_buffer: buffer,
+        revision_scope: revision_scope,
+        revision_origin: user_correction,
+        revision_state: applied,
+        reason: correction_intent,
+        created_at: now
+    )
+    ensures: buffer.state = replaced
+    ensures: buffer.replaced_at = now
+    ensures: ViewShapeRevisionApplied(buffer: buffer, correction_intent: correction_intent, revision_scope: revision_scope)
+}
+
+rule PromoteMatureViewArtifact {
+    when: ViewArtifactMatures(target_kind, shape, derivation, pattern, origin, from_maturity, to_maturity)
+    requires: from_maturity != to_maturity
+    ensures: ViewMaturationEvent.created(
+        maturation_id: "maturation::" + now,
+        target_kind: target_kind,
+        shape: shape,
+        derivation: derivation,
+        pattern: pattern,
+        origin: origin,
+        from_maturity: from_maturity,
+        to_maturity: to_maturity,
+        created_at: now
+    )
+}
+
+rule CreateObservabilityImprovementFromMatureDerivation {
+    when: ViewMaturationEventRecorded(event, desired_fact_path, reason)
+    requires: event.target_kind = derivation
+    requires: event.to_maturity = stable or event.to_maturity = promoted
+    ensures: ObservabilityImprovementArtifact.created(
+        artifact_id: event.maturation_id + "::observability-improvement",
+        context: event.shape.context,
+        source_gap: null,
+        source_maturation: event,
+        desired_fact_path: desired_fact_path,
+        reason: reason,
+        created_at: now,
+        work_item_created: false
+    )
+}
+
+rule LinkObservabilityGapToWorkItem {
+    when: UserPromotesObservabilityGapToWorkItem(user, gap, work_item_id)
+    requires: gap.context.user = user
+    requires: gap.status = open
+    ensures: gap.status = linked_to_work_item
+    ensures: ObservabilityWorkItemLinked(gap: gap, work_item_id: work_item_id)
+}
+
+rule ResolveObservabilityGapWhenFactBecomesObserved {
+    when: CataloguedFactBecomesObserved(gap, fact)
+    requires: gap.status = open or gap.status = linked_to_work_item
+    requires: fact.fact_path = gap.missing_fact_path
+    requires: fact.observation_state = observed
+    ensures: gap.status = resolved
+    ensures: gap.resolved_at = now
+}
+
+invariant BuffersOnlyOpenFromObservedRequiredFacts {
+    for buffer in Buffers where buffer.state = live:
+        buffer.shape.requirements.all(req => req.fact.observation_state = observed and req.fact.source.availability = available)
+}
+
+invariant DisplayViewsDoNotMutateMotherOperationalFacts {
+    for request in DisplayRequests:
+        request.outcome in {pending, buffer_opened, observability_gap_reported, unable}
+}
+
+surface AgentViewCompositionSurface {
+    facing user: MotherUser
+    context display_context: MotherDisplayContext
+
+    exposes:
+        user.user_id
+        user.display_name
+        display_context.mother.mother_id
+        display_context.mother.display_capability
+        display_context.vision?.vision_id
+        display_context.project?.project_uid
+
+        for shape in display_context.shapes:
+            shape.shape_id
+            shape.title
+            shape.scope
+            shape.version
+            shape.active
+            shape.major_mode
+            shape.minor_modes
+            shape.maturity
+            shape.payload_contract
+
+    provides:
+        UserAsksAgentForMotherDisplay(display_context, user, agent, raw_request)
+        UserCorrectsBufferView(user, agent, buffer, correction_intent, revision_scope)
+        UserKillsBuffer(user, buffer)
+        UserPromotesObservabilityGapToWorkItem(user, gap, work_item_id)
+}
+
+surface MotherDataCatalogSurface {
+    facing agent: ViewAgent
+    context catalog: MotherDataCatalog
+
+    exposes:
+        agent.agent_id
+        catalog.source_count
+        catalog.fact_count
+
+        for source in catalog.sources:
+            source.source_id
+            source.source_kind
+            source.availability
+            source.last_observed_at
+
+        for fact in catalog.facts:
+            fact.fact_path
+            fact.fact_kind
+            fact.observation_state
+            fact.source.source_id
+
+    provides:
+        AgentProposesShapeMatch(request, shape, match_kind, confidence)
+        AgentFindsNoUsableShape(request)
+        ViewRequirementsSatisfied(request, shape)
+        ViewRequirementMissing(request, shape, missing_fact_path, missing_source_id, reason)
+        ViewArtifactMatures(target_kind, shape, derivation, pattern, origin, from_maturity, to_maturity)
+        ViewMaturationEventRecorded(event, desired_fact_path, reason)
+        CataloguedFactBecomesObserved(gap, fact)
+}
+
+surface FrameBufferSurface {
+    facing frame: Frame
+    context display_context: MotherDisplayContext
+
+    exposes:
+        frame.frame_id
+        frame.frame_kind
+        frame.implementation_language
+
+        for buffer in display_context.buffers:
+            buffer.buffer_id
+            buffer.name
+            buffer.state
+            buffer.created_at
+            buffer.stale_at
+            buffer.blocked_at
+            buffer.replaced_at
+            buffer.killed_at
+            buffer.shape.shape_id
+            buffer.shape.major_mode
+            buffer.shape.minor_modes
+            buffer.shape.payload_contract
+            buffer.shape.payload_version
+
+    provides:
+        FrameConnectsWindowToBuffer(frame, window, buffer)
+        FrameDisconnectsWindow(window)
+        BackingRequirementBecomesUnavailable(buffer, requirement, reason)
+}
+
+open question "Should buffer-local overrides be represented as ViewShape records with scope buffer_local, or as a separate overlay entity attached to Buffer?"
+open question "Which first major modes must the SvelteKit TypeScript frame support before the composer is useful: table, log, markdown, graph, or timeline?"
+open question "What evidence threshold allows agent-inferred promotion from framed JSON into typed WIT without explicit user confirmation?"
+open question "How should future shared or multiplayer buffers extend private user buffers without changing the v1 buffer lifecycle?"

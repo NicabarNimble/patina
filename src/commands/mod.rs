@@ -1,6 +1,5 @@
 pub mod ai;
 pub mod assay;
-pub mod atlas;
 pub mod belief;
 pub mod bench;
 pub mod child;

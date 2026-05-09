@@ -27,6 +27,7 @@ pub mod socket;
 pub mod state;
 pub mod tasks;
 pub mod toys;
+pub mod view_buffer;
 
 pub use child_registry::{
     ChildRegistryProvider, ChildRegistrySyncEngine, DiscoveredChildRelease,
@@ -46,3 +47,12 @@ pub use state::{
     QueuedTask, RunStatus, StartupAttemptRecord, TaskStatus,
 };
 pub use toys::{GrantedIngressSource, GrantedToys};
+pub use view_buffer::{
+    mother_status_shape, Buffer, BufferState, CataloguedFact, CataloguedSource,
+    CataloguedSourceKind, ConnectWindowRequest, DataCatalog, DisconnectWindowRequest, Frame,
+    FrameKind, FramedJsonPayload, KillBufferRequest, MajorMode, MinorMode, MotherStatusFacts,
+    ObservabilityGap, ObservabilityGapStatus, ObservationState, OpenBufferOutcome,
+    OpenBufferRequest, OpenedBuffer, PayloadContract, PayloadFrame, SourceAvailability,
+    ViewBufferService, ViewRequirement, ViewShape, ViewShapeScope, Window, WindowConnectionState,
+    MOTHER_STATUS_SHAPE_ID,
+};

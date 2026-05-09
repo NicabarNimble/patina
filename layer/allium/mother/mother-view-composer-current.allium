@@ -1,0 +1,223 @@
+-- allium: 3
+-- mother-view-composer-current.allium
+
+-- Scope: Current Mother project activity visibility as supported by existing code.
+-- Includes:
+--   - project registry check-in records
+--   - project identity binding to user and vision
+--   - current list behavior and raw query/snapshot surfaces
+-- Excludes:
+--   - adaptive view recipes
+--   - persisted display preferences
+--   - frontend framework behavior
+-- Code references:
+--   - mother/src/state/mod.rs project_registry and mother_project_identities
+--   - src/commands/mother/mod.rs projects list/check-in commands
+--   - mother/src/http_api.rs federation HTTP surfaces
+
+entity MotherOperator {
+    name: String
+}
+
+entity MotherRuntimeSurface {
+    kind: cli | http | internal
+}
+
+entity CurrentProjectRegistry {
+    projects: CurrentRegisteredProject with registry = this
+    identity_bindings: CurrentProjectIdentityBinding with registry = this
+
+    project_count: projects.count
+    identity_bound_count: identity_bindings.count
+}
+
+entity CurrentRegisteredProject {
+    registry: CurrentProjectRegistry
+
+    project_uid: String
+    project_path: String
+    registered_at: Timestamp
+    checked_in_at: Timestamp
+
+    identity: CurrentProjectIdentityBinding? with project = this
+}
+
+entity CurrentProjectIdentityBinding {
+    registry: CurrentProjectRegistry
+    project: CurrentRegisteredProject?
+
+    project_uid: String
+    project_id: String
+    user_id: String
+    vision_id: String
+    node_id: String
+    binding_status: active | archived
+    project_path: String
+    registered_at: Timestamp
+    updated_at: Timestamp
+}
+
+entity CurrentProjectListRequest {
+    operator: MotherOperator
+    requested_at: Timestamp
+    result_status: pending | reported
+
+    transitions result_status {
+        pending -> reported
+        terminal: reported
+    }
+}
+
+entity CurrentFederationQuery {
+    runtime: MotherRuntimeSurface
+    sql: String
+    limit: Integer
+    outcome: pending | returned | rejected | unavailable | timed_out
+    rejection_reason: String?
+
+    transitions outcome {
+        pending -> returned
+        pending -> rejected
+        pending -> unavailable
+        pending -> timed_out
+        terminal: returned, rejected, unavailable, timed_out
+    }
+}
+
+given {
+    registry: CurrentProjectRegistry
+}
+
+rule CurrentProjectCheckInUpdatesRegistryTimestamp {
+    when: MotherChecksInProject(project)
+    ensures: project.checked_in_at = now
+}
+
+rule CurrentProjectsListReportsPathSortedInventory {
+    when: OperatorRequestsCurrentProjectsList(operator)
+    ensures: CurrentProjectListRequest.created(
+        operator: operator,
+        requested_at: now,
+        result_status: reported
+    )
+    ensures: CurrentProjectsListReported(
+        operator: operator,
+        project_count: registry.project_count,
+        identity_bound_count: registry.identity_bound_count,
+        sort_basis: "project_path"
+    )
+}
+
+rule CurrentProjectsListIncludesIdentityWhenBound {
+    when: OperatorRequestsCurrentProjectsList(operator)
+    for project in registry.projects where project.identity != null:
+        ensures: CurrentProjectRowReported(
+            operator: operator,
+            project_uid: project.project_uid,
+            project_path: project.project_path,
+            checked_in_at: project.checked_in_at,
+            project_id: project.identity.project_id,
+            user_id: project.identity.user_id,
+            vision_id: project.identity.vision_id
+        )
+}
+
+rule CurrentProjectsListMarksUnboundProjects {
+    when: OperatorRequestsCurrentProjectsList(operator)
+    for project in registry.projects where project.identity = null:
+        ensures: CurrentProjectRowReported(
+            operator: operator,
+            project_uid: project.project_uid,
+            project_path: project.project_path,
+            checked_in_at: project.checked_in_at,
+            project_id: "<missing>",
+            user_id: "<missing>",
+            vision_id: "<missing>"
+        )
+}
+
+rule CurrentFederationRejectsNonReadOnlyQuery {
+    when: RuntimeSubmitsFederationQuery(runtime, sql, limit)
+    requires: not sql.starts_with("SELECT") and not sql.starts_with("WITH")
+    ensures: CurrentFederationQuery.created(
+        runtime: runtime,
+        sql: sql,
+        limit: limit,
+        outcome: rejected,
+        rejection_reason: "only_select_allowed"
+    )
+}
+
+rule CurrentFederationAcceptsReadOnlyQuery {
+    when: RuntimeSubmitsFederationQuery(runtime, sql, limit)
+    requires: sql.starts_with("SELECT") or sql.starts_with("WITH")
+    ensures: CurrentFederationQuery.created(
+        runtime: runtime,
+        sql: sql,
+        limit: limit,
+        outcome: pending,
+        rejection_reason: null
+    )
+    ensures: FederationQueryExecutionRequested(runtime: runtime, sql: sql, limit: limit)
+}
+
+rule CurrentFederationReportsQueryRows {
+    when: FederationQueryRowsReturned(query, row_count)
+    requires: query.outcome = pending
+    ensures: query.outcome = returned
+    ensures: CurrentFederationRowsReported(query: query, row_count: row_count)
+}
+
+rule CurrentFederationReportsQueryUnavailable {
+    when: FederationQueryUnavailable(query, reason)
+    requires: query.outcome = pending
+    ensures: query.outcome = unavailable
+    ensures: query.rejection_reason = reason
+}
+
+rule CurrentFederationReportsQueryTimeout {
+    when: FederationQueryTimedOut(query, reason)
+    requires: query.outcome = pending
+    ensures: query.outcome = timed_out
+    ensures: query.rejection_reason = reason
+}
+
+surface CurrentMotherProjectsCLI {
+    facing operator: MotherOperator
+    context registry: CurrentProjectRegistry
+
+    exposes:
+        operator.name
+        registry.project_count
+        registry.identity_bound_count
+
+        for project in registry.projects:
+            project.project_uid
+            project.project_path
+            project.registered_at
+            project.checked_in_at
+            project.identity?.project_id
+            project.identity?.user_id
+            project.identity?.vision_id
+            project.identity?.binding_status
+
+    provides:
+        OperatorRequestsCurrentProjectsList(operator)
+        MotherChecksInProject(project)
+}
+
+surface CurrentMotherFederationAPI {
+    facing runtime: MotherRuntimeSurface
+
+    exposes:
+        runtime.kind
+
+    provides:
+        RuntimeSubmitsFederationQuery(runtime, sql, limit)
+        FederationQueryRowsReturned(query, row_count)
+        FederationQueryUnavailable(query, reason)
+        FederationQueryTimedOut(query, reason)
+}
+
+open question "Should the current project list expose a machine-readable JSON endpoint before the view composer is added?"
+open question "Should project check-in age use project_registry.updated_at only, or fall back to registered_at when updated_at is malformed?"

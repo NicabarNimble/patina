@@ -4,8 +4,8 @@ id: legacy-typed-bridge-seam
 status: draft
 created: 2026-04-11
 related:
-- layer/surface/build/feat/spec-atlas-mother-backplane/SPEC.md
 - layer/surface/build/feat/child-construction-canon/SPEC.md
+- layer/allium/mother/mother-view-composer-target.allium
 - mother/src/
 - children/
 beliefs:
@@ -24,8 +24,8 @@ exit_criteria:
 - id: ltbs4-no-direct-legacy-escalation
   text: "Bridge flow denies direct legacy capability escalation outside mapped seam."
   checked: true
-- id: ltbs5-atlas-visibility
-  text: "Atlas visibility can report legacy seam exposure via deterministic bridge policy signals."
+- id: ltbs5-bridge-policy-observable
+  text: "Mother bridge policy exposes deterministic lane signals that future data catalog/view shapes can observe without a hardcoded Atlas surface."
   checked: true
 - id: ltbs6-tests
   text: "Deterministic tests cover mapping success, unknown-toy denial, and bridge request/response shape."
@@ -61,6 +61,6 @@ This allows migration without rewriting all legacy children immediately, while p
 ```bash
 cargo test -q -p mother bridge::tests
 cargo check -q -p patina-ai-child-legacy-typed-bridge
-cargo test -q atlas
+cargo test -q -p mother bridge::tests
 cargo check -q
 ```

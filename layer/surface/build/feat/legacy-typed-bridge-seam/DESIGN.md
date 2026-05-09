@@ -45,12 +45,14 @@ Any other alias is denied.
 3. No automatic dynamic toy discovery.
 4. Bridge outputs are read-only policy artifacts in this slice.
 
-## Atlas visibility hook
+## Observability hook
 
-Atlas consumes the Mother bridge policy model (`bridge_exposure_for_toys`) to classify child lanes:
+Mother bridge policy exposes deterministic classification signals that future data catalog collectors and view shapes can use:
 
 - `legacy-bridge-lane` when bridge mapping is required
 - `typed-manifest-lane` when no bridge seam is needed
+
+This replaces the archived hardcoded Atlas visibility hook.
 
 ## Initial code targets
 

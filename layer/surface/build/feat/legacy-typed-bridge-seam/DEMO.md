@@ -16,13 +16,10 @@ cargo check -q -p patina-ai-child-legacy-typed-bridge
 
 Expected: pass.
 
-## 3) Atlas lane visibility via bridge policy
+## 3) Bridge policy observability
 
-```bash
-patina atlas --json | jq '.children[] | {folder, lane_hint, toys}'
-```
+The archived Atlas prototype no longer reports lane visibility. Future Mother view-composer data catalog collectors should expose these same deterministic bridge policy signals:
 
-Expected:
 - children with legacy aliases show `lane_hint: "legacy-bridge-lane"`
 - typed children show `lane_hint: "typed-manifest-lane"`
 

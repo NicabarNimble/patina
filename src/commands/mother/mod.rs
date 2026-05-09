@@ -59,8 +59,8 @@ use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::process::Command;
+#[cfg(unix)]
+use std::process::{Command, Stdio};
 use walkdir::{DirEntry, WalkDir};
 
 use patina::paths;
@@ -1041,12 +1041,39 @@ fn enforce_start_conflict_guard() -> Result<()> {
     Ok(())
 }
 
-fn default_daemon_options() -> DaemonOptions {
-    DaemonOptions {
-        host: None,
-        port: 50051,
-        profile: DaemonStartupProfile::Full,
-        rivet: RivetIntegrationProfile::Disabled,
+#[cfg(target_os = "macos")]
+fn launchd_service_loaded(domain: &str, label: &str) -> bool {
+    let service = format!("{}/{}", domain, label);
+    Command::new("launchctl")
+        .arg("print")
+        .arg(&service)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn wait_for_launchd_service_absent(label: &str, timeout: std::time::Duration) -> Result<()> {
+    let domains = launchctl_domains();
+    let deadline = std::time::Instant::now() + timeout;
+
+    loop {
+        if !domains
+            .iter()
+            .any(|domain| launchd_service_loaded(domain, label))
+        {
+            return Ok(());
+        }
+        if std::time::Instant::now() >= deadline {
+            bail!(
+                "launchd service '{}' did not finish bootout within {}s",
+                label,
+                timeout.as_secs()
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
@@ -1062,6 +1089,96 @@ fn restart_launchd_label(label: &str) -> Result<()> {
     }
 
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("launchctl kickstart failed")))
+}
+
+fn manual_restart_log_path() -> PathBuf {
+    paths::patina_home()
+        .join("mother")
+        .join("logs")
+        .join("manual-restart.log")
+}
+
+#[cfg(unix)]
+fn spawn_manual_daemon_detached() -> Result<PathBuf> {
+    let log_path = manual_restart_log_path();
+    if let Some(parent) = log_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+
+    let stdout = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .with_context(|| format!("opening {}", log_path.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .with_context(|| format!("cloning {}", log_path.display()))?;
+
+    let exe = std::env::current_exe().context("resolving current executable")?;
+    Command::new(exe)
+        .arg("mother")
+        .arg("start")
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr))
+        .spawn()
+        .context("starting Mother in background")?;
+
+    Ok(log_path)
+}
+
+fn wait_for_daemon_ready(
+    timeout: std::time::Duration,
+) -> Result<mother_crate::lifecycle::StatusReport> {
+    let pid_path = paths::serve::pid_path();
+    let socket_path = paths::serve::socket_path();
+    let deadline = std::time::Instant::now() + timeout;
+    let mut last_health_error = None;
+
+    loop {
+        let status = mother_crate::lifecycle::probe_status(&pid_path, &socket_path)?;
+        if status.running && status.health.is_some() {
+            return Ok(status);
+        }
+        if let Some(error) = status.health_error {
+            last_health_error = Some(error);
+        }
+        if std::time::Instant::now() >= deadline {
+            let detail = last_health_error
+                .map(|error| format!(" last health error: {error}"))
+                .unwrap_or_default();
+            bail!(
+                "Mother did not become ready within {}s.{}",
+                timeout.as_secs(),
+                detail
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
+fn restart_manual_daemon_detached() -> Result<()> {
+    stop_daemon()?;
+    println!("Restarting Mother in background (manual backend)...");
+
+    #[cfg(unix)]
+    {
+        let log_path = spawn_manual_daemon_detached()?;
+        let status = wait_for_daemon_ready(std::time::Duration::from_secs(15))?;
+        println!("Mother daemon restarted.");
+        if let Some(pid) = status.pid {
+            println!("   PID: {}", pid);
+        }
+        println!("   Socket: {}", paths::serve::socket_path().display());
+        println!("   Logs: {}", log_path.display());
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    {
+        bail!("manual background restart is unsupported on this platform")
+    }
 }
 
 fn restart_daemon() -> Result<()> {
@@ -1108,11 +1225,7 @@ fn restart_daemon() -> Result<()> {
                 bail!("systemd --user supervisor is unavailable on this platform");
             }
         }
-        SupervisorBackend::Manual => {
-            stop_daemon()?;
-            println!("Restarting Mother in foreground (manual backend)...");
-            daemon::run_server(default_daemon_options())
-        }
+        SupervisorBackend::Manual => restart_manual_daemon_detached(),
     }
 }
 
@@ -1145,10 +1258,18 @@ fn install_supervisor() -> Result<()> {
                 .arg(&service)
                 .status();
         }
+        wait_for_launchd_service_absent(MOTHER_LAUNCHD_LABEL, std::time::Duration::from_secs(5))?;
         let plist_arg = plist_path.to_string_lossy().to_string();
         let mut selected_domain = None;
         let mut last_error = None;
         for domain in launchctl_domains() {
+            // `patina mother uninstall` disables the service after bootout. On
+            // macOS, a disabled user service may fail bootstrap with error 119
+            // (surfaced by launchctl as I/O error 5), so clear that marker
+            // before attempting to bootstrap the freshly written plist.
+            let service = format!("{}/{}", domain, MOTHER_LAUNCHD_LABEL);
+            let _ = run_launchctl(&["enable", &service]);
+
             match run_launchctl(&["bootstrap", &domain, &plist_arg]) {
                 Ok(()) => {
                     selected_domain = Some(domain);
@@ -1406,10 +1527,53 @@ fn stop_daemon() -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+struct ProjectStatusContext {
+    uid: String,
+    events_db_bytes: Option<u64>,
+    patina_db_bytes: Option<u64>,
+    runtime_db_bytes: Option<u64>,
+}
+
+fn file_size_if_exists(path: &Path) -> Option<u64> {
+    std::fs::metadata(path).ok().map(|metadata| metadata.len())
+}
+
+fn project_status_context_from_current_dir() -> Option<ProjectStatusContext> {
+    let project_root = SessionManager::find_project_root().ok()?;
+    let uid = patina::project::get_uid(&project_root)?;
+    Some(ProjectStatusContext {
+        events_db_bytes: paths::mother::projects::events_db(&uid)
+            .ok()
+            .and_then(|path| file_size_if_exists(&path)),
+        patina_db_bytes: paths::mother::projects::patina_db(&uid)
+            .ok()
+            .and_then(|path| file_size_if_exists(&path)),
+        runtime_db_bytes: paths::mother::projects::runtime_db(&uid)
+            .ok()
+            .and_then(|path| file_size_if_exists(&path)),
+        uid,
+    })
+}
+
+fn print_project_status_context(label: &str, context: &ProjectStatusContext) {
+    println!("   {}: {}", label, context.uid);
+    if let Some(bytes) = context.events_db_bytes {
+        println!("   Project events.db bytes: {}", bytes);
+    }
+    if let Some(bytes) = context.patina_db_bytes {
+        println!("   Project patina.db bytes: {}", bytes);
+    }
+    if let Some(bytes) = context.runtime_db_bytes {
+        println!("   Project runtime.db bytes: {}", bytes);
+    }
+}
+
 /// Show daemon status
 fn show_status() -> Result<()> {
     let pid_path = paths::serve::pid_path();
     let socket_path = paths::serve::socket_path();
+    let current_project = project_status_context_from_current_dir();
 
     let status = mother_crate::lifecycle::probe_status(&pid_path, &socket_path)?;
     let supervisor = detect_supervisor_backend();
@@ -1501,18 +1665,20 @@ fn show_status() -> Result<()> {
             if let Some(state_db_bytes) = health.state_db_bytes {
                 println!("   State DB bytes: {}", state_db_bytes);
             }
-            if let Some(project_uid) = &health.active_project_uid {
-                println!("   Active project: {}", project_uid);
-            }
-            if let Some(databases) = &health.active_project_databases {
-                if let Some(bytes) = databases.events_db_bytes {
-                    println!("   Active events.db bytes: {}", bytes);
-                }
-                if let Some(bytes) = databases.patina_db_bytes {
-                    println!("   Active patina.db bytes: {}", bytes);
-                }
-                if let Some(bytes) = databases.runtime_db_bytes {
-                    println!("   Active runtime.db bytes: {}", bytes);
+            if let Some(project) = &current_project {
+                print_project_status_context("Project context", project);
+            } else if let Some(project_uid) = &health.active_project_uid {
+                println!("   Daemon startup project: {}", project_uid);
+                if let Some(databases) = &health.active_project_databases {
+                    if let Some(bytes) = databases.events_db_bytes {
+                        println!("   Project events.db bytes: {}", bytes);
+                    }
+                    if let Some(bytes) = databases.patina_db_bytes {
+                        println!("   Project patina.db bytes: {}", bytes);
+                    }
+                    if let Some(bytes) = databases.runtime_db_bytes {
+                        println!("   Project runtime.db bytes: {}", bytes);
+                    }
                 }
             }
             let loaded_children: std::collections::HashSet<String> =

@@ -9,8 +9,6 @@ pub struct RouteTable {
     pub get_health: RouteHandler,
     pub get_ready: RouteHandler,
     pub get_version: RouteHandler,
-    pub get_atlas_dashboard: RouteHandler,
-    pub get_atlas_snapshot: RouteHandler,
     pub post_bridge_translate: RouteHandler,
     pub post_scry: RouteHandler,
     pub post_federation_status: RouteHandler,
@@ -28,6 +26,13 @@ pub struct RouteTable {
     pub post_interface_call: RouteHandler,
     pub post_rivet_dispatch: RouteHandler,
     pub post_inspector_typed_calls: RouteHandler,
+    pub get_view_buffers: RouteHandler,
+    pub post_view_buffer_open: RouteHandler,
+    pub post_view_buffer_connect: RouteHandler,
+    pub post_view_buffer_disconnect: RouteHandler,
+    pub post_view_buffer_kill: RouteHandler,
+    pub get_view_buffer_windows: RouteHandler,
+    pub get_view_buffer_gaps: RouteHandler,
     pub child_request: RouteHandler,
 }
 
@@ -51,20 +56,6 @@ impl Router {
             ("GET", "/health") => (self.routes.get_health)(request),
             ("GET", "/ready") => (self.routes.get_ready)(request),
             ("GET", "/version") => (self.routes.get_version)(request),
-            ("GET", "/atlas") | ("GET", "/atlas/index.html") => {
-                if self.require_auth && !self.check_auth(request) {
-                    json_error(401, "Unauthorized")
-                } else {
-                    (self.routes.get_atlas_dashboard)(request)
-                }
-            }
-            ("GET", "/atlas/atlas.json") | ("GET", "/api/atlas/snapshot") => {
-                if self.require_auth && !self.check_auth(request) {
-                    json_error(401, "Unauthorized")
-                } else {
-                    (self.routes.get_atlas_snapshot)(request)
-                }
-            }
             ("POST", "/api/bridge/translate") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -184,6 +175,55 @@ impl Router {
                     (self.routes.post_inspector_typed_calls)(request)
                 }
             }
+            ("GET", "/api/view-buffers") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_buffers)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/open") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_open)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/connect") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_connect)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/disconnect") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_disconnect)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/kill") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_kill)(request)
+                }
+            }
+            ("GET", "/api/view-buffers/windows") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_buffer_windows)(request)
+                }
+            }
+            ("GET", "/api/view-buffers/gaps") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_buffer_gaps)(request)
+                }
+            }
             _ if request.path.starts_with("/child/") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -219,12 +259,6 @@ mod tests {
             get_health: Arc::new(|_| ok_json()),
             get_ready: Arc::new(|_| ok_json()),
             get_version: Arc::new(|_| ok_json()),
-            get_atlas_dashboard: Arc::new(|_| HttpResponse {
-                status: 200,
-                headers: vec![("Content-Type".to_string(), "text/html".to_string())],
-                body: b"<html>atlas</html>".to_vec(),
-            }),
-            get_atlas_snapshot: Arc::new(|_| ok_json()),
             post_bridge_translate: Arc::new(|_| ok_json()),
             post_scry: Arc::new(|_| ok_json()),
             post_federation_status: Arc::new(|_| ok_json()),
@@ -242,6 +276,13 @@ mod tests {
             post_interface_call: Arc::new(|_| ok_json()),
             post_rivet_dispatch: Arc::new(|_| ok_json()),
             post_inspector_typed_calls: Arc::new(|_| ok_json()),
+            get_view_buffers: Arc::new(|_| ok_json()),
+            post_view_buffer_open: Arc::new(|_| ok_json()),
+            post_view_buffer_connect: Arc::new(|_| ok_json()),
+            post_view_buffer_disconnect: Arc::new(|_| ok_json()),
+            post_view_buffer_kill: Arc::new(|_| ok_json()),
+            get_view_buffer_windows: Arc::new(|_| ok_json()),
+            get_view_buffer_gaps: Arc::new(|_| ok_json()),
             child_request: Arc::new(|_| ok_json()),
         }
     }
@@ -258,26 +299,15 @@ mod tests {
     }
 
     #[test]
-    fn atlas_routes_require_auth_when_router_requires_auth() {
-        let router = Router::new(true, "token-123".to_string(), test_routes());
-
-        let html = router.route(&request("GET", "/atlas", None));
-        assert_eq!(html.status, 401);
-
-        let json = router.route(&request("GET", "/atlas/atlas.json", None));
-        assert_eq!(json.status, 401);
-    }
-
-    #[test]
-    fn atlas_routes_allow_with_valid_auth_header() {
+    fn removed_atlas_routes_are_not_wired() {
         let router = Router::new(true, "token-123".to_string(), test_routes());
         let header = "Bearer token-123";
 
         let html = router.route(&request("GET", "/atlas", Some(header)));
-        assert_eq!(html.status, 200);
+        assert_eq!(html.status, 404);
 
-        let json = router.route(&request("GET", "/atlas/atlas.json", Some(header)));
-        assert_eq!(json.status, 200);
+        let json = router.route(&request("GET", "/api/atlas/snapshot", Some(header)));
+        assert_eq!(json.status, 404);
     }
 
     #[test]
@@ -285,6 +315,26 @@ mod tests {
         let router = Router::new(false, "token-123".to_string(), test_routes());
         let response = router.route(&request("POST", "/api/lifecycle/warmup-children", None));
         assert_eq!(response.status, 200);
+    }
+
+    #[test]
+    fn view_buffer_routes_are_wired_and_auth_guarded() {
+        let router = Router::new(true, "token-123".to_string(), test_routes());
+        let unauthorized = router.route(&request("GET", "/api/view-buffers", None));
+        assert_eq!(unauthorized.status, 401);
+
+        for (method, path) in [
+            ("GET", "/api/view-buffers"),
+            ("POST", "/api/view-buffers/open"),
+            ("POST", "/api/view-buffers/connect"),
+            ("POST", "/api/view-buffers/disconnect"),
+            ("POST", "/api/view-buffers/kill"),
+            ("GET", "/api/view-buffers/windows"),
+            ("GET", "/api/view-buffers/gaps"),
+        ] {
+            let authorized = router.route(&request(method, path, Some("Bearer token-123")));
+            assert_eq!(authorized.status, 200, "{method} {path} should route");
+        }
     }
 
     #[test]
