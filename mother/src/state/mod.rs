@@ -2102,6 +2102,77 @@ mod tests {
     }
 
     #[test]
+    fn view_initial_shape_creation_persists_created_shape_metadata() {
+        // obligation: spec.mother-view-initial-shape-creation.mvisc4-persistence
+        // obligation: rule-success.CreateInitialShapeWhenNoShapeMatches
+        use crate::view_buffer::{
+            ComposeViewRequest, DataCatalog, MajorMode, MinorMode, MotherStatusFacts,
+            ProposedInitialShape, ProposedShapeMatch, ShapeMatchKind, ViewBufferService,
+            ViewRequirement, ViewShapeMaturity,
+        };
+
+        let store = temp_store();
+        let mut service =
+            ViewBufferService::with_catalog(DataCatalog::mother_status(MotherStatusFacts {
+                version: "0.70.1".to_string(),
+                uptime_secs: 42,
+                control_plane_ready: true,
+                registered_projects: 2,
+                children_ready_count: 1,
+                children_total: 2,
+                startup_profile: "full".to_string(),
+                memory_pressure: "ok".to_string(),
+                observed_at: Utc::now(),
+            }));
+        let requirements = vec![ViewRequirement {
+            fact_path: "mother.status.version".to_string(),
+            required: true,
+            purpose: "display Mother version".to_string(),
+        }];
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show runtime summary".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: None,
+                    match_kind: ShapeMatchKind::None,
+                    confidence: 0.0,
+                }),
+                proposed_initial_shape: Some(ProposedInitialShape {
+                    title: "Mother Runtime Summary".to_string(),
+                    major_mode: MajorMode::Table,
+                    minor_modes: vec![MinorMode::Pinned],
+                    requirements: requirements.clone(),
+                    vision_id: Some("vision-1".to_string()),
+                    project_uid: Some("2bdc808e".to_string()),
+                }),
+            })
+            .unwrap();
+        let created_shape = composed
+            .created_shape
+            .expect("no-match request should return created shape");
+
+        store.upsert_view_shape(&created_shape).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        let persisted = reopened
+            .get_view_shape(&created_shape.shape_id)
+            .unwrap()
+            .expect("created shape should persist");
+        assert_eq!(persisted, created_shape);
+        assert_eq!(persisted.maturity, ViewShapeMaturity::Exploratory);
+        assert_eq!(persisted.source_ref, "local-allium-view-library");
+        assert_eq!(persisted.major_mode, MajorMode::Table);
+        assert_eq!(persisted.minor_modes, vec![MinorMode::Pinned]);
+        assert_eq!(persisted.requirements, requirements);
+    }
+
+    #[test]
     fn view_shape_adaptation_persists_adapted_shape_metadata() {
         // obligation: spec.mother-view-shape-adaptation.mvsa3-adapted-shape-persistence
         // obligation: rule-success.AdaptSimilarShapeWhenNoExactShapeExists
@@ -2137,6 +2208,7 @@ mod tests {
                     match_kind: ShapeMatchKind::Similar,
                     confidence: SHAPE_MATCH_CONFIDENCE_THRESHOLD,
                 }),
+                proposed_initial_shape: None,
             })
             .unwrap();
         let adapted_shape = composed

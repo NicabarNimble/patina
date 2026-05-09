@@ -22,28 +22,28 @@ exit_criteria:
   checked: true
 - id: mvisc1-creation-model
   text: Mother has structured initial-shape creation request/result data for no-match composition, including request id, created shape id, non-opening semantics, and explicit proposed requirements.
-  checked: false
+  checked: true
 - id: mvisc2-catalog-guardrails
   text: Initial shapes are created only from explicit proposed requirements whose required fact paths are present in the Mother data catalog; missing/blank requirements fail closed without creating a shape.
-  checked: false
+  checked: true
 - id: mvisc3-initial-shape-creation
   text: A no-match request with a valid structured initial-shape proposal creates an active exploratory ViewShape owned by the local Allium view library without arbitrary executable UI code.
-  checked: false
+  checked: true
 - id: mvisc4-persistence
   text: Created initial shapes persist through the existing shape library and preserve modes, payload contract/version, source_ref, scope, requirements, and optional vision/project projections.
-  checked: false
+  checked: true
 - id: mvisc5-compose-integration
   text: Request composition handles match_kind none by persisting the ShapeMatch and created initial ViewShape, returning a creation outcome instead of opening a buffer immediately.
-  checked: false
+  checked: true
 - id: mvisc6-fail-closed-guardrails
   text: No proposal, non-none proposal, invalid payloads, missing catalog facts, and empty required-fact lists do not create shapes, open buffers, or invent data.
-  checked: false
+  checked: true
 - id: mvisc7-tests-and-trace
   text: Deterministic tests cover successful creation, persisted initial shapes, API response shape, fail-closed behavior, and Allium obligation trace comments.
-  checked: false
+  checked: true
 - id: mvisc8-follow-on-boundaries
   text: Behaviors outside this slice are explicitly left to request UX, revision, maturation, observability workflow, and renderer-frame specs.
-  checked: false
+  checked: true
 ---
 # feat: Mother View Initial Shape Creation
 
@@ -200,14 +200,14 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 ## Exit Criteria
 
 - [x] `mvisc0-allium-code-alignment`
-- [ ] `mvisc1-creation-model`
-- [ ] `mvisc2-catalog-guardrails`
-- [ ] `mvisc3-initial-shape-creation`
-- [ ] `mvisc4-persistence`
-- [ ] `mvisc5-compose-integration`
-- [ ] `mvisc6-fail-closed-guardrails`
-- [ ] `mvisc7-tests-and-trace`
-- [ ] `mvisc8-follow-on-boundaries`
+- [x] `mvisc1-creation-model`
+- [x] `mvisc2-catalog-guardrails`
+- [x] `mvisc3-initial-shape-creation`
+- [x] `mvisc4-persistence`
+- [x] `mvisc5-compose-integration`
+- [x] `mvisc6-fail-closed-guardrails`
+- [x] `mvisc7-tests-and-trace`
+- [x] `mvisc8-follow-on-boundaries`
 
 ## Build Readiness
 

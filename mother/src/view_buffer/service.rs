@@ -8,8 +8,8 @@ use serde_json::json;
 use super::{
     Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind,
     FramedJsonPayload, MajorMode, MinorMode, ObservabilityGap, PayloadContract, ShapeMatch,
-    ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeMaturity,
-    ViewShapeScope, Window, WindowConnectionState,
+    ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeCreation,
+    ViewShapeMaturity, ViewShapeScope, Window, WindowConnectionState,
 };
 use crate::view_buffer::catalog::{DataCatalog, MOTHER_STATUS_SHAPE_ID, MOTHER_STATUS_SOURCE_ID};
 
@@ -30,11 +30,27 @@ pub struct ProposedShapeMatch {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ProposedInitialShape {
+    pub title: String,
+    pub major_mode: MajorMode,
+    #[serde(default)]
+    pub minor_modes: Vec<MinorMode>,
+    pub requirements: Vec<ViewRequirement>,
+    #[serde(default)]
+    pub vision_id: Option<String>,
+    #[serde(default)]
+    pub project_uid: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ComposeViewRequest {
     pub user_id: String,
     pub agent_id: String,
     pub raw_request: String,
     pub proposed_match: Option<ProposedShapeMatch>,
+    #[serde(default)]
+    pub proposed_initial_shape: Option<ProposedInitialShape>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -45,6 +61,10 @@ pub struct ComposedViewRequest {
     pub shape_adaptation: Option<ViewShapeAdaptation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub adapted_shape: Option<ViewShape>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shape_creation: Option<ViewShapeCreation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_shape: Option<ViewShape>,
     pub open_outcome: Option<OpenBufferOutcome>,
     pub reason: Option<String>,
 }
@@ -152,6 +172,8 @@ impl ViewBufferService {
                 shape_match: None,
                 shape_adaptation: None,
                 adapted_shape: None,
+                shape_creation: None,
+                created_shape: None,
                 open_outcome: None,
                 reason: Some("no shape match proposed".to_string()),
             });
@@ -164,15 +186,20 @@ impl ViewBufferService {
             confidence: proposed_match.confidence,
         };
 
-        if shape_match.match_kind == ShapeMatchKind::Similar {
-            return match self.adapt_similar_shape(&display_request.request_id, &shape_match) {
-                Ok((shape_adaptation, adapted_shape)) => {
+        if shape_match.match_kind == ShapeMatchKind::None {
+            return match self.create_initial_shape(
+                &display_request.request_id,
+                request.proposed_initial_shape.as_ref(),
+            ) {
+                Ok((shape_creation, created_shape)) => {
                     display_request.outcome = DisplayRequestOutcome::Unable;
                     Ok(ComposedViewRequest {
                         request: display_request,
                         shape_match: Some(shape_match),
-                        shape_adaptation: Some(shape_adaptation),
-                        adapted_shape: Some(adapted_shape),
+                        shape_adaptation: None,
+                        adapted_shape: None,
+                        shape_creation: Some(shape_creation),
+                        created_shape: Some(created_shape),
                         open_outcome: None,
                         reason: None,
                     })
@@ -184,6 +211,39 @@ impl ViewBufferService {
                         shape_match: Some(shape_match),
                         shape_adaptation: None,
                         adapted_shape: None,
+                        shape_creation: None,
+                        created_shape: None,
+                        open_outcome: None,
+                        reason: Some(reason),
+                    })
+                }
+            };
+        }
+
+        if shape_match.match_kind == ShapeMatchKind::Similar {
+            return match self.adapt_similar_shape(&display_request.request_id, &shape_match) {
+                Ok((shape_adaptation, adapted_shape)) => {
+                    display_request.outcome = DisplayRequestOutcome::Unable;
+                    Ok(ComposedViewRequest {
+                        request: display_request,
+                        shape_match: Some(shape_match),
+                        shape_adaptation: Some(shape_adaptation),
+                        adapted_shape: Some(adapted_shape),
+                        shape_creation: None,
+                        created_shape: None,
+                        open_outcome: None,
+                        reason: None,
+                    })
+                }
+                Err(reason) => {
+                    display_request.outcome = DisplayRequestOutcome::Unable;
+                    Ok(ComposedViewRequest {
+                        request: display_request,
+                        shape_match: Some(shape_match),
+                        shape_adaptation: None,
+                        adapted_shape: None,
+                        shape_creation: None,
+                        created_shape: None,
                         open_outcome: None,
                         reason: Some(reason),
                     })
@@ -200,6 +260,8 @@ impl ViewBufferService {
                     shape_match: Some(shape_match),
                     shape_adaptation: None,
                     adapted_shape: None,
+                    shape_creation: None,
+                    created_shape: None,
                     open_outcome: None,
                     reason: Some(reason),
                 });
@@ -223,6 +285,8 @@ impl ViewBufferService {
                 shape_match: Some(shape_match),
                 shape_adaptation: None,
                 adapted_shape: None,
+                shape_creation: None,
+                created_shape: None,
                 open_outcome: Some(open_outcome),
                 reason: None,
             });
@@ -244,8 +308,82 @@ impl ViewBufferService {
                 self.validate_active_shape(shape_match)
             }
             ShapeMatchKind::Similar => Err("similar shape adaptation is unavailable".to_string()),
-            ShapeMatchKind::None => Err("no usable shape matched request".to_string()),
+            ShapeMatchKind::None => Err("initial shape creation is unavailable".to_string()),
         }
+    }
+
+    fn create_initial_shape(
+        &mut self,
+        request_id: &str,
+        proposal: Option<&ProposedInitialShape>,
+    ) -> std::result::Result<(ViewShapeCreation, ViewShape), String> {
+        // obligation: spec.mother-view-initial-shape-creation.mvisc2-catalog-guardrails
+        // obligation: spec.mother-view-initial-shape-creation.mvisc3-initial-shape-creation
+        // obligation: rule-success.CreateInitialShapeWhenNoShapeMatches
+        let proposal = proposal
+            .ok_or_else(|| "no initial shape proposal provided for no-match request".to_string())?;
+        if proposal.title.trim().is_empty() {
+            return Err("initial shape proposal title must not be empty".to_string());
+        }
+        let required_requirements: Vec<ViewRequirement> = proposal
+            .requirements
+            .iter()
+            .filter(|requirement| requirement.required)
+            .cloned()
+            .collect();
+        if required_requirements.is_empty() {
+            return Err("initial shape proposal requires at least one required fact".to_string());
+        }
+        for requirement in &required_requirements {
+            if requirement.fact_path.trim().is_empty() {
+                return Err("initial shape proposal has blank fact_path".to_string());
+            }
+            if requirement.purpose.trim().is_empty() {
+                return Err(format!(
+                    "initial shape proposal requirement '{}' has blank purpose",
+                    requirement.fact_path
+                ));
+            }
+            if self.catalog.fact(&requirement.fact_path).is_none() {
+                return Err(format!(
+                    "initial shape proposal references uncatalogued fact '{}'",
+                    requirement.fact_path
+                ));
+            }
+            if !self.catalog.observed_required_fact(requirement) {
+                return Err(format!(
+                    "initial shape proposal required fact '{}' is not observed from an available source",
+                    requirement.fact_path
+                ));
+            }
+        }
+
+        let created_shape_id = self.next_initial_shape_id(request_id);
+        let created_shape = ViewShape {
+            shape_id: created_shape_id.clone(),
+            title: proposal.title.trim().to_string(),
+            source_ref: "local-allium-view-library".to_string(),
+            scope: ViewShapeScope::MotherUser,
+            version: 1,
+            active: true,
+            major_mode: proposal.major_mode.clone(),
+            minor_modes: proposal.minor_modes.clone(),
+            maturity: ViewShapeMaturity::Exploratory,
+            payload_contract: PayloadContract::FramedJson,
+            payload_version: 1,
+            vision_id: proposal.vision_id.clone(),
+            project_uid: proposal.project_uid.clone(),
+            replaced_by: None,
+            requirements: proposal.requirements.clone(),
+        };
+        let shape_creation = ViewShapeCreation::created_without_opening(
+            request_id.to_string(),
+            created_shape_id,
+            proposal.requirements.clone(),
+        );
+        self.shapes
+            .insert(created_shape.shape_id.clone(), created_shape.clone());
+        Ok((shape_creation, created_shape))
     }
 
     fn adapt_similar_shape(
@@ -455,6 +593,10 @@ impl ViewBufferService {
         )
     }
 
+    fn next_initial_shape_id(&self, request_id: &str) -> String {
+        format!("initial::{}::{}", request_id, uuid::Uuid::new_v4().simple())
+    }
+
     fn payload_json_for_shape(&self, shape: &ViewShape) -> serde_json::Value {
         let rows: Vec<_> = shape
             .requirements
@@ -572,6 +714,7 @@ mod tests {
                     match_kind: ShapeMatchKind::ExplicitUserChoice,
                     confidence: 1.0,
                 }),
+                proposed_initial_shape: None,
             })
             .expect("request should compose");
 
@@ -610,6 +753,7 @@ mod tests {
                     match_kind: ShapeMatchKind::Exact,
                     confidence: SHAPE_MATCH_CONFIDENCE_THRESHOLD,
                 }),
+                proposed_initial_shape: None,
             })
             .expect("request should compose");
 
@@ -640,6 +784,7 @@ mod tests {
                     match_kind: ShapeMatchKind::ExplicitUserChoice,
                     confidence: 1.0,
                 }),
+                proposed_initial_shape: None,
             })
             .expect("request should compose");
 
@@ -674,6 +819,7 @@ mod tests {
                         match_kind: ShapeMatchKind::ExplicitUserChoice,
                         confidence: 1.0,
                     }),
+                    proposed_initial_shape: None,
                 })
                 .expect("request should compose");
 
@@ -699,6 +845,7 @@ mod tests {
                     match_kind: ShapeMatchKind::Exact,
                     confidence: 0.2,
                 }),
+                proposed_initial_shape: None,
             })
             .expect("request should compose");
 
@@ -726,13 +873,186 @@ mod tests {
                     match_kind: ShapeMatchKind::None,
                     confidence: 0.0,
                 }),
+                proposed_initial_shape: None,
             })
             .expect("request should compose");
 
         assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
         assert!(composed.shape_adaptation.is_none());
         assert!(composed.adapted_shape.is_none());
+        assert!(composed.shape_creation.is_none());
+        assert!(composed.created_shape.is_none());
         assert!(composed.open_outcome.is_none());
+        assert_eq!(service.list_buffers().len(), 0);
+    }
+
+    #[test]
+    fn view_initial_shape_creation_creates_exploratory_shape_without_opening_buffer() {
+        // obligation: spec.mother-view-initial-shape-creation.mvisc2-catalog-guardrails
+        // obligation: spec.mother-view-initial-shape-creation.mvisc3-initial-shape-creation
+        // obligation: spec.mother-view-initial-shape-creation.mvisc5-compose-integration
+        // obligation: rule-success.CreateInitialShapeWhenNoShapeMatches
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+        let requirements = vec![required("mother.status.version", "display Mother version")];
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show runtime summary".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: None,
+                    match_kind: ShapeMatchKind::None,
+                    confidence: 0.0,
+                }),
+                proposed_initial_shape: Some(ProposedInitialShape {
+                    title: "Mother Runtime Summary".to_string(),
+                    major_mode: MajorMode::Table,
+                    minor_modes: vec![MinorMode::Pinned],
+                    requirements: requirements.clone(),
+                    vision_id: Some("vision-1".to_string()),
+                    project_uid: Some("2bdc808e".to_string()),
+                }),
+            })
+            .expect("request should compose");
+
+        assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
+        assert!(composed.open_outcome.is_none());
+        assert_eq!(service.list_buffers().len(), 0);
+        let creation = composed
+            .shape_creation
+            .as_ref()
+            .expect("no-match request should report shape creation");
+        let created_shape = composed
+            .created_shape
+            .as_ref()
+            .expect("no-match request should return created shape");
+        assert_eq!(creation.created_shape_id, created_shape.shape_id);
+        assert!(!creation.opens_buffer);
+        assert_eq!(creation.requirements, requirements);
+        assert!(created_shape
+            .shape_id
+            .starts_with(&format!("initial::{}::", composed.request.request_id)));
+        assert_eq!(created_shape.title, "Mother Runtime Summary");
+        assert_eq!(created_shape.source_ref, "local-allium-view-library");
+        assert_eq!(created_shape.scope, ViewShapeScope::MotherUser);
+        assert_eq!(created_shape.version, 1);
+        assert!(created_shape.active);
+        assert_eq!(created_shape.major_mode, MajorMode::Table);
+        assert_eq!(created_shape.minor_modes, vec![MinorMode::Pinned]);
+        assert_eq!(created_shape.maturity, ViewShapeMaturity::Exploratory);
+        assert_eq!(created_shape.payload_contract, PayloadContract::FramedJson);
+        assert_eq!(created_shape.payload_version, 1);
+        assert_eq!(created_shape.vision_id, Some("vision-1".to_string()));
+        assert_eq!(created_shape.project_uid, Some("2bdc808e".to_string()));
+        assert_eq!(created_shape.replaced_by, None);
+        assert_eq!(created_shape.requirements, requirements);
+        assert!(service
+            .list_shapes()
+            .iter()
+            .any(|shape| shape.shape_id == created_shape.shape_id));
+    }
+
+    #[test]
+    fn view_initial_shape_creation_fails_closed_for_invalid_proposals() {
+        // obligation: spec.mother-view-initial-shape-creation.mvisc6-fail-closed-guardrails
+        // obligation: rule-failure.CreateInitialShapeWhenNoShapeMatches.1
+        let cases = [
+            (None, "no initial shape proposal"),
+            (
+                Some(ProposedInitialShape {
+                    title: "  ".to_string(),
+                    major_mode: MajorMode::Table,
+                    minor_modes: vec![],
+                    requirements: vec![required("mother.status.version", "display Mother version")],
+                    vision_id: None,
+                    project_uid: None,
+                }),
+                "title must not be empty",
+            ),
+            (
+                Some(ProposedInitialShape {
+                    title: "Mother Runtime Summary".to_string(),
+                    major_mode: MajorMode::Table,
+                    minor_modes: vec![],
+                    requirements: vec![],
+                    vision_id: None,
+                    project_uid: None,
+                }),
+                "at least one required fact",
+            ),
+            (
+                Some(ProposedInitialShape {
+                    title: "Mother Runtime Summary".to_string(),
+                    major_mode: MajorMode::Table,
+                    minor_modes: vec![],
+                    requirements: vec![required("mother.status.missing", "display missing fact")],
+                    vision_id: None,
+                    project_uid: None,
+                }),
+                "uncatalogued fact",
+            ),
+        ];
+
+        for (proposal, expected_reason) in cases {
+            let mut service = ViewBufferService::with_catalog(status_catalog());
+            let composed = service
+                .compose_request(ComposeViewRequest {
+                    user_id: "local-user".to_string(),
+                    agent_id: "pi".to_string(),
+                    raw_request: "show runtime summary".to_string(),
+                    proposed_match: Some(ProposedShapeMatch {
+                        shape_id: None,
+                        match_kind: ShapeMatchKind::None,
+                        confidence: 0.0,
+                    }),
+                    proposed_initial_shape: proposal,
+                })
+                .expect("request should compose");
+
+            assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
+            assert!(composed.shape_creation.is_none());
+            assert!(composed.created_shape.is_none());
+            assert!(composed.open_outcome.is_none());
+            assert_eq!(service.list_buffers().len(), 0);
+            assert_eq!(service.list_shapes().len(), 1);
+            assert!(composed
+                .reason
+                .expect("reason should explain fail-closed result")
+                .contains(expected_reason));
+        }
+    }
+
+    #[test]
+    fn view_initial_shape_creation_ignores_initial_proposal_for_non_none_matches() {
+        // obligation: spec.mother-view-initial-shape-creation.mvisc6-fail-closed-guardrails
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show something like mother status".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                    match_kind: ShapeMatchKind::Similar,
+                    confidence: SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+                }),
+                proposed_initial_shape: Some(ProposedInitialShape {
+                    title: "Should Not Be Created".to_string(),
+                    major_mode: MajorMode::Table,
+                    minor_modes: vec![],
+                    requirements: vec![required("mother.status.version", "display Mother version")],
+                    vision_id: None,
+                    project_uid: None,
+                }),
+            })
+            .expect("request should compose");
+
+        assert!(composed.shape_creation.is_none());
+        assert!(composed.created_shape.is_none());
+        assert!(composed.shape_adaptation.is_some());
+        assert!(composed.adapted_shape.is_some());
         assert_eq!(service.list_buffers().len(), 0);
     }
 
@@ -755,6 +1075,7 @@ mod tests {
                     match_kind: ShapeMatchKind::Similar,
                     confidence: SHAPE_MATCH_CONFIDENCE_THRESHOLD,
                 }),
+                proposed_initial_shape: None,
             })
             .expect("request should compose");
 
@@ -821,6 +1142,7 @@ mod tests {
                         match_kind: ShapeMatchKind::Similar,
                         confidence,
                     }),
+                    proposed_initial_shape: None,
                 })
                 .expect("request should compose");
 
@@ -850,6 +1172,7 @@ mod tests {
                     match_kind: ShapeMatchKind::Similar,
                     confidence: 0.9,
                 }),
+                proposed_initial_shape: None,
             })
             .expect("request should compose");
 
@@ -893,6 +1216,8 @@ mod tests {
             shape_match: Some(shape_match),
             shape_adaptation: Some(adaptation),
             adapted_shape: None,
+            shape_creation: None,
+            created_shape: None,
             open_outcome: None,
             reason: None,
         };

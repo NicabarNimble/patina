@@ -250,6 +250,31 @@ pub struct ShapeMatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ViewShapeCreation {
+    pub request_id: String,
+    pub created_shape_id: String,
+    pub opens_buffer: bool,
+    pub request_outcome: DisplayRequestOutcome,
+    pub requirements: Vec<ViewRequirement>,
+}
+
+impl ViewShapeCreation {
+    pub fn created_without_opening(
+        request_id: String,
+        created_shape_id: String,
+        requirements: Vec<ViewRequirement>,
+    ) -> Self {
+        Self {
+            request_id,
+            created_shape_id,
+            opens_buffer: false,
+            request_outcome: DisplayRequestOutcome::Unable,
+            requirements,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ViewShapeAdaptation {
     pub request_id: String,
     pub precedent_shape_id: String,
@@ -438,6 +463,42 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&DisplayRequestOutcome::BufferOpened).unwrap(),
             serde_json::json!("buffer_opened")
+        );
+    }
+
+    #[test]
+    fn view_initial_shape_creation_records_non_open_request_semantics() {
+        // obligation: spec.mother-view-initial-shape-creation.mvisc1-creation-model
+        // obligation: rule-success.CreateInitialShapeWhenNoShapeMatches
+        let requirements = vec![ViewRequirement {
+            fact_path: "mother.status.version".to_string(),
+            required: true,
+            purpose: "display Mother binary version".to_string(),
+        }];
+        let creation = ViewShapeCreation::created_without_opening(
+            "req_1".to_string(),
+            "initial::req_1::test".to_string(),
+            requirements.clone(),
+        );
+
+        assert_eq!(creation.request_id, "req_1");
+        assert_eq!(creation.created_shape_id, "initial::req_1::test");
+        assert!(!creation.opens_buffer);
+        assert_eq!(creation.request_outcome, DisplayRequestOutcome::Unable);
+        assert_eq!(creation.requirements, requirements);
+        assert_eq!(
+            serde_json::to_value(&creation).unwrap(),
+            serde_json::json!({
+                "request_id": "req_1",
+                "created_shape_id": "initial::req_1::test",
+                "opens_buffer": false,
+                "request_outcome": "unable",
+                "requirements": [{
+                    "fact_path": "mother.status.version",
+                    "required": true,
+                    "purpose": "display Mother binary version"
+                }]
+            })
         );
     }
 

@@ -129,11 +129,11 @@ Tests should cover:
 
 ## Commits
 
-No implementation commits yet. This design prepares the spec for implementation slices.
+1. `feat: create initial mother view shapes` — adds structured initial-shape proposals/results, catalog-backed no-match creation, daemon/store persistence, HTTP response coverage, and fail-closed guardrails.
 
 ## Build Readiness
 
-Ready to promote as the next [[mother-view-composer]] implementation slice. The Allium/code alignment pass is recorded and `mvisc0-allium-code-alignment` is checked.
+Implemented and ready to complete. All exit criteria are checked, including model, catalog guardrails, creation, persistence, compose integration, fail-closed tests, and follow-on boundaries.
 
 ## Open Questions
 

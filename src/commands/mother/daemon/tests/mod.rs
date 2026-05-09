@@ -498,6 +498,7 @@ fn daemon_view_request_compose_persists_adapted_shape() {
                     match_kind: mother_crate::view_buffer::ShapeMatchKind::Similar,
                     confidence: mother_crate::view_buffer::SHAPE_MATCH_CONFIDENCE_THRESHOLD,
                 }),
+                proposed_initial_shape: None,
             },
         )
         .expect("compose should adapt similar shape");
@@ -524,6 +525,82 @@ fn daemon_view_request_compose_persists_adapted_shape() {
             .unwrap()
             .expect("adapted shape should persist through daemon");
         assert_eq!(persisted_shape.shape_id, adapted_shape.shape_id);
+        assert_eq!(
+            persisted_shape.maturity,
+            mother_crate::view_buffer::ViewShapeMaturity::Exploratory
+        );
+    });
+}
+
+#[test]
+fn daemon_view_request_compose_persists_created_initial_shape() {
+    // obligation: spec.mother-view-initial-shape-creation.mvisc4-persistence
+    // obligation: spec.mother-view-initial-shape-creation.mvisc5-compose-integration
+    with_temp_project(|project_root| {
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry: ChildRegistry::new(),
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let composed = <ServerState as mother_crate::http_api::ApiRuntime>::view_request_compose(
+            &state,
+            mother_crate::view_buffer::ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show runtime summary".to_string(),
+                proposed_match: Some(mother_crate::view_buffer::ProposedShapeMatch {
+                    shape_id: None,
+                    match_kind: mother_crate::view_buffer::ShapeMatchKind::None,
+                    confidence: 0.0,
+                }),
+                proposed_initial_shape: Some(mother_crate::view_buffer::ProposedInitialShape {
+                    title: "Mother Runtime Summary".to_string(),
+                    major_mode: mother_crate::view_buffer::MajorMode::Table,
+                    minor_modes: vec![mother_crate::view_buffer::MinorMode::Pinned],
+                    requirements: vec![mother_crate::view_buffer::ViewRequirement {
+                        fact_path: "mother.status.version".to_string(),
+                        required: true,
+                        purpose: "display Mother version".to_string(),
+                    }],
+                    vision_id: None,
+                    project_uid: None,
+                }),
+            },
+        )
+        .expect("compose should create initial shape");
+
+        let created_shape = composed
+            .created_shape
+            .expect("daemon compose should return created shape");
+        assert_eq!(
+            composed.request.outcome,
+            mother_crate::view_buffer::DisplayRequestOutcome::Unable
+        );
+        assert!(composed.open_outcome.is_none());
+        assert_eq!(runtime_store.list_view_buffers().unwrap().len(), 0);
+        assert_eq!(
+            runtime_store
+                .get_view_shape_match(&composed.request.request_id)
+                .unwrap()
+                .expect("shape match should persist")
+                .match_kind,
+            mother_crate::view_buffer::ShapeMatchKind::None
+        );
+        let persisted_shape = runtime_store
+            .get_view_shape(&created_shape.shape_id)
+            .unwrap()
+            .expect("created shape should persist through daemon");
+        assert_eq!(persisted_shape.shape_id, created_shape.shape_id);
+        assert_eq!(persisted_shape.title, "Mother Runtime Summary");
         assert_eq!(
             persisted_shape.maturity,
             mother_crate::view_buffer::ViewShapeMaturity::Exploratory

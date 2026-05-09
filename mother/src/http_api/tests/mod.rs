@@ -495,6 +495,7 @@ fn view_request_compose_handler_returns_request_outcome() {
                 match_kind: crate::view_buffer::ShapeMatchKind::ExplicitUserChoice,
                 confidence: 1.0,
             }),
+            proposed_initial_shape: None,
         })
         .unwrap(),
     };
@@ -528,6 +529,7 @@ fn view_request_compose_handler_returns_shape_adaptation() {
                 match_kind: crate::view_buffer::ShapeMatchKind::Similar,
                 confidence: crate::view_buffer::SHAPE_MATCH_CONFIDENCE_THRESHOLD,
             }),
+            proposed_initial_shape: None,
         })
         .unwrap(),
     };
@@ -559,6 +561,71 @@ fn view_request_compose_handler_returns_shape_adaptation() {
         .and_then(|shape| shape.get("shape_id"))
         .and_then(|value| value.as_str())
         .is_some_and(|shape_id| shape_id.starts_with("mother.status.default::adapted::")));
+    assert!(payload
+        .get("open_outcome")
+        .is_some_and(|value| value.is_null()));
+}
+
+#[test]
+fn view_request_compose_handler_returns_initial_shape_creation() {
+    // obligation: spec.mother-view-initial-shape-creation.mvisc5-compose-integration
+    // obligation: rule-success.CreateInitialShapeWhenNoShapeMatches
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-requests/compose".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::ComposeViewRequest {
+            user_id: "local-user".to_string(),
+            agent_id: "pi".to_string(),
+            raw_request: "show runtime summary".to_string(),
+            proposed_match: Some(crate::view_buffer::ProposedShapeMatch {
+                shape_id: None,
+                match_kind: crate::view_buffer::ShapeMatchKind::None,
+                confidence: 0.0,
+            }),
+            proposed_initial_shape: Some(crate::view_buffer::ProposedInitialShape {
+                title: "Mother Runtime Summary".to_string(),
+                major_mode: crate::view_buffer::MajorMode::Table,
+                minor_modes: vec![crate::view_buffer::MinorMode::Pinned],
+                requirements: vec![crate::view_buffer::ViewRequirement {
+                    fact_path: "mother.status.version".to_string(),
+                    required: true,
+                    purpose: "display Mother version".to_string(),
+                }],
+                vision_id: None,
+                project_uid: None,
+            }),
+        })
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_compose_view_request(&request, &StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload
+            .get("request")
+            .and_then(|request| request.get("outcome"))
+            .and_then(|value| value.as_str()),
+        Some("unable")
+    );
+    assert!(payload
+        .get("shape_creation")
+        .and_then(|creation| creation.get("created_shape_id"))
+        .and_then(|value| value.as_str())
+        .is_some_and(|shape_id| shape_id.starts_with("initial::req_")));
+    assert!(payload
+        .get("shape_creation")
+        .and_then(|creation| creation.get("opens_buffer"))
+        .and_then(|value| value.as_bool())
+        .is_some_and(|opens| !opens));
+    assert_eq!(
+        payload
+            .get("created_shape")
+            .and_then(|shape| shape.get("title"))
+            .and_then(|value| value.as_str()),
+        Some("Mother Runtime Summary")
+    );
     assert!(payload
         .get("open_outcome")
         .is_some_and(|value| value.is_null()));

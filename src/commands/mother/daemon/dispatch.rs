@@ -719,6 +719,9 @@ impl ApiRuntime for ServerState {
         if let Some(adapted_shape) = &composed.adapted_shape {
             self.runtime_store.upsert_view_shape(adapted_shape)?;
         }
+        if let Some(created_shape) = &composed.created_shape {
+            self.runtime_store.upsert_view_shape(created_shape)?;
+        }
         if let Some(open_outcome) = &composed.open_outcome {
             match open_outcome {
                 mother_crate::view_buffer::OpenBufferOutcome::Opened(opened) => {
