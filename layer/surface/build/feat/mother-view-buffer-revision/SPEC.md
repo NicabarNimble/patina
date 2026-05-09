@@ -22,28 +22,28 @@ exit_criteria:
   checked: true
 - id: mvbr1-revision-model
   text: Mother has structured revision request/result data for user corrections, including previous shape, revised shape, optional previous/replacement buffer ids, scope, origin, state, reason, and timestamps.
-  checked: false
+  checked: true
 - id: mvbr2-catalog-guardrails
   text: Revised shapes that change requirements are validated against the Mother data catalog and fail closed for blank, uncatalogued, or unavailable required facts.
-  checked: false
+  checked: true
 - id: mvbr3-shape-history
   text: Applying a revision creates a new active ViewShape version and marks the previous shape inactive with replaced_by pointing at the revised shape.
-  checked: false
+  checked: true
 - id: mvbr4-buffer-replacement
   text: When a live/stale/blocked previous buffer is provided, Mother opens the revised shape and marks the previous buffer replaced with replacement linkage only after the replacement opens.
-  checked: false
+  checked: true
 - id: mvbr5-persistence
   text: Shape revisions, previous/revised shape records, replaced buffers, replacement buffers, and observability gaps persist through the Mother store/daemon path.
-  checked: false
+  checked: true
 - id: mvbr6-api
   text: HTTP callers can apply a structured view-shape revision and inspect persisted revisions without owning buffer or shape state.
-  checked: false
+  checked: true
 - id: mvbr7-fail-closed-guardrails
   text: Unknown shapes, inactive shapes, empty reasons, no-op changes, unlinked/non-connectable buffers, and missing required facts do not replace buffers or invent data.
-  checked: false
+  checked: true
 - id: mvbr8-tests-and-trace
   text: Deterministic tests cover successful shape revision, buffer replacement, persistence, API response shape, fail-closed behavior, and Allium/spec obligation comments.
-  checked: false
+  checked: true
 ---
 # feat: Mother View Buffer Revision
 
@@ -175,14 +175,14 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 ## Exit Criteria
 
 - [x] `mvbr0-allium-code-alignment`
-- [ ] `mvbr1-revision-model`
-- [ ] `mvbr2-catalog-guardrails`
-- [ ] `mvbr3-shape-history`
-- [ ] `mvbr4-buffer-replacement`
-- [ ] `mvbr5-persistence`
-- [ ] `mvbr6-api`
-- [ ] `mvbr7-fail-closed-guardrails`
-- [ ] `mvbr8-tests-and-trace`
+- [x] `mvbr1-revision-model`
+- [x] `mvbr2-catalog-guardrails`
+- [x] `mvbr3-shape-history`
+- [x] `mvbr4-buffer-replacement`
+- [x] `mvbr5-persistence`
+- [x] `mvbr6-api`
+- [x] `mvbr7-fail-closed-guardrails`
+- [x] `mvbr8-tests-and-trace`
 
 ## Build Readiness
 

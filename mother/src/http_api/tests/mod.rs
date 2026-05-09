@@ -269,6 +269,37 @@ impl ApiRuntime for StubRuntime {
         Ok(shape_id == crate::view_buffer::MOTHER_STATUS_SHAPE_ID)
     }
 
+    fn view_shape_revisions_list(&self) -> Result<Vec<crate::view_buffer::ViewShapeRevision>> {
+        Ok(vec![])
+    }
+
+    fn view_shape_revision_get(
+        &self,
+        _revision_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewShapeRevision>> {
+        Ok(None)
+    }
+
+    fn view_shape_revise(
+        &self,
+        request: crate::view_buffer::ReviseViewShapeRequest,
+    ) -> Result<crate::view_buffer::RevisedViewShapeOutcome> {
+        let catalog =
+            crate::view_buffer::DataCatalog::mother_status(crate::view_buffer::MotherStatusFacts {
+                version: ApiRuntime::version(self),
+                uptime_secs: ApiRuntime::uptime_secs(self),
+                control_plane_ready: true,
+                registered_projects: 2,
+                children_ready_count: 1,
+                children_total: 2,
+                startup_profile: "full".to_string(),
+                memory_pressure: "ok".to_string(),
+                observed_at: chrono::Utc::now(),
+            });
+        let mut service = crate::view_buffer::ViewBufferService::with_catalog(catalog);
+        service.revise_view_shape(request)
+    }
+
     fn view_requests_list(&self) -> Result<Vec<crate::view_buffer::DisplayRequest>> {
         Ok(vec![crate::view_buffer::DisplayRequest::pending(
             "req_1".to_string(),
@@ -787,6 +818,80 @@ fn view_request_compose_handler_rejects_blank_requests() {
 
     let response = view_buffer::handle_compose_view_request(&request, &StubRuntime);
     assert_eq!(response.status, 400);
+}
+
+#[test]
+fn view_buffer_revision_handler_returns_revised_shape() {
+    // obligation: spec.mother-view-buffer-revision.mvbr6-api
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-shapes/revise".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::ReviseViewShapeRequest {
+            user_id: "local-user".to_string(),
+            agent_id: "pi".to_string(),
+            shape_id: crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string(),
+            previous_buffer_id: None,
+            revision_scope: crate::view_buffer::ViewShapeScope::MotherUser,
+            reason: "show readiness first".to_string(),
+            title: Some("Mother Readiness".to_string()),
+            major_mode: None,
+            minor_modes: Some(vec![crate::view_buffer::MinorMode::Pinned]),
+            requirements: None,
+        })
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_revise_view_shape(&request, &StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload
+            .get("revised_shape")
+            .and_then(|shape| shape.get("title"))
+            .and_then(|value| value.as_str()),
+        Some("Mother Readiness")
+    );
+    assert_eq!(
+        payload
+            .get("previous_shape")
+            .and_then(|shape| shape.get("active"))
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+}
+
+#[test]
+fn view_buffer_revision_handler_rejects_invalid_revision() {
+    // obligation: spec.mother-view-buffer-revision.mvbr7-fail-closed-guardrails
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-shapes/revise".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&serde_json::json!({
+            "user_id": "local-user",
+            "agent_id": "pi",
+            "shape_id": crate::view_buffer::MOTHER_STATUS_SHAPE_ID,
+            "revision_scope": "mother-user",
+            "reason": " "
+        }))
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_revise_view_shape(&request, &StubRuntime);
+    assert_eq!(response.status, 400);
+}
+
+#[test]
+fn view_shape_revision_list_handler_returns_revisions() {
+    // obligation: spec.mother-view-buffer-revision.mvbr6-api
+    let response = view_buffer::handle_list_view_shape_revisions(&StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert!(payload
+        .get("revisions")
+        .and_then(|revisions| revisions.as_array())
+        .is_some());
 }
 
 #[test]

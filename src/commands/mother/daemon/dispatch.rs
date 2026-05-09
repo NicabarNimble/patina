@@ -725,6 +725,70 @@ impl ApiRuntime for ServerState {
         self.runtime_store.deactivate_view_shape(shape_id)
     }
 
+    fn view_shape_revisions_list(
+        &self,
+    ) -> anyhow::Result<Vec<mother_crate::view_buffer::ViewShapeRevision>> {
+        self.runtime_store.list_view_shape_revisions()
+    }
+
+    fn view_shape_revision_get(
+        &self,
+        revision_id: &str,
+    ) -> anyhow::Result<Option<mother_crate::view_buffer::ViewShapeRevision>> {
+        self.runtime_store.get_view_shape_revision(revision_id)
+    }
+
+    fn view_shape_revise(
+        &self,
+        request: mother_crate::view_buffer::ReviseViewShapeRequest,
+    ) -> anyhow::Result<mother_crate::view_buffer::RevisedViewShapeOutcome> {
+        // obligation: spec.mother-view-buffer-revision.mvbr5-persistence
+        // obligation: spec.mother-view-buffer-revision.mvbr6-api
+        self.ensure_builtin_view_shapes()?;
+        let details = self.health_details()?;
+        let catalog = mother_crate::view_buffer::DataCatalog::mother_status(
+            mother_crate::view_buffer::MotherStatusFacts {
+                version: self.version(),
+                uptime_secs: self.uptime_secs(),
+                control_plane_ready: details.control_plane_ready,
+                registered_projects: details.registered_projects,
+                children_ready_count: details.children_ready_count,
+                children_total: details.children_total,
+                startup_profile: details.startup_profile,
+                memory_pressure: details.memory.pressure,
+                observed_at: Utc::now(),
+            },
+        );
+        let shapes = self.runtime_store.list_view_shapes()?;
+        let buffers = self.runtime_store.list_view_buffers()?;
+        let mut service =
+            mother_crate::view_buffer::ViewBufferService::with_catalog_shapes_and_buffers(
+                catalog, shapes, buffers,
+            );
+        let outcome = service.revise_view_shape(request)?;
+
+        self.runtime_store
+            .upsert_view_shape(&outcome.previous_shape)?;
+        self.runtime_store
+            .upsert_view_shape(&outcome.revised_shape)?;
+        self.runtime_store
+            .save_view_shape_revision(&outcome.revision)?;
+        if let Some(replaced_buffer) = &outcome.replaced_buffer {
+            self.runtime_store.save_view_buffer(replaced_buffer)?;
+        }
+        if let Some(open_outcome) = &outcome.replacement_open_outcome {
+            match open_outcome {
+                mother_crate::view_buffer::OpenBufferOutcome::Opened(opened) => {
+                    self.runtime_store.save_view_buffer(&opened.buffer)?;
+                }
+                mother_crate::view_buffer::OpenBufferOutcome::ObservabilityGap(gap) => {
+                    self.runtime_store.save_view_observability_gap(gap)?;
+                }
+            }
+        }
+        Ok(outcome)
+    }
+
     fn view_requests_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::DisplayRequest>> {
         self.runtime_store.list_view_display_requests()
     }

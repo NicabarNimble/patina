@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use super::*;
 use crate::view_buffer::{
     ComposeViewRequest, ConnectWindowRequest, DisconnectWindowRequest, KillBufferRequest,
-    OpenBufferOutcome, OpenBufferRequest, OpenRequestShapeRequest, ViewShape,
+    OpenBufferOutcome, OpenBufferRequest, OpenRequestShapeRequest, ReviseViewShapeRequest,
+    ViewShape,
 };
 
 #[derive(Serialize)]
@@ -16,6 +17,16 @@ struct ShapesResponse<T> {
 #[derive(Serialize)]
 struct ShapeResponse<T> {
     shape: T,
+}
+
+#[derive(Serialize)]
+struct ShapeRevisionsResponse<T> {
+    revisions: T,
+}
+
+#[derive(Serialize)]
+struct ShapeRevisionResponse<T> {
+    revision: T,
 }
 
 #[derive(Serialize)]
@@ -119,6 +130,55 @@ pub fn handle_deactivate_view_shape(
             &format!("unknown view shape '{}'", deactivate_request.shape_id),
         ),
         Err(error) => json_error(500, &format!("deactivate view shape failed: {}", error)),
+    }
+}
+
+pub fn handle_list_view_shape_revisions(runtime: &(impl ViewBufferApi + ?Sized)) -> HttpResponse {
+    match runtime.view_shape_revisions_list() {
+        Ok(revisions) => HttpResponse::json(200, &ShapeRevisionsResponse { revisions }),
+        Err(error) => json_error(500, &format!("list view shape revisions failed: {}", error)),
+    }
+}
+
+pub fn handle_get_view_shape_revision(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(revision_id) = request.path.strip_prefix("/api/view-shape-revisions/") else {
+        return json_error(400, "missing view shape revision id");
+    };
+    if revision_id.trim().is_empty() {
+        return json_error(400, "missing view shape revision id");
+    }
+
+    match runtime.view_shape_revision_get(revision_id) {
+        Ok(Some(revision)) => HttpResponse::json(200, &ShapeRevisionResponse { revision }),
+        Ok(None) => json_error(
+            404,
+            &format!("unknown view shape revision '{}'", revision_id),
+        ),
+        Err(error) => json_error(500, &format!("get view shape revision failed: {}", error)),
+    }
+}
+
+pub fn handle_revise_view_shape(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    // obligation: spec.mother-view-buffer-revision.mvbr6-api
+    let Some(revise_request) = parse_json::<ReviseViewShapeRequest>(request) else {
+        return json_error(400, "Invalid JSON");
+    };
+    if revise_request.shape_id.trim().is_empty() {
+        return json_error(400, "missing view shape id");
+    }
+    if revise_request.reason.trim().is_empty() {
+        return json_error(400, "missing view shape revision reason");
+    }
+
+    match runtime.view_shape_revise(revise_request) {
+        Ok(outcome) => HttpResponse::json(200, &outcome),
+        Err(error) => json_error(400, &format!("revise view shape failed: {}", error)),
     }
 }
 

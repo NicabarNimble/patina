@@ -9,7 +9,8 @@ use super::{
     Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind,
     FramedJsonPayload, MajorMode, MinorMode, ObservabilityGap, PayloadContract, ShapeMatch,
     ShapeMatchKind, ViewRequestDetail, ViewRequirement, ViewShape, ViewShapeAdaptation,
-    ViewShapeCreation, ViewShapeMaturity, ViewShapeScope, Window, WindowConnectionState,
+    ViewShapeCreation, ViewShapeMaturity, ViewShapeRevision, ViewShapeRevisionOrigin,
+    ViewShapeRevisionState, ViewShapeScope, Window, WindowConnectionState,
 };
 use crate::view_buffer::catalog::{DataCatalog, MOTHER_STATUS_SHAPE_ID, MOTHER_STATUS_SOURCE_ID};
 
@@ -115,6 +116,37 @@ pub struct OpenRequestShapeOutcome {
     pub open_outcome: OpenBufferOutcome,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviseViewShapeRequest {
+    pub user_id: String,
+    pub agent_id: String,
+    pub shape_id: String,
+    #[serde(default)]
+    pub previous_buffer_id: Option<String>,
+    pub revision_scope: ViewShapeScope,
+    pub reason: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub major_mode: Option<MajorMode>,
+    #[serde(default)]
+    pub minor_modes: Option<Vec<MinorMode>>,
+    #[serde(default)]
+    pub requirements: Option<Vec<ViewRequirement>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RevisedViewShapeOutcome {
+    pub revision: ViewShapeRevision,
+    pub previous_shape: ViewShape,
+    pub revised_shape: ViewShape,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replaced_buffer: Option<Buffer>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replacement_open_outcome: Option<OpenBufferOutcome>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ViewBufferService {
     catalog: DataCatalog,
@@ -134,13 +166,24 @@ impl ViewBufferService {
         catalog: DataCatalog,
         shapes: impl IntoIterator<Item = ViewShape>,
     ) -> Self {
+        Self::with_catalog_shapes_and_buffers(catalog, shapes, Vec::new())
+    }
+
+    pub fn with_catalog_shapes_and_buffers(
+        catalog: DataCatalog,
+        shapes: impl IntoIterator<Item = ViewShape>,
+        buffers: impl IntoIterator<Item = Buffer>,
+    ) -> Self {
         Self {
             catalog,
             shapes: shapes
                 .into_iter()
                 .map(|shape| (shape.shape_id.clone(), shape))
                 .collect(),
-            buffers: BTreeMap::new(),
+            buffers: buffers
+                .into_iter()
+                .map(|buffer| (buffer.buffer_id.clone(), buffer))
+                .collect(),
             frames: BTreeMap::new(),
             windows: BTreeMap::new(),
             gaps: BTreeMap::new(),
@@ -471,6 +514,188 @@ impl ViewBufferService {
         Ok(())
     }
 
+    pub fn revise_view_shape(
+        &mut self,
+        request: ReviseViewShapeRequest,
+    ) -> Result<RevisedViewShapeOutcome> {
+        // obligation: spec.mother-view-buffer-revision.mvbr1-revision-model
+        // obligation: spec.mother-view-buffer-revision.mvbr2-catalog-guardrails
+        // obligation: spec.mother-view-buffer-revision.mvbr3-shape-history
+        // obligation: rule-success.ReplaceBufferWhenUserRevisesViewShape
+        if request.shape_id.trim().is_empty() {
+            return Err(anyhow!("view shape id must not be empty"));
+        }
+        if request.reason.trim().is_empty() {
+            return Err(anyhow!("view shape revision reason must not be empty"));
+        }
+
+        let mut previous_shape = self
+            .shapes
+            .get(&request.shape_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("unknown view shape '{}'", request.shape_id))?;
+        if !previous_shape.active {
+            return Err(anyhow!("inactive view shape '{}'", request.shape_id));
+        }
+
+        let revised_requirements = match request.requirements.clone() {
+            Some(requirements) => {
+                self.validate_revision_requirements(&requirements)?;
+                requirements
+            }
+            None => previous_shape.requirements.clone(),
+        };
+        let revised_title = match request.title.as_deref() {
+            Some(title) if title.trim().is_empty() => {
+                return Err(anyhow!("view shape revision title must not be empty"));
+            }
+            Some(title) => title.trim().to_string(),
+            None => previous_shape.title.clone(),
+        };
+        let revised_major_mode = request
+            .major_mode
+            .clone()
+            .unwrap_or_else(|| previous_shape.major_mode.clone());
+        let revised_minor_modes = request
+            .minor_modes
+            .clone()
+            .unwrap_or_else(|| previous_shape.minor_modes.clone());
+        if revised_title == previous_shape.title
+            && revised_major_mode == previous_shape.major_mode
+            && revised_minor_modes == previous_shape.minor_modes
+            && revised_requirements == previous_shape.requirements
+        {
+            return Err(anyhow!("view shape revision must change shape metadata"));
+        }
+
+        let revised_shape_id = self.next_revised_shape_id(&previous_shape);
+        let revised_shape = ViewShape {
+            shape_id: revised_shape_id.clone(),
+            title: revised_title,
+            source_ref: previous_shape.source_ref.clone(),
+            scope: request.revision_scope.clone(),
+            version: previous_shape.version + 1,
+            active: true,
+            major_mode: revised_major_mode,
+            minor_modes: revised_minor_modes,
+            maturity: ViewShapeMaturity::Exploratory,
+            payload_contract: previous_shape.payload_contract.clone(),
+            payload_version: previous_shape.payload_version,
+            vision_id: previous_shape.vision_id.clone(),
+            project_uid: previous_shape.project_uid.clone(),
+            replaced_by: None,
+            requirements: revised_requirements,
+        };
+
+        previous_shape.active = false;
+        previous_shape.replaced_by = Some(revised_shape_id.clone());
+        self.shapes
+            .insert(previous_shape.shape_id.clone(), previous_shape.clone());
+        self.shapes
+            .insert(revised_shape.shape_id.clone(), revised_shape.clone());
+
+        let mut revision = ViewShapeRevision {
+            revision_id: format!(
+                "{}::revision::{}",
+                previous_shape.shape_id,
+                uuid::Uuid::new_v4().simple()
+            ),
+            user_id: request.user_id,
+            agent_id: request.agent_id,
+            previous_shape_id: previous_shape.shape_id.clone(),
+            revised_shape_id: revised_shape.shape_id.clone(),
+            previous_buffer_id: request.previous_buffer_id.clone(),
+            replacement_buffer_id: None,
+            revision_scope: request.revision_scope,
+            revision_origin: ViewShapeRevisionOrigin::UserCorrection,
+            revision_state: ViewShapeRevisionState::Applied,
+            reason: request.reason.trim().to_string(),
+            created_at: Utc::now(),
+        };
+
+        let mut replaced_buffer = None;
+        let mut replacement_open_outcome = None;
+        if let Some(previous_buffer_id) = request.previous_buffer_id {
+            let previous_buffer = self
+                .buffers
+                .get(&previous_buffer_id)
+                .cloned()
+                .ok_or_else(|| anyhow!("unknown view buffer '{}'", previous_buffer_id))?;
+            if previous_buffer.shape_id != previous_shape.shape_id {
+                return Err(anyhow!(
+                    "view buffer '{}' is not linked to shape '{}'",
+                    previous_buffer.buffer_id,
+                    previous_shape.shape_id
+                ));
+            }
+            if !previous_buffer.state.is_connectable() {
+                return Err(anyhow!(
+                    "view buffer '{}' is not replaceable in state {:?}",
+                    previous_buffer.buffer_id,
+                    previous_buffer.state
+                ));
+            }
+            let open_outcome = self.open_buffer(OpenBufferRequest {
+                shape_id: revised_shape.shape_id.clone(),
+            })?;
+            if let OpenBufferOutcome::Opened(opened) = &open_outcome {
+                let mut replaced = previous_buffer;
+                replaced.state = BufferState::Replaced;
+                replaced.replaced_at = Some(Utc::now());
+                replaced.replacement_buffer_id = Some(opened.buffer.buffer_id.clone());
+                revision.replacement_buffer_id = Some(opened.buffer.buffer_id.clone());
+                self.buffers
+                    .insert(replaced.buffer_id.clone(), replaced.clone());
+                replaced_buffer = Some(replaced);
+            }
+            replacement_open_outcome = Some(open_outcome);
+        }
+
+        Ok(RevisedViewShapeOutcome {
+            revision,
+            previous_shape,
+            revised_shape,
+            replaced_buffer,
+            replacement_open_outcome,
+        })
+    }
+
+    fn validate_revision_requirements(&self, requirements: &[ViewRequirement]) -> Result<()> {
+        let required_requirements: Vec<&ViewRequirement> = requirements
+            .iter()
+            .filter(|requirement| requirement.required)
+            .collect();
+        if required_requirements.is_empty() {
+            return Err(anyhow!(
+                "view shape revision requires at least one required fact"
+            ));
+        }
+        for requirement in required_requirements {
+            if requirement.fact_path.trim().is_empty() {
+                return Err(anyhow!("view shape revision has blank fact_path"));
+            }
+            if requirement.purpose.trim().is_empty() {
+                return Err(anyhow!(
+                    "view shape revision requirement '{}' has blank purpose",
+                    requirement.fact_path
+                ));
+            }
+            if self.catalog.fact(&requirement.fact_path).is_none() {
+                return Err(anyhow!(
+                    "view shape revision references uncatalogued fact '{}'",
+                    requirement.fact_path
+                ));
+            }
+            if !self.catalog.observed_required_fact(requirement) {
+                return Err(anyhow!(
+                    "view shape revision required fact '{}' is not observed from an available source",
+                    requirement.fact_path
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn open_request_shape(
         &mut self,
         detail: &ViewRequestDetail,
@@ -641,6 +866,14 @@ impl ViewBufferService {
         format!(
             "buf_{}_{}",
             sanitize_id(&shape.shape_id),
+            uuid::Uuid::new_v4().simple()
+        )
+    }
+
+    fn next_revised_shape_id(&self, previous: &ViewShape) -> String {
+        format!(
+            "{}::revision::{}",
+            previous.shape_id,
             uuid::Uuid::new_v4().simple()
         )
     }
@@ -1292,6 +1525,121 @@ mod tests {
             MOTHER_STATUS_SHAPE_ID
         );
         assert!(composed.open_outcome.is_none());
+    }
+
+    #[test]
+    fn view_buffer_revision_creates_revised_shape_and_replaces_buffer() {
+        // obligation: spec.mother-view-buffer-revision.mvbr3-shape-history
+        // obligation: spec.mother-view-buffer-revision.mvbr4-buffer-replacement
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+        let opened = service
+            .open_buffer(OpenBufferRequest {
+                shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
+            })
+            .expect("open should evaluate");
+        let OpenBufferOutcome::Opened(opened) = opened else {
+            panic!("expected opened buffer");
+        };
+
+        let outcome = service
+            .revise_view_shape(ReviseViewShapeRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
+                previous_buffer_id: Some(opened.buffer.buffer_id.clone()),
+                revision_scope: ViewShapeScope::MotherUser,
+                reason: "show readiness first".to_string(),
+                title: Some("Mother Readiness".to_string()),
+                major_mode: None,
+                minor_modes: Some(vec![MinorMode::Pinned, MinorMode::Sorted]),
+                requirements: None,
+            })
+            .expect("revision should apply");
+
+        assert_eq!(outcome.previous_shape.active, false);
+        assert_eq!(
+            outcome.previous_shape.replaced_by.as_deref(),
+            Some(outcome.revised_shape.shape_id.as_str())
+        );
+        assert_eq!(outcome.revised_shape.title, "Mother Readiness");
+        assert_eq!(outcome.revised_shape.version, 2);
+        let replaced = outcome
+            .replaced_buffer
+            .as_ref()
+            .expect("previous buffer should be replaced");
+        assert_eq!(replaced.state, BufferState::Replaced);
+        assert!(replaced.replacement_buffer_id.is_some());
+        assert!(matches!(
+            outcome.replacement_open_outcome,
+            Some(OpenBufferOutcome::Opened(_))
+        ));
+        assert_eq!(service.list_buffers().len(), 2);
+    }
+
+    #[test]
+    fn view_buffer_revision_fails_closed_for_invalid_changes() {
+        // obligation: spec.mother-view-buffer-revision.mvbr2-catalog-guardrails
+        // obligation: spec.mother-view-buffer-revision.mvbr7-fail-closed-guardrails
+        let cases = [
+            (
+                ReviseViewShapeRequest {
+                    user_id: "local-user".to_string(),
+                    agent_id: "pi".to_string(),
+                    shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
+                    previous_buffer_id: None,
+                    revision_scope: ViewShapeScope::MotherUser,
+                    reason: " ".to_string(),
+                    title: Some("Mother Readiness".to_string()),
+                    major_mode: None,
+                    minor_modes: None,
+                    requirements: None,
+                },
+                "reason must not be empty",
+            ),
+            (
+                ReviseViewShapeRequest {
+                    user_id: "local-user".to_string(),
+                    agent_id: "pi".to_string(),
+                    shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
+                    previous_buffer_id: None,
+                    revision_scope: ViewShapeScope::MotherUser,
+                    reason: "no-op".to_string(),
+                    title: None,
+                    major_mode: None,
+                    minor_modes: None,
+                    requirements: None,
+                },
+                "must change shape metadata",
+            ),
+            (
+                ReviseViewShapeRequest {
+                    user_id: "local-user".to_string(),
+                    agent_id: "pi".to_string(),
+                    shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
+                    previous_buffer_id: None,
+                    revision_scope: ViewShapeScope::MotherUser,
+                    reason: "unknown fact".to_string(),
+                    title: Some("Mother Readiness".to_string()),
+                    major_mode: None,
+                    minor_modes: None,
+                    requirements: Some(vec![required("missing.fact", "display missing fact")]),
+                },
+                "uncatalogued fact",
+            ),
+        ];
+
+        for (request, expected) in cases {
+            let mut service = ViewBufferService::with_catalog(status_catalog());
+            let error = service.revise_view_shape(request).unwrap_err();
+            assert!(error.to_string().contains(expected), "got: {error}");
+            let shape = service
+                .list_shapes()
+                .into_iter()
+                .find(|shape| shape.shape_id == MOTHER_STATUS_SHAPE_ID)
+                .expect("shape should remain");
+            assert!(shape.active);
+            assert!(shape.replaced_by.is_none());
+        }
     }
 
     #[test]

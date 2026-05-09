@@ -112,6 +112,15 @@ pub trait ApiRuntime {
         shape: crate::view_buffer::ViewShape,
     ) -> Result<crate::view_buffer::ViewShape>;
     fn view_shape_deactivate(&self, shape_id: &str) -> Result<bool>;
+    fn view_shape_revisions_list(&self) -> Result<Vec<crate::view_buffer::ViewShapeRevision>>;
+    fn view_shape_revision_get(
+        &self,
+        revision_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewShapeRevision>>;
+    fn view_shape_revise(
+        &self,
+        request: crate::view_buffer::ReviseViewShapeRequest,
+    ) -> Result<crate::view_buffer::RevisedViewShapeOutcome>;
     fn view_requests_list(&self) -> Result<Vec<crate::view_buffer::DisplayRequest>>;
     fn view_request_get(
         &self,
@@ -355,6 +364,15 @@ pub trait ViewBufferApi {
         shape: crate::view_buffer::ViewShape,
     ) -> Result<crate::view_buffer::ViewShape>;
     fn view_shape_deactivate(&self, shape_id: &str) -> Result<bool>;
+    fn view_shape_revisions_list(&self) -> Result<Vec<crate::view_buffer::ViewShapeRevision>>;
+    fn view_shape_revision_get(
+        &self,
+        revision_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewShapeRevision>>;
+    fn view_shape_revise(
+        &self,
+        request: crate::view_buffer::ReviseViewShapeRequest,
+    ) -> Result<crate::view_buffer::RevisedViewShapeOutcome>;
     fn view_requests_list(&self) -> Result<Vec<crate::view_buffer::DisplayRequest>>;
     fn view_request_get(
         &self,
@@ -412,6 +430,24 @@ impl<T: ApiRuntime + ?Sized> ViewBufferApi for T {
 
     fn view_shape_deactivate(&self, shape_id: &str) -> Result<bool> {
         ApiRuntime::view_shape_deactivate(self, shape_id)
+    }
+
+    fn view_shape_revisions_list(&self) -> Result<Vec<crate::view_buffer::ViewShapeRevision>> {
+        ApiRuntime::view_shape_revisions_list(self)
+    }
+
+    fn view_shape_revision_get(
+        &self,
+        revision_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewShapeRevision>> {
+        ApiRuntime::view_shape_revision_get(self, revision_id)
+    }
+
+    fn view_shape_revise(
+        &self,
+        request: crate::view_buffer::ReviseViewShapeRequest,
+    ) -> Result<crate::view_buffer::RevisedViewShapeOutcome> {
+        ApiRuntime::view_shape_revise(self, request)
     }
 
     fn view_requests_list(&self) -> Result<Vec<crate::view_buffer::DisplayRequest>> {
@@ -640,6 +676,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let view_shape_get_runtime = Arc::clone(&runtime);
     let view_shape_upsert_runtime = Arc::clone(&runtime);
     let view_shape_deactivate_runtime = Arc::clone(&runtime);
+    let view_shape_revisions_list_runtime = Arc::clone(&runtime);
+    let view_shape_revision_get_runtime = Arc::clone(&runtime);
+    let view_shape_revise_runtime = Arc::clone(&runtime);
     let view_requests_list_runtime = Arc::clone(&runtime);
     let view_request_get_runtime = Arc::clone(&runtime);
     let view_request_details_list_runtime = Arc::clone(&runtime);
@@ -717,6 +756,15 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         }),
         post_view_shape_deactivate: Arc::new(move |request| {
             view_buffer::handle_deactivate_view_shape(request, &*view_shape_deactivate_runtime)
+        }),
+        get_view_shape_revisions: Arc::new(move |_request| {
+            view_buffer::handle_list_view_shape_revisions(&*view_shape_revisions_list_runtime)
+        }),
+        get_view_shape_revision: Arc::new(move |request| {
+            view_buffer::handle_get_view_shape_revision(request, &*view_shape_revision_get_runtime)
+        }),
+        post_view_shape_revise: Arc::new(move |request| {
+            view_buffer::handle_revise_view_shape(request, &*view_shape_revise_runtime)
         }),
         get_view_requests: Arc::new(move |_request| {
             view_buffer::handle_list_view_requests(&*view_requests_list_runtime)

@@ -17,12 +17,14 @@ pub use model::{
     ObservabilityGapStatus, ObservationState, PayloadContract, ShapeMatch, ShapeMatchKind,
     SourceAvailability, ViewRequestAction, ViewRequestActionKind, ViewRequestDetail,
     ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeCreation, ViewShapeMaturity,
-    ViewShapeScope, Window, WindowConnectionState,
+    ViewShapeRevision, ViewShapeRevisionOrigin, ViewShapeRevisionState, ViewShapeScope, Window,
+    WindowConnectionState,
 };
 pub use payload::{FramedJsonPayload, PayloadFrame};
 pub use service::{
     mother_status_shape, ComposeViewRequest, ComposedViewRequest, ConnectWindowRequest,
     DisconnectWindowRequest, KillBufferRequest, OpenBufferOutcome, OpenBufferRequest,
     OpenRequestShapeOutcome, OpenRequestShapeRequest, OpenedBuffer, ProposedInitialShape,
-    ProposedShapeMatch, ViewBufferService, SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+    ProposedShapeMatch, ReviseViewShapeRequest, RevisedViewShapeOutcome, ViewBufferService,
+    SHAPE_MATCH_CONFIDENCE_THRESHOLD,
 };

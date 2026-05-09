@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::{
     view_buffer::{
         self, Buffer, DisplayRequest, DisplayRequestOutcome, Frame, ObservabilityGap, ShapeMatch,
-        ViewShape, ViewShapeAdaptation, ViewShapeCreation, Window,
+        ViewShape, ViewShapeAdaptation, ViewShapeCreation, ViewShapeRevision, Window,
     },
     TaskIntent, TaskIntentKind,
 };
@@ -1884,6 +1884,21 @@ impl MotherRuntimeStore {
         view_buffer::store::get_shape_creation(&conn, request_id)
     }
 
+    pub fn save_view_shape_revision(&self, revision: &ViewShapeRevision) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_shape_revision(&conn, revision)
+    }
+
+    pub fn get_view_shape_revision(&self, revision_id: &str) -> Result<Option<ViewShapeRevision>> {
+        let conn = self.open()?;
+        view_buffer::store::get_shape_revision(&conn, revision_id)
+    }
+
+    pub fn list_view_shape_revisions(&self) -> Result<Vec<ViewShapeRevision>> {
+        let conn = self.open()?;
+        view_buffer::store::list_shape_revisions(&conn)
+    }
+
     pub fn upsert_view_shape(&self, shape: &ViewShape) -> Result<()> {
         let conn = self.open()?;
         view_buffer::store::upsert_shape(&conn, shape)
@@ -2113,6 +2128,62 @@ mod tests {
                 .get_view_shape_creation(&request.request_id)
                 .unwrap(),
             Some(creation)
+        );
+    }
+
+    #[test]
+    fn view_buffer_revision_records_are_persistent() {
+        // obligation: spec.mother-view-buffer-revision.mvbr5-persistence
+        use crate::view_buffer::{
+            Buffer, BufferState, ViewShapeRevision, ViewShapeRevisionOrigin,
+            ViewShapeRevisionState, ViewShapeScope,
+        };
+
+        let store = temp_store();
+        let shape = crate::view_buffer::mother_status_shape();
+        let mut previous_buffer = Buffer::live_from_shape("buf_1".to_string(), &shape, Utc::now());
+        previous_buffer.state = BufferState::Replaced;
+        previous_buffer.replaced_at = Some(Utc::now());
+        previous_buffer.replacement_buffer_id = Some("buf_2".to_string());
+        let revision = ViewShapeRevision {
+            revision_id: "rev_1".to_string(),
+            user_id: "local-user".to_string(),
+            agent_id: "pi".to_string(),
+            previous_shape_id: shape.shape_id.clone(),
+            revised_shape_id: "mother.status.default::revision::next".to_string(),
+            previous_buffer_id: Some(previous_buffer.buffer_id.clone()),
+            replacement_buffer_id: previous_buffer.replacement_buffer_id.clone(),
+            revision_scope: ViewShapeScope::MotherUser,
+            revision_origin: ViewShapeRevisionOrigin::UserCorrection,
+            revision_state: ViewShapeRevisionState::Applied,
+            reason: "show readiness first".to_string(),
+            created_at: Utc::now(),
+        };
+
+        store.save_view_buffer(&previous_buffer).unwrap();
+        store.save_view_shape_revision(&revision).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(
+            reopened
+                .get_view_shape_revision(&revision.revision_id)
+                .unwrap(),
+            Some(revision.clone())
+        );
+        assert_eq!(
+            reopened.list_view_shape_revisions().unwrap(),
+            vec![revision]
+        );
+        assert_eq!(
+            reopened
+                .list_view_buffers()
+                .unwrap()
+                .first()
+                .and_then(|buffer| buffer.replacement_buffer_id.as_deref()),
+            Some("buf_2")
         );
     }
 

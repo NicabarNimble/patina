@@ -7,7 +7,8 @@ use super::{
     Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind, MajorMode,
     MinorMode, ObservabilityGap, ObservabilityGapStatus, PayloadContract, ShapeMatch,
     ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeCreation,
-    ViewShapeMaturity, ViewShapeScope, Window, WindowConnectionState,
+    ViewShapeMaturity, ViewShapeRevision, ViewShapeRevisionOrigin, ViewShapeRevisionState,
+    ViewShapeScope, Window, WindowConnectionState,
 };
 
 pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
@@ -109,6 +110,7 @@ pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
             blocked_at TEXT,
             replaced_at TEXT,
             killed_at TEXT,
+            replacement_buffer_id TEXT,
             major_mode TEXT NOT NULL,
             minor_modes_json TEXT NOT NULL,
             payload_contract TEXT NOT NULL,
@@ -119,6 +121,28 @@ pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_mother_view_buffers_state_created
         ON mother_view_buffers(state, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS mother_view_shape_revisions (
+            revision_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            previous_shape_id TEXT NOT NULL,
+            revised_shape_id TEXT NOT NULL,
+            previous_buffer_id TEXT,
+            replacement_buffer_id TEXT,
+            revision_scope TEXT NOT NULL,
+            revision_origin TEXT NOT NULL,
+            revision_state TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            CHECK (revision_scope IN ('mother-user', 'vision', 'project', 'buffer-local')),
+            CHECK (revision_origin IN ('user_correction', 'user_request', 'agent_adaptation')),
+            CHECK (revision_state IN ('applied', 'proposed', 'rejected', 'reverted')),
+            CHECK (LENGTH(TRIM(reason)) > 0)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mother_view_shape_revisions_created
+        ON mother_view_shape_revisions(created_at DESC);
 
         CREATE TABLE IF NOT EXISTS mother_view_frames (
             frame_id TEXT PRIMARY KEY,
@@ -156,6 +180,7 @@ pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
         ON mother_view_observability_gaps(status, created_at DESC);
         "#,
     )?;
+    ensure_column(conn, "mother_view_buffers", "replacement_buffer_id", "TEXT")?;
     Ok(())
 }
 
@@ -369,6 +394,72 @@ pub(crate) fn get_shape_creation(
     .map_err(Into::into)
 }
 
+pub(crate) fn save_shape_revision(conn: &Connection, revision: &ViewShapeRevision) -> Result<()> {
+    // obligation: spec.mother-view-buffer-revision.mvbr5-persistence
+    conn.execute(
+        r#"
+        INSERT INTO mother_view_shape_revisions (
+            revision_id, user_id, agent_id, previous_shape_id, revised_shape_id,
+            previous_buffer_id, replacement_buffer_id, revision_scope, revision_origin,
+            revision_state, reason, created_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        ON CONFLICT(revision_id) DO UPDATE SET
+            replacement_buffer_id = excluded.replacement_buffer_id,
+            revision_state = excluded.revision_state
+        "#,
+        params![
+            &revision.revision_id,
+            &revision.user_id,
+            &revision.agent_id,
+            &revision.previous_shape_id,
+            &revision.revised_shape_id,
+            revision.previous_buffer_id.as_deref(),
+            revision.replacement_buffer_id.as_deref(),
+            enum_to_db(&revision.revision_scope)?,
+            enum_to_db(&revision.revision_origin)?,
+            enum_to_db(&revision.revision_state)?,
+            &revision.reason,
+            revision.created_at.to_rfc3339(),
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn get_shape_revision(
+    conn: &Connection,
+    revision_id: &str,
+) -> Result<Option<ViewShapeRevision>> {
+    conn.query_row(
+        r#"
+        SELECT revision_id, user_id, agent_id, previous_shape_id, revised_shape_id,
+               previous_buffer_id, replacement_buffer_id, revision_scope, revision_origin,
+               revision_state, reason, created_at
+        FROM mother_view_shape_revisions
+        WHERE revision_id = ?1
+        "#,
+        params![revision_id],
+        map_shape_revision_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub(crate) fn list_shape_revisions(conn: &Connection) -> Result<Vec<ViewShapeRevision>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT revision_id, user_id, agent_id, previous_shape_id, revised_shape_id,
+               previous_buffer_id, replacement_buffer_id, revision_scope, revision_origin,
+               revision_state, reason, created_at
+        FROM mother_view_shape_revisions
+        ORDER BY created_at DESC, revision_id ASC
+        "#,
+    )?;
+    let rows = stmt
+        .query_map([], map_shape_revision_row)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 pub(crate) fn upsert_shape(conn: &Connection, shape: &ViewShape) -> Result<()> {
     let now = Utc::now().to_rfc3339();
     conn.execute(
@@ -493,9 +584,9 @@ pub(crate) fn save_buffer(conn: &Connection, buffer: &Buffer) -> Result<()> {
         r#"
         INSERT INTO mother_view_buffers (
             buffer_id, name, shape_id, state, created_at, stale_at, blocked_at,
-            replaced_at, killed_at, major_mode, minor_modes_json, payload_contract,
-            payload_version
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            replaced_at, killed_at, replacement_buffer_id, major_mode, minor_modes_json,
+            payload_contract, payload_version
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
         ON CONFLICT(buffer_id) DO UPDATE SET
             name = excluded.name,
             shape_id = excluded.shape_id,
@@ -505,6 +596,7 @@ pub(crate) fn save_buffer(conn: &Connection, buffer: &Buffer) -> Result<()> {
             blocked_at = excluded.blocked_at,
             replaced_at = excluded.replaced_at,
             killed_at = excluded.killed_at,
+            replacement_buffer_id = excluded.replacement_buffer_id,
             major_mode = excluded.major_mode,
             minor_modes_json = excluded.minor_modes_json,
             payload_contract = excluded.payload_contract,
@@ -520,6 +612,7 @@ pub(crate) fn save_buffer(conn: &Connection, buffer: &Buffer) -> Result<()> {
             opt_time_to_db(&buffer.blocked_at),
             opt_time_to_db(&buffer.replaced_at),
             opt_time_to_db(&buffer.killed_at),
+            buffer.replacement_buffer_id.as_deref(),
             enum_to_db(&buffer.major_mode)?,
             serde_json::to_string(&buffer.minor_modes)?,
             enum_to_db(&buffer.payload_contract)?,
@@ -533,8 +626,8 @@ pub(crate) fn list_buffers(conn: &Connection) -> Result<Vec<Buffer>> {
     let mut stmt = conn.prepare(
         r#"
         SELECT buffer_id, name, shape_id, state, created_at, stale_at, blocked_at,
-               replaced_at, killed_at, major_mode, minor_modes_json, payload_contract,
-               payload_version
+               replaced_at, killed_at, replacement_buffer_id, major_mode, minor_modes_json,
+               payload_contract, payload_version
         FROM mother_view_buffers
         ORDER BY created_at DESC, buffer_id ASC
         "#,
@@ -730,6 +823,23 @@ fn map_shape_creation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ViewShape
     })
 }
 
+fn map_shape_revision_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ViewShapeRevision> {
+    Ok(ViewShapeRevision {
+        revision_id: row.get(0)?,
+        user_id: row.get(1)?,
+        agent_id: row.get(2)?,
+        previous_shape_id: row.get(3)?,
+        revised_shape_id: row.get(4)?,
+        previous_buffer_id: row.get(5)?,
+        replacement_buffer_id: row.get(6)?,
+        revision_scope: enum_from_db::<ViewShapeScope>(row.get::<_, String>(7)?, 7)?,
+        revision_origin: enum_from_db::<ViewShapeRevisionOrigin>(row.get::<_, String>(8)?, 8)?,
+        revision_state: enum_from_db::<ViewShapeRevisionState>(row.get::<_, String>(9)?, 9)?,
+        reason: row.get(10)?,
+        created_at: time_from_db(row.get::<_, String>(11)?, 11)?,
+    })
+}
+
 fn map_shape_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ViewShape> {
     Ok(ViewShape {
         shape_id: row.get(0)?,
@@ -785,11 +895,27 @@ fn map_buffer_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Buffer> {
         blocked_at: opt_time_from_db(row.get::<_, Option<String>>(6)?, 6)?,
         replaced_at: opt_time_from_db(row.get::<_, Option<String>>(7)?, 7)?,
         killed_at: opt_time_from_db(row.get::<_, Option<String>>(8)?, 8)?,
-        major_mode: enum_from_db::<MajorMode>(row.get::<_, String>(9)?, 9)?,
-        minor_modes: json_from_db::<Vec<MinorMode>>(row.get::<_, String>(10)?, 10)?,
-        payload_contract: enum_from_db::<PayloadContract>(row.get::<_, String>(11)?, 11)?,
-        payload_version: u32_from_db(row.get::<_, i64>(12)?, 12)?,
+        replacement_buffer_id: row.get(9)?,
+        major_mode: enum_from_db::<MajorMode>(row.get::<_, String>(10)?, 10)?,
+        minor_modes: json_from_db::<Vec<MinorMode>>(row.get::<_, String>(11)?, 11)?,
+        payload_contract: enum_from_db::<PayloadContract>(row.get::<_, String>(12)?, 12)?,
+        payload_version: u32_from_db(row.get::<_, i64>(13)?, 13)?,
     })
+}
+
+fn ensure_column(conn: &Connection, table: &str, column: &str, sql_type: &str) -> Result<()> {
+    let pragma = format!("PRAGMA table_info({})", table);
+    let mut stmt = conn.prepare(&pragma)?;
+    let names = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    if !names.iter().any(|name| name == column) {
+        conn.execute(
+            &format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, sql_type),
+            [],
+        )?;
+    }
+    Ok(())
 }
 
 fn enum_to_db<T: Serialize>(value: &T) -> Result<String> {

@@ -340,6 +340,39 @@ impl ViewRequestAction {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewShapeRevisionOrigin {
+    UserCorrection,
+    UserRequest,
+    AgentAdaptation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewShapeRevisionState {
+    Applied,
+    Proposed,
+    Rejected,
+    Reverted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ViewShapeRevision {
+    pub revision_id: String,
+    pub user_id: String,
+    pub agent_id: String,
+    pub previous_shape_id: String,
+    pub revised_shape_id: String,
+    pub previous_buffer_id: Option<String>,
+    pub replacement_buffer_id: Option<String>,
+    pub revision_scope: ViewShapeScope,
+    pub revision_origin: ViewShapeRevisionOrigin,
+    pub revision_state: ViewShapeRevisionState,
+    pub reason: String,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ViewRequestDetail {
     pub request: DisplayRequest,
@@ -416,6 +449,7 @@ pub struct Buffer {
     pub blocked_at: Option<DateTime<Utc>>,
     pub replaced_at: Option<DateTime<Utc>>,
     pub killed_at: Option<DateTime<Utc>>,
+    pub replacement_buffer_id: Option<String>,
     pub major_mode: MajorMode,
     pub minor_modes: Vec<MinorMode>,
     pub payload_contract: PayloadContract,
@@ -438,6 +472,7 @@ impl Buffer {
             blocked_at: None,
             replaced_at: None,
             killed_at: None,
+            replacement_buffer_id: None,
             major_mode: shape.major_mode.clone(),
             minor_modes: shape.minor_modes.clone(),
             payload_contract: shape.payload_contract.clone(),
@@ -636,6 +671,34 @@ mod tests {
                 "request_outcome": "unable"
             })
         );
+    }
+
+    #[test]
+    fn view_buffer_revision_records_shape_and_buffer_history() {
+        // obligation: spec.mother-view-buffer-revision.mvbr1-revision-model
+        // obligation: rule-success.ReplaceBufferWhenUserRevisesViewShape
+        let created_at = Utc::now();
+        let revision = ViewShapeRevision {
+            revision_id: "mother.status.default::revision::test".to_string(),
+            user_id: "local-user".to_string(),
+            agent_id: "pi".to_string(),
+            previous_shape_id: "mother.status.default".to_string(),
+            revised_shape_id: "mother.status.default::revision::next".to_string(),
+            previous_buffer_id: Some("buf_1".to_string()),
+            replacement_buffer_id: Some("buf_2".to_string()),
+            revision_scope: ViewShapeScope::MotherUser,
+            revision_origin: ViewShapeRevisionOrigin::UserCorrection,
+            revision_state: ViewShapeRevisionState::Applied,
+            reason: "show readiness first".to_string(),
+            created_at,
+        };
+
+        assert_eq!(revision.revision_state, ViewShapeRevisionState::Applied);
+        assert_eq!(
+            serde_json::to_value(&revision.revision_origin).unwrap(),
+            serde_json::json!("user_correction")
+        );
+        assert_eq!(revision.replacement_buffer_id.as_deref(), Some("buf_2"));
     }
 
     #[test]

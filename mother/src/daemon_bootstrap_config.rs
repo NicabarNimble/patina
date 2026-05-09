@@ -262,6 +262,15 @@ mod tests {
                     post_view_shape_deactivate: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
+                    get_view_shape_revisions: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_shape_revision: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
+                    post_view_shape_revise: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
                     get_view_requests: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
@@ -444,6 +453,15 @@ mod tests {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     post_view_shape_deactivate: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_shape_revisions: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_shape_revision: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
+                    post_view_shape_revise: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     get_view_requests: Arc::new(|_| {
