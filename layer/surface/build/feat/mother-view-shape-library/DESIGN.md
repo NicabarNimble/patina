@@ -311,6 +311,19 @@ Moved the Mother status proof shape onto the library path:
 
 `mother_status_shape()` still exists as the seed fixture/source of built-in defaults, but runtime lookup is no longer built-in-only.
 
+### `mvsl6-tests-and-trace`
+
+Completed deterministic test and trace coverage for the implemented slice:
+
+- shape persistence/list/get/upsert/deactivate covered in `mother/src/state/mod.rs`;
+- seeded proof shape idempotence covered in `mother/src/state/mod.rs`;
+- shape API upsert/get/deactivate and executable-field rejection covered in `mother/src/http_api/tests/mod.rs`;
+- route/auth wiring covered in `mother/src/http_routes.rs`;
+- active library shape opening, inactive shape refusal, unknown shape refusal, missing fact gaps, and unavailable source gaps covered in `mother/src/view_buffer/service.rs`;
+- Allium/spec obligation comments are present on the relevant tests.
+
+Verification used focused Mother test filters plus `cargo check -q -p mother`.
+
 ## Commits
 
 No implementation commits yet. Promotion/polish changes prepared the spec for `mvsl0-read-before-write`. `mvsl1-shape-model` implementation should be committed as the next scalpel commit.

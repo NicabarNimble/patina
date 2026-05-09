@@ -370,6 +370,21 @@ mod tests {
     }
 
     #[test]
+    fn unknown_library_shape_does_not_open() {
+        // obligation: spec.mother-view-shape-library.mvsl6-tests-and-trace
+        let mut service = ViewBufferService::with_catalog_and_shapes(status_catalog(), Vec::new());
+
+        let error = service
+            .open_buffer(OpenBufferRequest {
+                shape_id: "missing.shape".to_string(),
+            })
+            .unwrap_err();
+
+        assert!(error.to_string().contains("unknown view shape"));
+        assert_eq!(service.list_buffers().len(), 0);
+    }
+
+    #[test]
     fn inactive_library_shape_does_not_open() {
         // obligation: spec.mother-view-shape-library.mvsl4-open-from-library
         let mut shape = mother_status_shape();

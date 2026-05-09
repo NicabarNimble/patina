@@ -36,7 +36,7 @@ exit_criteria:
   checked: true
 - id: mvsl6-tests-and-trace
   text: Deterministic tests cover shape persistence, shape APIs, inactive/missing shape fail-closed behavior, opening from library shape, and Allium obligation trace comments.
-  checked: false
+  checked: true
 - id: mvsl7-follow-on-backlog
   text: Remaining Allium business goals outside this slice are explicitly split into follow-on specs for request composition, shape revision/replacement, observability workflow, maturation, and renderer frames.
   checked: false
@@ -172,7 +172,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 - [x] `mvsl3-shape-api`
 - [x] `mvsl4-open-from-library`
 - [x] `mvsl5-proof-shapes-seeded`
-- [ ] `mvsl6-tests-and-trace`
+- [x] `mvsl6-tests-and-trace`
 - [ ] `mvsl7-follow-on-backlog`
 
 ## Build Readiness
