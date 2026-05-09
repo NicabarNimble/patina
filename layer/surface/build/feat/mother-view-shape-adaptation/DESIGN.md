@@ -116,11 +116,11 @@ Tests should cover:
 
 ## Commits
 
-No implementation commits yet. This design prepares the spec for implementation slices.
+1. `feat: model mother view shape adaptation` — adds structured `ViewShapeAdaptation` result data and wires `ComposedViewRequest` to carry a non-opening adaptation result for `mvsa1-adaptation-model`.
 
 ## Build Readiness
 
-Ready to promote as the next implementation slice. The Allium/code alignment pass is recorded and `mvsa0-allium-code-alignment` is checked.
+Ready for the next implementation criterion. The Allium/code alignment pass and adaptation model are recorded; `mvsa0-allium-code-alignment` and `mvsa1-adaptation-model` are checked.
 
 ## Open Questions
 

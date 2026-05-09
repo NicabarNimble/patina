@@ -15,8 +15,8 @@ pub use model::{
     Buffer, BufferState, CataloguedFact, CataloguedSource, CataloguedSourceKind, DisplayRequest,
     DisplayRequestOutcome, FactKind, Frame, FrameKind, MajorMode, MinorMode, ObservabilityGap,
     ObservabilityGapStatus, ObservationState, PayloadContract, ShapeMatch, ShapeMatchKind,
-    SourceAvailability, ViewRequirement, ViewShape, ViewShapeMaturity, ViewShapeScope, Window,
-    WindowConnectionState,
+    SourceAvailability, ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeMaturity,
+    ViewShapeScope, Window, WindowConnectionState,
 };
 pub use payload::{FramedJsonPayload, PayloadFrame};
 pub use service::{

@@ -19,7 +19,7 @@ exit_criteria:
   checked: true
 - id: mvsa1-adaptation-model
   text: Mother has structured adaptation result data for similar-shape composition, including precedent shape id, adapted shape id, and non-open request outcome semantics.
-  checked: false
+  checked: true
 - id: mvsa2-adapted-shape-creation
   text: A similar match above the confidence threshold creates a new exploratory active ViewShape derived from the precedent shape without arbitrary executable UI code.
   checked: false
@@ -165,7 +165,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 ## Exit Criteria
 
 - [x] `mvsa0-allium-code-alignment`
-- [ ] `mvsa1-adaptation-model`
+- [x] `mvsa1-adaptation-model`
 - [ ] `mvsa2-adapted-shape-creation`
 - [ ] `mvsa3-adapted-shape-persistence`
 - [ ] `mvsa4-compose-integration`

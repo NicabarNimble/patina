@@ -8,8 +8,8 @@ use serde_json::json;
 use super::{
     Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind,
     FramedJsonPayload, MajorMode, MinorMode, ObservabilityGap, PayloadContract, ShapeMatch,
-    ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeMaturity, ViewShapeScope, Window,
-    WindowConnectionState,
+    ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeMaturity,
+    ViewShapeScope, Window, WindowConnectionState,
 };
 use crate::view_buffer::catalog::{DataCatalog, MOTHER_STATUS_SHAPE_ID, MOTHER_STATUS_SOURCE_ID};
 
@@ -41,6 +41,7 @@ pub struct ComposeViewRequest {
 pub struct ComposedViewRequest {
     pub request: DisplayRequest,
     pub shape_match: Option<ShapeMatch>,
+    pub shape_adaptation: Option<ViewShapeAdaptation>,
     pub open_outcome: Option<OpenBufferOutcome>,
     pub reason: Option<String>,
 }
@@ -142,6 +143,7 @@ impl ViewBufferService {
             return Ok(ComposedViewRequest {
                 request: display_request,
                 shape_match: None,
+                shape_adaptation: None,
                 open_outcome: None,
                 reason: Some("no shape match proposed".to_string()),
             });
@@ -161,6 +163,7 @@ impl ViewBufferService {
                 return Ok(ComposedViewRequest {
                     request: display_request,
                     shape_match: Some(shape_match),
+                    shape_adaptation: None,
                     open_outcome: None,
                     reason: Some(reason),
                 });
@@ -182,6 +185,7 @@ impl ViewBufferService {
             return Ok(ComposedViewRequest {
                 request: display_request,
                 shape_match: Some(shape_match),
+                shape_adaptation: None,
                 open_outcome: Some(open_outcome),
                 reason: None,
             });
@@ -637,6 +641,50 @@ mod tests {
             assert!(composed.open_outcome.is_none());
         }
         assert_eq!(service.list_buffers().len(), 0);
+    }
+
+    #[test]
+    fn view_shape_adaptation_composed_request_can_report_without_opening_buffer() {
+        // obligation: spec.mother-view-shape-adaptation.mvsa1-adaptation-model
+        // obligation: rule-success.AdaptSimilarShapeWhenNoExactShapeExists
+        let request = DisplayRequest {
+            request_id: "req_1".to_string(),
+            user_id: "local-user".to_string(),
+            agent_id: "pi".to_string(),
+            raw_request: "show something like mother status".to_string(),
+            requested_at: Utc::now(),
+            outcome: DisplayRequestOutcome::Unable,
+        };
+        let shape_match = ShapeMatch {
+            request_id: request.request_id.clone(),
+            shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+            match_kind: ShapeMatchKind::Similar,
+            confidence: 0.9,
+        };
+        let adaptation = ViewShapeAdaptation::created_without_opening(
+            request.request_id.clone(),
+            MOTHER_STATUS_SHAPE_ID.to_string(),
+            "mother.status.default::adapted::test".to_string(),
+        );
+
+        let composed = ComposedViewRequest {
+            request,
+            shape_match: Some(shape_match),
+            shape_adaptation: Some(adaptation),
+            open_outcome: None,
+            reason: None,
+        };
+
+        assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
+        assert_eq!(
+            composed
+                .shape_adaptation
+                .as_ref()
+                .expect("adaptation should be structured")
+                .precedent_shape_id,
+            MOTHER_STATUS_SHAPE_ID
+        );
+        assert!(composed.open_outcome.is_none());
     }
 
     #[test]

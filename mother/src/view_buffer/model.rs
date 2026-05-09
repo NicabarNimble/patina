@@ -250,6 +250,31 @@ pub struct ShapeMatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ViewShapeAdaptation {
+    pub request_id: String,
+    pub precedent_shape_id: String,
+    pub adapted_shape_id: String,
+    pub opens_buffer: bool,
+    pub request_outcome: DisplayRequestOutcome,
+}
+
+impl ViewShapeAdaptation {
+    pub fn created_without_opening(
+        request_id: String,
+        precedent_shape_id: String,
+        adapted_shape_id: String,
+    ) -> Self {
+        Self {
+            request_id,
+            precedent_shape_id,
+            adapted_shape_id,
+            opens_buffer: false,
+            request_outcome: DisplayRequestOutcome::Unable,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Buffer {
     pub buffer_id: String,
     pub name: String,
@@ -413,6 +438,36 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&DisplayRequestOutcome::BufferOpened).unwrap(),
             serde_json::json!("buffer_opened")
+        );
+    }
+
+    #[test]
+    fn view_shape_adaptation_records_precedent_and_non_open_request_semantics() {
+        // obligation: spec.mother-view-shape-adaptation.mvsa1-adaptation-model
+        // obligation: rule-success.AdaptSimilarShapeWhenNoExactShapeExists
+        let adaptation = ViewShapeAdaptation::created_without_opening(
+            "req_1".to_string(),
+            "mother.status.default".to_string(),
+            "mother.status.default::adapted::test".to_string(),
+        );
+
+        assert_eq!(adaptation.request_id, "req_1");
+        assert_eq!(adaptation.precedent_shape_id, "mother.status.default");
+        assert_eq!(
+            adaptation.adapted_shape_id,
+            "mother.status.default::adapted::test"
+        );
+        assert!(!adaptation.opens_buffer);
+        assert_eq!(adaptation.request_outcome, DisplayRequestOutcome::Unable);
+        assert_eq!(
+            serde_json::to_value(&adaptation).unwrap(),
+            serde_json::json!({
+                "request_id": "req_1",
+                "precedent_shape_id": "mother.status.default",
+                "adapted_shape_id": "mother.status.default::adapted::test",
+                "opens_buffer": false,
+                "request_outcome": "unable"
+            })
         );
     }
 
