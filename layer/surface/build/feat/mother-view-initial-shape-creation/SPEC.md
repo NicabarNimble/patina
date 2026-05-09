@@ -46,6 +46,8 @@ exit_criteria:
   checked: true
 validated_against_commit: c4ce9cb0a6ff4792d4d75b8b72ea2838997c8e01
 last_freshness_check: 2026-05-09T19:48:58Z
+freshness_scope:
+- Allium target, no-match request composition, initial shape proposal/result model, catalog guardrails, daemon/store persistence, HTTP API response, fail-closed tests
 ---
 # feat: Mother View Initial Shape Creation
 
