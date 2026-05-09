@@ -1,14 +1,31 @@
-use serde::Serialize;
+use std::collections::BTreeSet;
+
+use serde::{Deserialize, Serialize};
 
 use super::*;
 use crate::view_buffer::{
     ConnectWindowRequest, DisconnectWindowRequest, KillBufferRequest, OpenBufferOutcome,
-    OpenBufferRequest,
+    OpenBufferRequest, ViewShape,
 };
+
+#[derive(Serialize)]
+struct ShapesResponse<T> {
+    shapes: T,
+}
+
+#[derive(Serialize)]
+struct ShapeResponse<T> {
+    shape: T,
+}
 
 #[derive(Serialize)]
 struct BuffersResponse<T> {
     buffers: T,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeactivateShapeRequest {
+    shape_id: String,
 }
 
 #[derive(Serialize)]
@@ -19,6 +36,70 @@ struct WindowsResponse<T> {
 #[derive(Serialize)]
 struct GapsResponse<T> {
     gaps: T,
+}
+
+pub fn handle_list_view_shapes(runtime: &(impl ViewBufferApi + ?Sized)) -> HttpResponse {
+    match runtime.view_shapes_list() {
+        Ok(shapes) => HttpResponse::json(200, &ShapesResponse { shapes }),
+        Err(error) => json_error(500, &format!("list view shapes failed: {}", error)),
+    }
+}
+
+pub fn handle_get_view_shape(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(shape_id) = request.path.strip_prefix("/api/view-shapes/") else {
+        return json_error(400, "missing view shape id");
+    };
+    if shape_id.trim().is_empty() {
+        return json_error(400, "missing view shape id");
+    }
+
+    match runtime.view_shape_get(shape_id) {
+        Ok(Some(shape)) => HttpResponse::json(200, &ShapeResponse { shape }),
+        Ok(None) => json_error(404, &format!("unknown view shape '{}'", shape_id)),
+        Err(error) => json_error(500, &format!("get view shape failed: {}", error)),
+    }
+}
+
+pub fn handle_upsert_view_shape(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let shape = match parse_shape_json(request) {
+        Ok(shape) => shape,
+        Err(error) => return json_error(400, &error),
+    };
+
+    match runtime.view_shape_upsert(shape) {
+        Ok(shape) => HttpResponse::json(200, &ShapeResponse { shape }),
+        Err(error) => json_error(500, &format!("upsert view shape failed: {}", error)),
+    }
+}
+
+pub fn handle_deactivate_view_shape(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(deactivate_request) = parse_json::<DeactivateShapeRequest>(request) else {
+        return json_error(400, "Invalid JSON");
+    };
+    if deactivate_request.shape_id.trim().is_empty() {
+        return json_error(400, "missing view shape id");
+    }
+
+    match runtime.view_shape_deactivate(&deactivate_request.shape_id) {
+        Ok(true) => HttpResponse::json(
+            200,
+            &serde_json::json!({"shape_id": deactivate_request.shape_id, "active": false}),
+        ),
+        Ok(false) => json_error(
+            404,
+            &format!("unknown view shape '{}'", deactivate_request.shape_id),
+        ),
+        Err(error) => json_error(500, &format!("deactivate view shape failed: {}", error)),
+    }
 }
 
 pub fn handle_list_view_buffers(runtime: &(impl ViewBufferApi + ?Sized)) -> HttpResponse {
@@ -119,4 +200,64 @@ where
         return None;
     }
     serde_json::from_slice(&request.body).ok()
+}
+
+fn parse_shape_json(request: &HttpRequest) -> Result<ViewShape, String> {
+    if request.body.is_empty() {
+        return Err("Invalid JSON".to_string());
+    }
+    let value: serde_json::Value =
+        serde_json::from_slice(&request.body).map_err(|_| "Invalid JSON".to_string())?;
+    reject_unknown_shape_fields(&value)?;
+    serde_json::from_value(value).map_err(|_| "Invalid view shape".to_string())
+}
+
+fn reject_unknown_shape_fields(value: &serde_json::Value) -> Result<(), String> {
+    let Some(object) = value.as_object() else {
+        return Err("Invalid view shape".to_string());
+    };
+    let allowed: BTreeSet<&str> = [
+        "shape_id",
+        "title",
+        "source_ref",
+        "scope",
+        "version",
+        "active",
+        "major_mode",
+        "minor_modes",
+        "maturity",
+        "payload_contract",
+        "payload_version",
+        "vision_id",
+        "project_uid",
+        "replaced_by",
+        "requirements",
+    ]
+    .into_iter()
+    .collect();
+    for key in object.keys() {
+        if !allowed.contains(key.as_str()) {
+            return Err(format!("unsupported view shape field '{}'", key));
+        }
+    }
+
+    if let Some(requirements) = object.get("requirements") {
+        let Some(requirements) = requirements.as_array() else {
+            return Err("Invalid view shape".to_string());
+        };
+        let allowed_requirement: BTreeSet<&str> =
+            ["fact_path", "required", "purpose"].into_iter().collect();
+        for requirement in requirements {
+            let Some(requirement) = requirement.as_object() else {
+                return Err("Invalid view shape".to_string());
+            };
+            for key in requirement.keys() {
+                if !allowed_requirement.contains(key.as_str()) {
+                    return Err(format!("unsupported view requirement field '{}'", key));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }

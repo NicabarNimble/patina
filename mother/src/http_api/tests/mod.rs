@@ -249,6 +249,26 @@ impl ApiRuntime for StubRuntime {
         })
     }
 
+    fn view_shapes_list(&self) -> Result<Vec<crate::view_buffer::ViewShape>> {
+        Ok(vec![crate::view_buffer::mother_status_shape()])
+    }
+
+    fn view_shape_get(&self, shape_id: &str) -> Result<Option<crate::view_buffer::ViewShape>> {
+        let shape = crate::view_buffer::mother_status_shape();
+        Ok((shape.shape_id == shape_id).then_some(shape))
+    }
+
+    fn view_shape_upsert(
+        &self,
+        shape: crate::view_buffer::ViewShape,
+    ) -> Result<crate::view_buffer::ViewShape> {
+        Ok(shape)
+    }
+
+    fn view_shape_deactivate(&self, shape_id: &str) -> Result<bool> {
+        Ok(shape_id == crate::view_buffer::MOTHER_STATUS_SHAPE_ID)
+    }
+
     fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>> {
         Ok(vec![])
     }
@@ -411,6 +431,76 @@ fn ready_route_returns_204_when_runtime_is_ready() {
     let response = handle_ready(&StubRuntime);
     assert_eq!(response.status, 204);
     assert!(response.body.is_empty());
+}
+
+#[test]
+fn view_shape_upsert_handler_returns_structured_shape() {
+    // obligation: spec.mother-view-shape-library.mvsl3-shape-api
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-shapes/upsert".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::mother_status_shape()).unwrap(),
+    };
+
+    let response = view_buffer::handle_upsert_view_shape(&request, &StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload
+            .get("shape")
+            .and_then(|shape| shape.get("shape_id"))
+            .and_then(|value| value.as_str()),
+        Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID)
+    );
+}
+
+#[test]
+fn view_shape_upsert_handler_rejects_executable_payload_fields() {
+    // obligation: spec.mother-view-shape-library.mvsl3-shape-api
+    let mut shape = serde_json::to_value(crate::view_buffer::mother_status_shape()).unwrap();
+    shape["typescript"] = serde_json::json!("alert('not a shape')");
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-shapes/upsert".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&shape).unwrap(),
+    };
+
+    let response = view_buffer::handle_upsert_view_shape(&request, &StubRuntime);
+    assert_eq!(response.status, 400);
+}
+
+#[test]
+fn view_shape_get_and_deactivate_handlers_are_deterministic() {
+    // obligation: spec.mother-view-shape-library.mvsl3-shape-api
+    let get = HttpRequest {
+        method: "GET".to_string(),
+        path: format!(
+            "/api/view-shapes/{}",
+            crate::view_buffer::MOTHER_STATUS_SHAPE_ID
+        ),
+        headers: vec![],
+        body: vec![],
+    };
+    assert_eq!(
+        view_buffer::handle_get_view_shape(&get, &StubRuntime).status,
+        200
+    );
+
+    let deactivate = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-shapes/deactivate".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&serde_json::json!({
+            "shape_id": crate::view_buffer::MOTHER_STATUS_SHAPE_ID,
+        }))
+        .unwrap(),
+    };
+    assert_eq!(
+        view_buffer::handle_deactivate_view_shape(&deactivate, &StubRuntime).status,
+        200
+    );
 }
 
 #[test]

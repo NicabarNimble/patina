@@ -27,7 +27,7 @@ exit_criteria:
   checked: true
 - id: mvsl3-shape-api
   text: Mother exposes control-plane APIs to list, read, create/update, and deactivate view shapes without accepting arbitrary executable UI code.
-  checked: false
+  checked: true
 - id: mvsl4-open-from-library
   text: Opening a buffer can use an active persisted shape from the shape library, validates declared requirements through the data catalog, and still fails closed with observability gaps.
   checked: false
@@ -169,7 +169,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 - [x] `mvsl0-read-before-write`
 - [x] `mvsl1-shape-model`
 - [x] `mvsl2-shape-persistence`
-- [ ] `mvsl3-shape-api`
+- [x] `mvsl3-shape-api`
 - [ ] `mvsl4-open-from-library`
 - [ ] `mvsl5-proof-shapes-seeded`
 - [ ] `mvsl6-tests-and-trace`

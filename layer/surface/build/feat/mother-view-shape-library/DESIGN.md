@@ -274,6 +274,20 @@ Implemented persistent shape-library storage through the existing Mother runtime
 
 This still does not expose control-plane APIs or use library shapes when opening buffers; those remain `mvsl3-shape-api` and `mvsl4-open-from-library`.
 
+### `mvsl3-shape-api`
+
+Exposed structured shape-library control-plane APIs through the existing Mother HTTP/runtime seams:
+
+- added `GET /api/view-shapes` for shape listing;
+- added `GET /api/view-shapes/<shape_id>` for reading one shape;
+- added `POST /api/view-shapes/upsert` for create/update;
+- added `POST /api/view-shapes/deactivate` for deactivation;
+- wired `ApiRuntime`, `ViewBufferApi`, route table entries, daemon dispatch, and bootstrap/test route tables;
+- added handler tests for upsert/get/deactivate;
+- rejected unknown top-level shape fields and unknown requirement fields before deserializing, so arbitrary renderer/source-code fields such as `typescript` are not silently accepted as shape metadata.
+
+This still does not make `open_buffer` read persisted shapes; that remains `mvsl4-open-from-library`.
+
 ## Commits
 
 No implementation commits yet. Promotion/polish changes prepared the spec for `mvsl0-read-before-write`. `mvsl1-shape-model` implementation should be committed as the next scalpel commit.

@@ -643,6 +643,29 @@ impl ApiRuntime for ServerState {
         )
     }
 
+    fn view_shapes_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::ViewShape>> {
+        self.runtime_store.list_view_shapes()
+    }
+
+    fn view_shape_get(
+        &self,
+        shape_id: &str,
+    ) -> anyhow::Result<Option<mother_crate::view_buffer::ViewShape>> {
+        self.runtime_store.get_view_shape(shape_id)
+    }
+
+    fn view_shape_upsert(
+        &self,
+        shape: mother_crate::view_buffer::ViewShape,
+    ) -> anyhow::Result<mother_crate::view_buffer::ViewShape> {
+        self.runtime_store.upsert_view_shape(&shape)?;
+        Ok(shape)
+    }
+
+    fn view_shape_deactivate(&self, shape_id: &str) -> anyhow::Result<bool> {
+        self.runtime_store.deactivate_view_shape(shape_id)
+    }
+
     fn view_buffers_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::Buffer>> {
         self.runtime_store.list_view_buffers()
     }

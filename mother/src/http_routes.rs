@@ -26,6 +26,10 @@ pub struct RouteTable {
     pub post_interface_call: RouteHandler,
     pub post_rivet_dispatch: RouteHandler,
     pub post_inspector_typed_calls: RouteHandler,
+    pub get_view_shapes: RouteHandler,
+    pub get_view_shape: RouteHandler,
+    pub post_view_shape_upsert: RouteHandler,
+    pub post_view_shape_deactivate: RouteHandler,
     pub get_view_buffers: RouteHandler,
     pub post_view_buffer_open: RouteHandler,
     pub post_view_buffer_connect: RouteHandler,
@@ -175,6 +179,34 @@ impl Router {
                     (self.routes.post_inspector_typed_calls)(request)
                 }
             }
+            ("GET", "/api/view-shapes") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_shapes)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-shapes/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_shape)(request)
+                }
+            }
+            ("POST", "/api/view-shapes/upsert") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_shape_upsert)(request)
+                }
+            }
+            ("POST", "/api/view-shapes/deactivate") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_shape_deactivate)(request)
+                }
+            }
             ("GET", "/api/view-buffers") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -276,6 +308,10 @@ mod tests {
             post_interface_call: Arc::new(|_| ok_json()),
             post_rivet_dispatch: Arc::new(|_| ok_json()),
             post_inspector_typed_calls: Arc::new(|_| ok_json()),
+            get_view_shapes: Arc::new(|_| ok_json()),
+            get_view_shape: Arc::new(|_| ok_json()),
+            post_view_shape_upsert: Arc::new(|_| ok_json()),
+            post_view_shape_deactivate: Arc::new(|_| ok_json()),
             get_view_buffers: Arc::new(|_| ok_json()),
             post_view_buffer_open: Arc::new(|_| ok_json()),
             post_view_buffer_connect: Arc::new(|_| ok_json()),
@@ -324,6 +360,10 @@ mod tests {
         assert_eq!(unauthorized.status, 401);
 
         for (method, path) in [
+            ("GET", "/api/view-shapes"),
+            ("GET", "/api/view-shapes/mother.status.default"),
+            ("POST", "/api/view-shapes/upsert"),
+            ("POST", "/api/view-shapes/deactivate"),
             ("GET", "/api/view-buffers"),
             ("POST", "/api/view-buffers/open"),
             ("POST", "/api/view-buffers/connect"),
