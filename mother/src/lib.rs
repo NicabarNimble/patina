@@ -52,6 +52,6 @@ pub use view_buffer::{
     CataloguedSourceKind, DataCatalog, Frame, FrameKind, FramedJsonPayload, MajorMode, MinorMode,
     MotherStatusFacts, ObservabilityGap, ObservabilityGapStatus, ObservationState,
     OpenBufferOutcome, OpenBufferRequest, OpenedBuffer, PayloadContract, PayloadFrame,
-    ViewBufferService, ViewRequirement, ViewShape, ViewShapeScope, Window, WindowConnectionState,
-    MOTHER_STATUS_SHAPE_ID,
+    SourceAvailability, ViewBufferService, ViewRequirement, ViewShape, ViewShapeScope, Window,
+    WindowConnectionState, MOTHER_STATUS_SHAPE_ID,
 };

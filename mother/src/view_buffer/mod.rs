@@ -13,7 +13,8 @@ pub use catalog::{DataCatalog, MotherStatusFacts, MOTHER_STATUS_SHAPE_ID};
 pub use model::{
     Buffer, BufferState, CataloguedFact, CataloguedSource, CataloguedSourceKind, FactKind, Frame,
     FrameKind, MajorMode, MinorMode, ObservabilityGap, ObservabilityGapStatus, ObservationState,
-    PayloadContract, ViewRequirement, ViewShape, ViewShapeScope, Window, WindowConnectionState,
+    PayloadContract, SourceAvailability, ViewRequirement, ViewShape, ViewShapeScope, Window,
+    WindowConnectionState,
 };
 pub use payload::{FramedJsonPayload, PayloadFrame};
 pub use service::{

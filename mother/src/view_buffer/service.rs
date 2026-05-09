@@ -188,7 +188,9 @@ mod tests {
     use chrono::TimeZone;
 
     use super::*;
-    use crate::view_buffer::{BufferState, MotherStatusFacts, ObservabilityGapStatus};
+    use crate::view_buffer::{
+        BufferState, MotherStatusFacts, ObservabilityGapStatus, SourceAvailability,
+    };
 
     fn status_catalog() -> DataCatalog {
         DataCatalog::mother_status(MotherStatusFacts {
@@ -228,6 +230,7 @@ mod tests {
     #[test]
     fn records_gap_and_refuses_buffer_when_required_fact_missing() {
         // obligation: rule-success.RecordObservabilityGapWhenRequiredFactIsMissing
+        // obligation: rule-failure.OpenLiveBufferWhenRequiredFactsAreObserved.2
         let catalog = status_catalog().without_fact("mother.status.children_total");
         let mut service = ViewBufferService::with_catalog(catalog);
 
@@ -242,6 +245,32 @@ mod tests {
         };
         assert_eq!(gap.status, ObservabilityGapStatus::Open);
         assert_eq!(gap.missing_fact_path, "mother.status.children_total");
+        assert_eq!(service.list_buffers().len(), 0);
+        assert_eq!(service.list_gaps().len(), 1);
+    }
+
+    #[test]
+    fn records_gap_and_refuses_buffer_when_required_source_unavailable() {
+        // obligation: rule-success.RecordObservabilityGapWhenRequiredFactIsMissing
+        // obligation: rule-failure.OpenLiveBufferWhenRequiredFactsAreObserved.2
+        let catalog = status_catalog()
+            .with_source_availability(MOTHER_STATUS_SOURCE_ID, SourceAvailability::Unavailable);
+        let mut service = ViewBufferService::with_catalog(catalog);
+
+        let outcome = service
+            .open_buffer(OpenBufferRequest {
+                shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
+            })
+            .expect("open should evaluate");
+
+        let OpenBufferOutcome::ObservabilityGap(gap) = outcome else {
+            panic!("expected observability gap");
+        };
+        assert_eq!(gap.status, ObservabilityGapStatus::Open);
+        assert_eq!(
+            gap.missing_source_id,
+            Some(MOTHER_STATUS_SOURCE_ID.to_string())
+        );
         assert_eq!(service.list_buffers().len(), 0);
         assert_eq!(service.list_gaps().len(), 1);
     }

@@ -78,6 +78,20 @@ pub enum CataloguedSourceKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum SourceAvailability {
+    Available,
+    Unavailable,
+    Stale,
+}
+
+impl SourceAvailability {
+    pub fn is_available(&self) -> bool {
+        self == &Self::Available
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ObservationState {
     Observed,
     Stale,
@@ -119,7 +133,7 @@ pub enum ObservabilityGapStatus {
 pub struct CataloguedSource {
     pub source_id: String,
     pub source_kind: CataloguedSourceKind,
-    pub availability: ObservationState,
+    pub availability: SourceAvailability,
     pub last_observed_at: Option<DateTime<Utc>>,
 }
 

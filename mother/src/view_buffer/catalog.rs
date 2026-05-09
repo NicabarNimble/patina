@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use super::{
     CataloguedFact, CataloguedSource, CataloguedSourceKind, FactKind, ObservationState,
-    ViewRequirement,
+    SourceAvailability, ViewRequirement,
 };
 
 pub const MOTHER_STATUS_SOURCE_ID: &str = "mother.status";
@@ -39,7 +39,7 @@ impl DataCatalog {
             CataloguedSource {
                 source_id: MOTHER_STATUS_SOURCE_ID.to_string(),
                 source_kind: CataloguedSourceKind::Registry,
-                availability: ObservationState::Observed,
+                availability: SourceAvailability::Available,
                 last_observed_at: Some(status.observed_at),
             },
         );
@@ -84,8 +84,26 @@ impl DataCatalog {
         !requirement.required
             || self
                 .fact(&requirement.fact_path)
-                .map(|fact| fact.is_observed())
+                .map(|fact| {
+                    fact.is_observed()
+                        && self
+                            .sources
+                            .get(&fact.source_id)
+                            .map(|source| source.availability.is_available())
+                            .unwrap_or(false)
+                })
                 .unwrap_or(false)
+    }
+
+    pub fn with_source_availability(
+        mut self,
+        source_id: &str,
+        availability: SourceAvailability,
+    ) -> Self {
+        if let Some(source) = self.sources.get_mut(source_id) {
+            source.availability = availability;
+        }
+        self
     }
 
     pub fn without_fact(mut self, fact_path: &str) -> Self {
@@ -135,6 +153,12 @@ mod tests {
         let catalog = DataCatalog::mother_status(status());
 
         assert_eq!(catalog.sources().count(), 1);
+        assert!(catalog
+            .sources()
+            .next()
+            .expect("source should exist")
+            .availability
+            .is_available());
         assert_eq!(catalog.facts().count(), 8);
         assert_eq!(
             catalog.value("mother.status.version"),
@@ -148,7 +172,22 @@ mod tests {
 
     #[test]
     fn missing_required_fact_is_not_observed() {
+        // obligation: rule-failure.OpenLiveBufferWhenRequiredFactsAreObserved.2
         let catalog = DataCatalog::mother_status(status()).without_fact("mother.status.version");
+        let requirement = ViewRequirement {
+            fact_path: "mother.status.version".to_string(),
+            required: true,
+            purpose: "display version".to_string(),
+        };
+
+        assert!(!catalog.observed_required_fact(&requirement));
+    }
+
+    #[test]
+    fn unavailable_source_means_required_fact_is_not_observed_for_opening() {
+        // obligation: rule-failure.OpenLiveBufferWhenRequiredFactsAreObserved.2
+        let catalog = DataCatalog::mother_status(status())
+            .with_source_availability(MOTHER_STATUS_SOURCE_ID, SourceAvailability::Unavailable);
         let requirement = ViewRequirement {
             fact_path: "mother.status.version".to_string(),
             required: true,

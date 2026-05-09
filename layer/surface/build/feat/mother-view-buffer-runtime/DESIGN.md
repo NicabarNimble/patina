@@ -156,6 +156,8 @@ The catalog must distinguish:
 - source exists but fact stale/unavailable
 - fact not catalogued
 
+Allium alignment note: `CataloguedSource.availability` uses `available | unavailable | stale`, while `CataloguedFact.observation_state` uses `observed | stale | missing`. The Rust model intentionally keeps those as separate enums (`SourceAvailability` and `ObservationState`) so `OpenLiveBufferWhenRequiredFactsAreObserved` checks both fact observation and source availability.
+
 ## API shape
 
 Exact route naming can be adjusted, but keep semantics small and explicit.
