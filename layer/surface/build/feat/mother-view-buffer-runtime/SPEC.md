@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-view-buffer-runtime
-status: draft
+status: ready
 created: 2026-05-09
 sessions:
   origin: 20260508-144836-859149000
@@ -22,28 +22,28 @@ beliefs:
 - '[[contracts-before-consumers]]'
 exit_criteria:
 - id: mvbr0-read-before-write
-  text: "Implementation begins from documented reads of existing Mother route/runtime/state code before adding new view-buffer code."
+  text: Implementation begins from documented reads of existing Mother route/runtime/state code before adding new view-buffer code.
   checked: false
 - id: mvbr1-buffer-model
-  text: "Mother has a first-class persisted buffer model with Emacs vocabulary: buffer, frame, window, major mode, minor modes, live/stale/blocked/replaced/killed states."
+  text: 'Mother has a first-class persisted buffer model with Emacs vocabulary: buffer, frame, window, major mode, minor modes, live/stale/blocked/replaced/killed states.'
   checked: false
 - id: mvbr2-buffer-api
-  text: "Mother exposes read-only/control-plane buffer APIs for listing buffers, opening a buffer from a known shape, connecting/disconnecting a window, and killing a buffer."
+  text: Mother exposes read-only/control-plane buffer APIs for listing buffers, opening a buffer from a known shape, connecting/disconnecting a window, and killing a buffer.
   checked: false
 - id: mvbr3-catalog-guardrail
-  text: "Opening a buffer validates declared backing requirements against a minimal Mother data catalog and refuses to open when required facts are missing."
+  text: Opening a buffer validates declared backing requirements against a minimal Mother data catalog and refuses to open when required facts are missing.
   checked: false
 - id: mvbr4-observability-gap
-  text: "When required data is missing, Mother records an observability-gap artifact and the caller receives a truthful missing-data response; no display payload is invented."
+  text: When required data is missing, Mother records an observability-gap artifact and the caller receives a truthful missing-data response; no display payload is invented.
   checked: false
 - id: mvbr5-proof-shape
-  text: "A minimal built-in proof shape opens a live buffer over existing Mother data, using WIT-framed JSON payload semantics without generating Svelte/TypeScript code."
+  text: A minimal built-in proof shape opens a live buffer over existing Mother data, using WIT-framed JSON payload semantics without generating Svelte/TypeScript code.
   checked: false
 - id: mvbr6-tests
-  text: "Deterministic tests cover buffer lifecycle, source requirement validation, missing-data gaps, route/API behavior, and fail-closed paths."
+  text: Deterministic tests cover buffer lifecycle, source requirement validation, missing-data gaps, route/API behavior, and fail-closed paths.
   checked: false
 - id: mvbr7-docs-and-allium-trace
-  text: "Implementation docs and test names reference the Allium obligations from `mother-view-composer-target.plan.json` so the build spec remains traceable to the behavior spec."
+  text: Implementation docs and test names reference the Allium obligations from `mother-view-composer-target.plan.json` so the build spec remains traceable to the behavior spec.
   checked: false
 ---
 # feat: Mother View Buffer Runtime
