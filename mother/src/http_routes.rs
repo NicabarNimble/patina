@@ -30,6 +30,9 @@ pub struct RouteTable {
     pub get_view_shape: RouteHandler,
     pub post_view_shape_upsert: RouteHandler,
     pub post_view_shape_deactivate: RouteHandler,
+    pub get_view_requests: RouteHandler,
+    pub get_view_request: RouteHandler,
+    pub post_view_request_compose: RouteHandler,
     pub get_view_buffers: RouteHandler,
     pub post_view_buffer_open: RouteHandler,
     pub post_view_buffer_connect: RouteHandler,
@@ -207,6 +210,27 @@ impl Router {
                     (self.routes.post_view_shape_deactivate)(request)
                 }
             }
+            ("GET", "/api/view-requests") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_requests)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-requests/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_request)(request)
+                }
+            }
+            ("POST", "/api/view-requests/compose") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_request_compose)(request)
+                }
+            }
             ("GET", "/api/view-buffers") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -312,6 +336,9 @@ mod tests {
             get_view_shape: Arc::new(|_| ok_json()),
             post_view_shape_upsert: Arc::new(|_| ok_json()),
             post_view_shape_deactivate: Arc::new(|_| ok_json()),
+            get_view_requests: Arc::new(|_| ok_json()),
+            get_view_request: Arc::new(|_| ok_json()),
+            post_view_request_compose: Arc::new(|_| ok_json()),
             get_view_buffers: Arc::new(|_| ok_json()),
             post_view_buffer_open: Arc::new(|_| ok_json()),
             post_view_buffer_connect: Arc::new(|_| ok_json()),
@@ -364,6 +391,9 @@ mod tests {
             ("GET", "/api/view-shapes/mother.status.default"),
             ("POST", "/api/view-shapes/upsert"),
             ("POST", "/api/view-shapes/deactivate"),
+            ("GET", "/api/view-requests"),
+            ("GET", "/api/view-requests/req_1"),
+            ("POST", "/api/view-requests/compose"),
             ("GET", "/api/view-buffers"),
             ("POST", "/api/view-buffers/open"),
             ("POST", "/api/view-buffers/connect"),

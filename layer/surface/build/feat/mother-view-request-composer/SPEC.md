@@ -25,16 +25,16 @@ exit_criteria:
   checked: true
 - id: mvrc3-compose-api
   text: Mother exposes a structured request-composition API that captures raw user display requests and accepts agent-proposed shape matches without parsing natural language inside Mother.
-  checked: false
+  checked: true
 - id: mvrc4-explicit-exact-open
   text: Explicit and exact active-shape matches can open buffers through the existing shape-library path, preserve required-data validation, and update request outcome to buffer_opened or observability_gap_reported.
-  checked: false
+  checked: true
 - id: mvrc5-fail-closed-outcomes
   text: Missing, inactive, low-confidence, similar-only, or no-match proposals do not invent data or open buffers; they persist request/match state and return unable or follow-on requested outcomes.
-  checked: false
+  checked: true
 - id: mvrc6-tests-and-trace
   text: Deterministic tests cover request capture, match persistence, explicit/exact open, missing/inactive/low-confidence fail-closed behavior, and Allium obligation trace comments.
-  checked: false
+  checked: true
 - id: mvrc7-follow-on-backlog
   text: Behaviors outside this slice are explicitly split into follow-on specs for similar-shape adaptation, initial-shape creation, request UX, revision, maturation, and renderer frames.
   checked: false
@@ -187,10 +187,10 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 - [x] `mvrc0-allium-code-alignment`
 - [x] `mvrc1-request-model`
 - [x] `mvrc2-request-persistence`
-- [ ] `mvrc3-compose-api`
-- [ ] `mvrc4-explicit-exact-open`
-- [ ] `mvrc5-fail-closed-outcomes`
-- [ ] `mvrc6-tests-and-trace`
+- [x] `mvrc3-compose-api`
+- [x] `mvrc4-explicit-exact-open`
+- [x] `mvrc5-fail-closed-outcomes`
+- [x] `mvrc6-tests-and-trace`
 - [ ] `mvrc7-follow-on-backlog`
 
 ## Build Readiness

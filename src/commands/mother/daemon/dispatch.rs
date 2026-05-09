@@ -676,6 +676,59 @@ impl ApiRuntime for ServerState {
         self.runtime_store.deactivate_view_shape(shape_id)
     }
 
+    fn view_requests_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::DisplayRequest>> {
+        self.runtime_store.list_view_display_requests()
+    }
+
+    fn view_request_get(
+        &self,
+        request_id: &str,
+    ) -> anyhow::Result<Option<mother_crate::view_buffer::DisplayRequest>> {
+        self.runtime_store.get_view_display_request(request_id)
+    }
+
+    fn view_request_compose(
+        &self,
+        request: mother_crate::view_buffer::ComposeViewRequest,
+    ) -> anyhow::Result<mother_crate::view_buffer::ComposedViewRequest> {
+        let details = self.health_details()?;
+        let catalog = mother_crate::view_buffer::DataCatalog::mother_status(
+            mother_crate::view_buffer::MotherStatusFacts {
+                version: self.version(),
+                uptime_secs: self.uptime_secs(),
+                control_plane_ready: details.control_plane_ready,
+                registered_projects: details.registered_projects,
+                children_ready_count: details.children_ready_count,
+                children_total: details.children_total,
+                startup_profile: details.startup_profile,
+                memory_pressure: details.memory.pressure,
+                observed_at: Utc::now(),
+            },
+        );
+        self.ensure_builtin_view_shapes()?;
+        let shapes = self.runtime_store.list_view_shapes()?;
+        let mut service =
+            mother_crate::view_buffer::ViewBufferService::with_catalog_and_shapes(catalog, shapes);
+        let composed = service.compose_request(request)?;
+
+        self.runtime_store
+            .save_view_display_request(&composed.request)?;
+        if let Some(shape_match) = &composed.shape_match {
+            self.runtime_store.save_view_shape_match(shape_match)?;
+        }
+        if let Some(open_outcome) = &composed.open_outcome {
+            match open_outcome {
+                mother_crate::view_buffer::OpenBufferOutcome::Opened(opened) => {
+                    self.runtime_store.save_view_buffer(&opened.buffer)?;
+                }
+                mother_crate::view_buffer::OpenBufferOutcome::ObservabilityGap(gap) => {
+                    self.runtime_store.save_view_observability_gap(gap)?;
+                }
+            }
+        }
+        Ok(composed)
+    }
+
     fn view_buffers_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::Buffer>> {
         self.runtime_store.list_view_buffers()
     }

@@ -20,6 +20,7 @@ pub use model::{
 };
 pub use payload::{FramedJsonPayload, PayloadFrame};
 pub use service::{
-    mother_status_shape, ConnectWindowRequest, DisconnectWindowRequest, KillBufferRequest,
-    OpenBufferOutcome, OpenBufferRequest, OpenedBuffer, ViewBufferService,
+    mother_status_shape, ComposeViewRequest, ComposedViewRequest, ConnectWindowRequest,
+    DisconnectWindowRequest, KillBufferRequest, OpenBufferOutcome, OpenBufferRequest, OpenedBuffer,
+    ProposedShapeMatch, ViewBufferService, SHAPE_MATCH_CONFIDENCE_THRESHOLD,
 };

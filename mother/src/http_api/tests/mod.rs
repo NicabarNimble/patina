@@ -269,6 +269,51 @@ impl ApiRuntime for StubRuntime {
         Ok(shape_id == crate::view_buffer::MOTHER_STATUS_SHAPE_ID)
     }
 
+    fn view_requests_list(&self) -> Result<Vec<crate::view_buffer::DisplayRequest>> {
+        Ok(vec![crate::view_buffer::DisplayRequest::pending(
+            "req_1".to_string(),
+            "local-user".to_string(),
+            "pi".to_string(),
+            "show mother status".to_string(),
+            chrono::Utc::now(),
+        )])
+    }
+
+    fn view_request_get(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<crate::view_buffer::DisplayRequest>> {
+        Ok((request_id == "req_1").then(|| {
+            crate::view_buffer::DisplayRequest::pending(
+                "req_1".to_string(),
+                "local-user".to_string(),
+                "pi".to_string(),
+                "show mother status".to_string(),
+                chrono::Utc::now(),
+            )
+        }))
+    }
+
+    fn view_request_compose(
+        &self,
+        request: crate::view_buffer::ComposeViewRequest,
+    ) -> Result<crate::view_buffer::ComposedViewRequest> {
+        let catalog =
+            crate::view_buffer::DataCatalog::mother_status(crate::view_buffer::MotherStatusFacts {
+                version: ApiRuntime::version(self),
+                uptime_secs: ApiRuntime::uptime_secs(self),
+                control_plane_ready: true,
+                registered_projects: 2,
+                children_ready_count: 1,
+                children_total: 2,
+                startup_profile: "full".to_string(),
+                memory_pressure: "ok".to_string(),
+                observed_at: chrono::Utc::now(),
+            });
+        let mut service = crate::view_buffer::ViewBufferService::with_catalog(catalog);
+        service.compose_request(request)
+    }
+
     fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>> {
         Ok(vec![])
     }
@@ -431,6 +476,59 @@ fn ready_route_returns_204_when_runtime_is_ready() {
     let response = handle_ready(&StubRuntime);
     assert_eq!(response.status, 204);
     assert!(response.body.is_empty());
+}
+
+#[test]
+fn view_request_compose_handler_returns_request_outcome() {
+    // obligation: spec.mother-view-request-composer.mvrc3-compose-api
+    // obligation: spec.mother-view-request-composer.mvrc4-explicit-exact-open
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-requests/compose".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::ComposeViewRequest {
+            user_id: "local-user".to_string(),
+            agent_id: "pi".to_string(),
+            raw_request: "show mother status".to_string(),
+            proposed_match: Some(crate::view_buffer::ProposedShapeMatch {
+                shape_id: Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+                match_kind: crate::view_buffer::ShapeMatchKind::ExplicitUserChoice,
+                confidence: 1.0,
+            }),
+        })
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_compose_view_request(&request, &StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload
+            .get("request")
+            .and_then(|request| request.get("outcome"))
+            .and_then(|value| value.as_str()),
+        Some("buffer_opened")
+    );
+}
+
+#[test]
+fn view_request_compose_handler_rejects_blank_requests() {
+    // obligation: spec.mother-view-request-composer.mvrc5-fail-closed-outcomes
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-requests/compose".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&serde_json::json!({
+            "user_id": "local-user",
+            "agent_id": "pi",
+            "raw_request": "  ",
+            "proposed_match": null,
+        }))
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_compose_view_request(&request, &StubRuntime);
+    assert_eq!(response.status, 400);
 }
 
 #[test]

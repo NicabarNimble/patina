@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use super::*;
 use crate::view_buffer::{
-    ConnectWindowRequest, DisconnectWindowRequest, KillBufferRequest, OpenBufferOutcome,
-    OpenBufferRequest, ViewShape,
+    ComposeViewRequest, ConnectWindowRequest, DisconnectWindowRequest, KillBufferRequest,
+    OpenBufferOutcome, OpenBufferRequest, ViewShape,
 };
 
 #[derive(Serialize)]
@@ -16,6 +16,16 @@ struct ShapesResponse<T> {
 #[derive(Serialize)]
 struct ShapeResponse<T> {
     shape: T,
+}
+
+#[derive(Serialize)]
+struct RequestsResponse<T> {
+    requests: T,
+}
+
+#[derive(Serialize)]
+struct RequestResponse<T> {
+    request: T,
 }
 
 #[derive(Serialize)]
@@ -99,6 +109,53 @@ pub fn handle_deactivate_view_shape(
             &format!("unknown view shape '{}'", deactivate_request.shape_id),
         ),
         Err(error) => json_error(500, &format!("deactivate view shape failed: {}", error)),
+    }
+}
+
+pub fn handle_list_view_requests(runtime: &(impl ViewBufferApi + ?Sized)) -> HttpResponse {
+    match runtime.view_requests_list() {
+        Ok(requests) => HttpResponse::json(200, &RequestsResponse { requests }),
+        Err(error) => json_error(500, &format!("list view requests failed: {}", error)),
+    }
+}
+
+pub fn handle_get_view_request(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(request_id) = request.path.strip_prefix("/api/view-requests/") else {
+        return json_error(400, "missing view request id");
+    };
+    if request_id.trim().is_empty() {
+        return json_error(400, "missing view request id");
+    }
+
+    match runtime.view_request_get(request_id) {
+        Ok(Some(view_request)) => HttpResponse::json(
+            200,
+            &RequestResponse {
+                request: view_request,
+            },
+        ),
+        Ok(None) => json_error(404, &format!("unknown view request '{}'", request_id)),
+        Err(error) => json_error(500, &format!("get view request failed: {}", error)),
+    }
+}
+
+pub fn handle_compose_view_request(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(compose_request) = parse_json::<ComposeViewRequest>(request) else {
+        return json_error(400, "Invalid JSON");
+    };
+    if compose_request.raw_request.trim().is_empty() {
+        return json_error(400, "raw display request must not be empty");
+    }
+
+    match runtime.view_request_compose(compose_request) {
+        Ok(composed) => HttpResponse::json(200, &composed),
+        Err(error) => json_error(500, &format!("compose view request failed: {}", error)),
     }
 }
 

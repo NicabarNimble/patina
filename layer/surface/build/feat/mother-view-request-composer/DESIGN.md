@@ -191,6 +191,31 @@ Persisted request-composer state through the existing Mother runtime store seam:
 
 This still does not expose composition APIs or open buffers from requests; those remain later exit criteria.
 
+### `mvrc3-compose-api` / `mvrc4-explicit-exact-open` / `mvrc5-fail-closed-outcomes`
+
+Added structured request composition across service, HTTP, route, runtime, and daemon seams:
+
+- added `ComposeViewRequest`, `ProposedShapeMatch`, and `ComposedViewRequest` DTOs with `deny_unknown_fields` on inbound request payloads;
+- added `ViewBufferService::compose_request` to capture a request, persist a proposed match in the result, validate match kind/confidence/active shape state, and delegate safe opens to `open_buffer`;
+- added `POST /api/view-requests/compose`, `GET /api/view-requests`, and `GET /api/view-requests/<request_id>`;
+- wired `ApiRuntime`, `ViewBufferApi`, `RouteTable`, daemon dispatch, and bootstrap/test route tables;
+- daemon composition persists the display request, shape match, opened buffer, or observability gap through `MotherRuntimeStore`;
+- explicit matches open active shapes without a confidence threshold;
+- exact matches require `confidence >= 0.60`;
+- blank requests, low-confidence exact matches, similar matches, none matches, missing shape ids, unknown shapes, and inactive shapes do not open buffers or invent data.
+
+### `mvrc6-tests-and-trace`
+
+Completed deterministic test and trace coverage for the implemented request-composer slice:
+
+- model vocabulary and serde tests in `mother/src/view_buffer/model.rs`;
+- request/match persistence tests in `mother/src/state/mod.rs`;
+- compose handler success and blank-request rejection in `mother/src/http_api/tests/mod.rs`;
+- route/auth coverage in `mother/src/http_routes.rs`;
+- service tests for explicit open, exact open at threshold, missing required fact observability gap, missing/inactive shape refusal, low-confidence exact refusal, similar/no-match refusal, and existing view-buffer guardrails in `mother/src/view_buffer/service.rs`.
+
+All relevant tests carry Allium/spec obligation comments.
+
 ## Commits
 
 No implementation commits yet. This design prepared the spec for implementation slices.

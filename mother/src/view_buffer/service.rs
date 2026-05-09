@@ -6,15 +6,43 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
-    Buffer, BufferState, Frame, FrameKind, FramedJsonPayload, MajorMode, MinorMode,
-    ObservabilityGap, PayloadContract, ViewRequirement, ViewShape, ViewShapeMaturity,
-    ViewShapeScope, Window, WindowConnectionState,
+    Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind,
+    FramedJsonPayload, MajorMode, MinorMode, ObservabilityGap, PayloadContract, ShapeMatch,
+    ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeMaturity, ViewShapeScope, Window,
+    WindowConnectionState,
 };
 use crate::view_buffer::catalog::{DataCatalog, MOTHER_STATUS_SHAPE_ID, MOTHER_STATUS_SOURCE_ID};
+
+pub const SHAPE_MATCH_CONFIDENCE_THRESHOLD: f64 = 0.60;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OpenBufferRequest {
     pub shape_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProposedShapeMatch {
+    pub shape_id: Option<String>,
+    pub match_kind: ShapeMatchKind,
+    pub confidence: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComposeViewRequest {
+    pub user_id: String,
+    pub agent_id: String,
+    pub raw_request: String,
+    pub proposed_match: Option<ProposedShapeMatch>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ComposedViewRequest {
+    pub request: DisplayRequest,
+    pub shape_match: Option<ShapeMatch>,
+    pub open_outcome: Option<OpenBufferOutcome>,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,6 +122,104 @@ impl ViewBufferService {
 
     pub fn list_gaps(&self) -> Vec<ObservabilityGap> {
         self.gaps.values().cloned().collect()
+    }
+
+    pub fn compose_request(&mut self, request: ComposeViewRequest) -> Result<ComposedViewRequest> {
+        if request.raw_request.trim().is_empty() {
+            return Err(anyhow!("raw display request must not be empty"));
+        }
+
+        let mut display_request = DisplayRequest::pending(
+            format!("req_{}", uuid::Uuid::new_v4().simple()),
+            request.user_id,
+            request.agent_id,
+            request.raw_request,
+            Utc::now(),
+        );
+
+        let Some(proposed_match) = request.proposed_match else {
+            display_request.outcome = DisplayRequestOutcome::Unable;
+            return Ok(ComposedViewRequest {
+                request: display_request,
+                shape_match: None,
+                open_outcome: None,
+                reason: Some("no shape match proposed".to_string()),
+            });
+        };
+
+        let shape_match = ShapeMatch {
+            request_id: display_request.request_id.clone(),
+            shape_id: proposed_match.shape_id.clone(),
+            match_kind: proposed_match.match_kind,
+            confidence: proposed_match.confidence,
+        };
+
+        let should_open = match self.validate_openable_match(&shape_match) {
+            Ok(()) => true,
+            Err(reason) => {
+                display_request.outcome = DisplayRequestOutcome::Unable;
+                return Ok(ComposedViewRequest {
+                    request: display_request,
+                    shape_match: Some(shape_match),
+                    open_outcome: None,
+                    reason: Some(reason),
+                });
+            }
+        };
+
+        if should_open {
+            let shape_id = shape_match
+                .shape_id
+                .clone()
+                .expect("validated openable match should have shape id");
+            let open_outcome = self.open_buffer(OpenBufferRequest { shape_id })?;
+            display_request.outcome = match open_outcome {
+                OpenBufferOutcome::Opened(_) => DisplayRequestOutcome::BufferOpened,
+                OpenBufferOutcome::ObservabilityGap(_) => {
+                    DisplayRequestOutcome::ObservabilityGapReported
+                }
+            };
+            return Ok(ComposedViewRequest {
+                request: display_request,
+                shape_match: Some(shape_match),
+                open_outcome: Some(open_outcome),
+                reason: None,
+            });
+        }
+
+        unreachable!("validated openable match should return above")
+    }
+
+    fn validate_openable_match(&self, shape_match: &ShapeMatch) -> std::result::Result<(), String> {
+        match shape_match.match_kind {
+            ShapeMatchKind::ExplicitUserChoice => self.validate_active_shape(shape_match),
+            ShapeMatchKind::Exact => {
+                if shape_match.confidence < SHAPE_MATCH_CONFIDENCE_THRESHOLD {
+                    return Err(format!(
+                        "exact shape match confidence {:.2} below threshold {:.2}",
+                        shape_match.confidence, SHAPE_MATCH_CONFIDENCE_THRESHOLD
+                    ));
+                }
+                self.validate_active_shape(shape_match)
+            }
+            ShapeMatchKind::Similar => Err("similar shape adaptation is deferred".to_string()),
+            ShapeMatchKind::None => Err("no usable shape matched request".to_string()),
+        }
+    }
+
+    fn validate_active_shape(&self, shape_match: &ShapeMatch) -> std::result::Result<(), String> {
+        let shape_id = shape_match
+            .shape_id
+            .as_deref()
+            .ok_or_else(|| "shape match is missing shape_id".to_string())?;
+        let shape = self
+            .shapes
+            .get(shape_id)
+            .ok_or_else(|| format!("unknown view shape '{}'", shape_id))?;
+        if !shape.active {
+            return Err(format!("inactive view shape '{}'", shape_id));
+        }
+        Ok(())
     }
 
     pub fn open_buffer(&mut self, request: OpenBufferRequest) -> Result<OpenBufferOutcome> {
@@ -322,6 +448,195 @@ mod tests {
             memory_pressure: "ok".to_string(),
             observed_at: Utc.with_ymd_and_hms(2026, 5, 9, 12, 0, 0).unwrap(),
         })
+    }
+
+    #[test]
+    fn composes_explicit_request_into_open_buffer() {
+        // obligation: spec.mother-view-request-composer.mvrc3-compose-api
+        // obligation: spec.mother-view-request-composer.mvrc4-explicit-exact-open
+        // obligation: rule-success.CaptureUserDisplayRequest
+        // obligation: rule-success.SelectExplicitUserRequestedShape
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show mother status".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                    match_kind: ShapeMatchKind::ExplicitUserChoice,
+                    confidence: 1.0,
+                }),
+            })
+            .expect("request should compose");
+
+        assert_eq!(
+            composed.request.outcome,
+            DisplayRequestOutcome::BufferOpened
+        );
+        assert_eq!(
+            composed
+                .shape_match
+                .as_ref()
+                .expect("shape match should persist")
+                .match_kind,
+            ShapeMatchKind::ExplicitUserChoice
+        );
+        assert!(matches!(
+            composed.open_outcome,
+            Some(OpenBufferOutcome::Opened(_))
+        ));
+        assert_eq!(service.list_buffers().len(), 1);
+    }
+
+    #[test]
+    fn composes_exact_request_above_threshold_into_open_buffer() {
+        // obligation: spec.mother-view-request-composer.mvrc4-explicit-exact-open
+        // obligation: rule-success.SelectExactShapeMatch
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show mother status".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                    match_kind: ShapeMatchKind::Exact,
+                    confidence: SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+                }),
+            })
+            .expect("request should compose");
+
+        assert_eq!(
+            composed.request.outcome,
+            DisplayRequestOutcome::BufferOpened
+        );
+        assert!(matches!(
+            composed.open_outcome,
+            Some(OpenBufferOutcome::Opened(_))
+        ));
+    }
+
+    #[test]
+    fn compose_request_reports_observability_gap_when_required_fact_missing() {
+        // obligation: spec.mother-view-request-composer.mvrc4-explicit-exact-open
+        // obligation: rule-success.RecordObservabilityGapWhenRequiredFactIsMissing
+        let catalog = status_catalog().without_fact("mother.status.children_total");
+        let mut service = ViewBufferService::with_catalog(catalog);
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show mother status".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                    match_kind: ShapeMatchKind::ExplicitUserChoice,
+                    confidence: 1.0,
+                }),
+            })
+            .expect("request should compose");
+
+        assert_eq!(
+            composed.request.outcome,
+            DisplayRequestOutcome::ObservabilityGapReported
+        );
+        assert!(matches!(
+            composed.open_outcome,
+            Some(OpenBufferOutcome::ObservabilityGap(_))
+        ));
+        assert_eq!(service.list_buffers().len(), 0);
+        assert_eq!(service.list_gaps().len(), 1);
+    }
+
+    #[test]
+    fn missing_and_inactive_shape_matches_do_not_open_buffers() {
+        // obligation: spec.mother-view-request-composer.mvrc5-fail-closed-outcomes
+        let mut inactive_shape = mother_status_shape();
+        inactive_shape.active = false;
+        let mut service =
+            ViewBufferService::with_catalog_and_shapes(status_catalog(), vec![inactive_shape]);
+
+        for shape_id in [MOTHER_STATUS_SHAPE_ID, "missing.shape"] {
+            let composed = service
+                .compose_request(ComposeViewRequest {
+                    user_id: "local-user".to_string(),
+                    agent_id: "pi".to_string(),
+                    raw_request: "show mother status".to_string(),
+                    proposed_match: Some(ProposedShapeMatch {
+                        shape_id: Some(shape_id.to_string()),
+                        match_kind: ShapeMatchKind::ExplicitUserChoice,
+                        confidence: 1.0,
+                    }),
+                })
+                .expect("request should compose");
+
+            assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
+            assert!(composed.open_outcome.is_none());
+        }
+        assert_eq!(service.list_buffers().len(), 0);
+    }
+
+    #[test]
+    fn low_confidence_exact_request_does_not_open_buffer() {
+        // obligation: spec.mother-view-request-composer.mvrc5-fail-closed-outcomes
+        // obligation: rule-failure.SelectExactShapeMatch.1
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show mother status".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                    match_kind: ShapeMatchKind::Exact,
+                    confidence: 0.2,
+                }),
+            })
+            .expect("request should compose");
+
+        assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
+        assert!(composed.open_outcome.is_none());
+        assert_eq!(service.list_buffers().len(), 0);
+        assert!(composed
+            .reason
+            .expect("reason should be present")
+            .contains("below threshold"));
+    }
+
+    #[test]
+    fn similar_and_no_match_requests_do_not_open_buffers() {
+        // obligation: spec.mother-view-request-composer.mvrc5-fail-closed-outcomes
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+
+        for proposed_match in [
+            ProposedShapeMatch {
+                shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                match_kind: ShapeMatchKind::Similar,
+                confidence: 0.9,
+            },
+            ProposedShapeMatch {
+                shape_id: None,
+                match_kind: ShapeMatchKind::None,
+                confidence: 0.0,
+            },
+        ] {
+            let composed = service
+                .compose_request(ComposeViewRequest {
+                    user_id: "local-user".to_string(),
+                    agent_id: "pi".to_string(),
+                    raw_request: "show mother status".to_string(),
+                    proposed_match: Some(proposed_match),
+                })
+                .expect("request should compose");
+
+            assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
+            assert!(composed.open_outcome.is_none());
+        }
+        assert_eq!(service.list_buffers().len(), 0);
     }
 
     #[test]
