@@ -22,25 +22,25 @@ exit_criteria:
   checked: true
 - id: mvru1-detail-model
   text: Mother exposes a request-detail model that combines the persisted DisplayRequest with its ShapeMatch, optional shape creation/adaptation record, linked shape, and explicit next actions.
-  checked: false
+  checked: true
 - id: mvru2-persist-request-artifacts
   text: Shape creation/adaptation artifacts are persisted with request ids so request inspection does not infer history from naming conventions or invent data.
-  checked: false
+  checked: true
 - id: mvru3-detail-api
   text: HTTP callers can list and fetch request details without losing the existing basic request list/get APIs.
-  checked: false
+  checked: true
 - id: mvru4-open-linked-shape-action
   text: HTTP callers can explicitly open only a shape linked to the request detail; missing, unlinked, inactive, or unobservable shapes fail closed.
-  checked: false
+  checked: true
 - id: mvru5-non-mutating-history
   text: Opening a linked shape through request UX does not rewrite historical composed request outcomes; it returns an action result and persists only buffer/gap effects.
-  checked: false
+  checked: true
 - id: mvru6-no-fake-data-guardrails
   text: Request UX displays only persisted Mother request/match/artifact/shape data and delegates buffer opening to existing catalog-backed open-buffer checks.
-  checked: false
+  checked: true
 - id: mvru7-tests-and-trace
   text: Deterministic tests cover detail construction, persisted creation/adaptation artifacts, HTTP detail/open endpoints, fail-closed unlinked shapes, and Allium/spec obligation comments.
-  checked: false
+  checked: true
 ---
 # feat: Mother View Request UX
 
@@ -189,13 +189,13 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 ## Exit Criteria
 
 - [x] `mvru0-allium-code-alignment`
-- [ ] `mvru1-detail-model`
-- [ ] `mvru2-persist-request-artifacts`
-- [ ] `mvru3-detail-api`
-- [ ] `mvru4-open-linked-shape-action`
-- [ ] `mvru5-non-mutating-history`
-- [ ] `mvru6-no-fake-data-guardrails`
-- [ ] `mvru7-tests-and-trace`
+- [x] `mvru1-detail-model`
+- [x] `mvru2-persist-request-artifacts`
+- [x] `mvru3-detail-api`
+- [x] `mvru4-open-linked-shape-action`
+- [x] `mvru5-non-mutating-history`
+- [x] `mvru6-no-fake-data-guardrails`
+- [x] `mvru7-tests-and-trace`
 
 ## Build Readiness
 

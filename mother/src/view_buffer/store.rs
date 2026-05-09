@@ -6,8 +6,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use super::{
     Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind, MajorMode,
     MinorMode, ObservabilityGap, ObservabilityGapStatus, PayloadContract, ShapeMatch,
-    ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeMaturity, ViewShapeScope, Window,
-    WindowConnectionState,
+    ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeCreation,
+    ViewShapeMaturity, ViewShapeScope, Window, WindowConnectionState,
 };
 
 pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
@@ -35,6 +35,30 @@ pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
             created_at TEXT NOT NULL,
             CHECK (match_kind IN ('exact', 'explicit_user_choice', 'similar', 'none')),
             CHECK (confidence >= 0.0 AND confidence <= 1.0),
+            FOREIGN KEY (request_id) REFERENCES mother_view_display_requests(request_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS mother_view_shape_adaptations (
+            request_id TEXT PRIMARY KEY,
+            precedent_shape_id TEXT NOT NULL,
+            adapted_shape_id TEXT NOT NULL,
+            opens_buffer INTEGER NOT NULL,
+            request_outcome TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            CHECK (opens_buffer IN (0, 1)),
+            CHECK (request_outcome IN ('pending', 'buffer_opened', 'observability_gap_reported', 'unable')),
+            FOREIGN KEY (request_id) REFERENCES mother_view_display_requests(request_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS mother_view_shape_creations (
+            request_id TEXT PRIMARY KEY,
+            created_shape_id TEXT NOT NULL,
+            opens_buffer INTEGER NOT NULL,
+            request_outcome TEXT NOT NULL,
+            requirements_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            CHECK (opens_buffer IN (0, 1)),
+            CHECK (request_outcome IN ('pending', 'buffer_opened', 'observability_gap_reported', 'unable')),
             FOREIGN KEY (request_id) REFERENCES mother_view_display_requests(request_id) ON DELETE CASCADE
         );
 
@@ -256,6 +280,93 @@ pub(crate) fn list_shape_matches(conn: &Connection) -> Result<Vec<ShapeMatch>> {
         .query_map([], map_shape_match_row)?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+pub(crate) fn save_shape_adaptation(
+    conn: &Connection,
+    adaptation: &ViewShapeAdaptation,
+) -> Result<()> {
+    // obligation: spec.mother-view-request-ux.mvru2-persist-request-artifacts
+    conn.execute(
+        r#"
+        INSERT INTO mother_view_shape_adaptations (
+            request_id, precedent_shape_id, adapted_shape_id, opens_buffer, request_outcome, created_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        ON CONFLICT(request_id) DO UPDATE SET
+            precedent_shape_id = excluded.precedent_shape_id,
+            adapted_shape_id = excluded.adapted_shape_id,
+            opens_buffer = excluded.opens_buffer,
+            request_outcome = excluded.request_outcome
+        "#,
+        params![
+            &adaptation.request_id,
+            &adaptation.precedent_shape_id,
+            &adaptation.adapted_shape_id,
+            bool_to_db(adaptation.opens_buffer),
+            enum_to_db(&adaptation.request_outcome)?,
+            Utc::now().to_rfc3339(),
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn get_shape_adaptation(
+    conn: &Connection,
+    request_id: &str,
+) -> Result<Option<ViewShapeAdaptation>> {
+    conn.query_row(
+        r#"
+        SELECT request_id, precedent_shape_id, adapted_shape_id, opens_buffer, request_outcome
+        FROM mother_view_shape_adaptations
+        WHERE request_id = ?1
+        "#,
+        params![request_id],
+        map_shape_adaptation_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub(crate) fn save_shape_creation(conn: &Connection, creation: &ViewShapeCreation) -> Result<()> {
+    // obligation: spec.mother-view-request-ux.mvru2-persist-request-artifacts
+    conn.execute(
+        r#"
+        INSERT INTO mother_view_shape_creations (
+            request_id, created_shape_id, opens_buffer, request_outcome, requirements_json, created_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        ON CONFLICT(request_id) DO UPDATE SET
+            created_shape_id = excluded.created_shape_id,
+            opens_buffer = excluded.opens_buffer,
+            request_outcome = excluded.request_outcome,
+            requirements_json = excluded.requirements_json
+        "#,
+        params![
+            &creation.request_id,
+            &creation.created_shape_id,
+            bool_to_db(creation.opens_buffer),
+            enum_to_db(&creation.request_outcome)?,
+            serde_json::to_string(&creation.requirements)?,
+            Utc::now().to_rfc3339(),
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn get_shape_creation(
+    conn: &Connection,
+    request_id: &str,
+) -> Result<Option<ViewShapeCreation>> {
+    conn.query_row(
+        r#"
+        SELECT request_id, created_shape_id, opens_buffer, request_outcome, requirements_json
+        FROM mother_view_shape_creations
+        WHERE request_id = ?1
+        "#,
+        params![request_id],
+        map_shape_creation_row,
+    )
+    .optional()
+    .map_err(Into::into)
 }
 
 pub(crate) fn upsert_shape(conn: &Connection, shape: &ViewShape) -> Result<()> {
@@ -596,6 +707,26 @@ fn map_shape_match_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ShapeMatch> 
         shape_id: row.get(1)?,
         match_kind: enum_from_db::<ShapeMatchKind>(row.get::<_, String>(2)?, 2)?,
         confidence: row.get(3)?,
+    })
+}
+
+fn map_shape_adaptation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ViewShapeAdaptation> {
+    Ok(ViewShapeAdaptation {
+        request_id: row.get(0)?,
+        precedent_shape_id: row.get(1)?,
+        adapted_shape_id: row.get(2)?,
+        opens_buffer: bool_from_db(row.get::<_, i64>(3)?, 3)?,
+        request_outcome: enum_from_db::<DisplayRequestOutcome>(row.get::<_, String>(4)?, 4)?,
+    })
+}
+
+fn map_shape_creation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ViewShapeCreation> {
+    Ok(ViewShapeCreation {
+        request_id: row.get(0)?,
+        created_shape_id: row.get(1)?,
+        opens_buffer: bool_from_db(row.get::<_, i64>(2)?, 2)?,
+        request_outcome: enum_from_db::<DisplayRequestOutcome>(row.get::<_, String>(3)?, 3)?,
+        requirements: json_from_db::<Vec<ViewRequirement>>(row.get::<_, String>(4)?, 4)?,
     })
 }
 

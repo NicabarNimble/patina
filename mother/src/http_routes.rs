@@ -32,7 +32,10 @@ pub struct RouteTable {
     pub post_view_shape_deactivate: RouteHandler,
     pub get_view_requests: RouteHandler,
     pub get_view_request: RouteHandler,
+    pub get_view_request_details: RouteHandler,
+    pub get_view_request_detail: RouteHandler,
     pub post_view_request_compose: RouteHandler,
+    pub post_view_request_open_shape: RouteHandler,
     pub get_view_buffers: RouteHandler,
     pub post_view_buffer_open: RouteHandler,
     pub post_view_buffer_connect: RouteHandler,
@@ -217,6 +220,22 @@ impl Router {
                     (self.routes.get_view_requests)(request)
                 }
             }
+            ("GET", "/api/view-requests/details") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_request_details)(request)
+                }
+            }
+            ("GET", path)
+                if path.starts_with("/api/view-requests/") && path.ends_with("/detail") =>
+            {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_request_detail)(request)
+                }
+            }
             ("GET", path) if path.starts_with("/api/view-requests/") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -229,6 +248,13 @@ impl Router {
                     json_error(401, "Unauthorized")
                 } else {
                     (self.routes.post_view_request_compose)(request)
+                }
+            }
+            ("POST", "/api/view-requests/open-shape") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_request_open_shape)(request)
                 }
             }
             ("GET", "/api/view-buffers") => {
@@ -338,7 +364,10 @@ mod tests {
             post_view_shape_deactivate: Arc::new(|_| ok_json()),
             get_view_requests: Arc::new(|_| ok_json()),
             get_view_request: Arc::new(|_| ok_json()),
+            get_view_request_details: Arc::new(|_| ok_json()),
+            get_view_request_detail: Arc::new(|_| ok_json()),
             post_view_request_compose: Arc::new(|_| ok_json()),
+            post_view_request_open_shape: Arc::new(|_| ok_json()),
             get_view_buffers: Arc::new(|_| ok_json()),
             post_view_buffer_open: Arc::new(|_| ok_json()),
             post_view_buffer_connect: Arc::new(|_| ok_json()),
@@ -393,7 +422,10 @@ mod tests {
             ("POST", "/api/view-shapes/deactivate"),
             ("GET", "/api/view-requests"),
             ("GET", "/api/view-requests/req_1"),
+            ("GET", "/api/view-requests/details"),
+            ("GET", "/api/view-requests/req_1/detail"),
             ("POST", "/api/view-requests/compose"),
+            ("POST", "/api/view-requests/open-shape"),
             ("GET", "/api/view-buffers"),
             ("POST", "/api/view-buffers/open"),
             ("POST", "/api/view-buffers/connect"),

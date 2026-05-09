@@ -294,6 +294,37 @@ impl ApiRuntime for StubRuntime {
         }))
     }
 
+    fn view_request_details_list(&self) -> Result<Vec<crate::view_buffer::ViewRequestDetail>> {
+        Ok(vec![
+            ApiRuntime::view_request_detail_get(self, "req_1")?.unwrap()
+        ])
+    }
+
+    fn view_request_detail_get(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewRequestDetail>> {
+        let Some(request) = ApiRuntime::view_request_get(self, request_id)? else {
+            return Ok(None);
+        };
+        let shape = crate::view_buffer::mother_status_shape();
+        let shape_match = crate::view_buffer::ShapeMatch {
+            request_id: request.request_id.clone(),
+            shape_id: Some(shape.shape_id.clone()),
+            match_kind: crate::view_buffer::ShapeMatchKind::ExplicitUserChoice,
+            confidence: 1.0,
+        };
+        Ok(Some(crate::view_buffer::ViewRequestDetail::from_parts(
+            request,
+            Some(shape_match),
+            None,
+            None,
+            None,
+            None,
+            Some(shape),
+        )))
+    }
+
     fn view_request_compose(
         &self,
         request: crate::view_buffer::ComposeViewRequest,
@@ -312,6 +343,29 @@ impl ApiRuntime for StubRuntime {
             });
         let mut service = crate::view_buffer::ViewBufferService::with_catalog(catalog);
         service.compose_request(request)
+    }
+
+    fn view_request_open_shape(
+        &self,
+        request: crate::view_buffer::OpenRequestShapeRequest,
+    ) -> Result<Option<crate::view_buffer::OpenRequestShapeOutcome>> {
+        let Some(detail) = ApiRuntime::view_request_detail_get(self, &request.request_id)? else {
+            return Ok(None);
+        };
+        let catalog =
+            crate::view_buffer::DataCatalog::mother_status(crate::view_buffer::MotherStatusFacts {
+                version: ApiRuntime::version(self),
+                uptime_secs: ApiRuntime::uptime_secs(self),
+                control_plane_ready: true,
+                registered_projects: 2,
+                children_ready_count: 1,
+                children_total: 2,
+                startup_profile: "full".to_string(),
+                memory_pressure: "ok".to_string(),
+                observed_at: chrono::Utc::now(),
+            });
+        let mut service = crate::view_buffer::ViewBufferService::with_catalog(catalog);
+        Ok(Some(service.open_request_shape(&detail, request)?))
     }
 
     fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>> {
@@ -629,6 +683,90 @@ fn view_request_compose_handler_returns_initial_shape_creation() {
     assert!(payload
         .get("open_outcome")
         .is_some_and(|value| value.is_null()));
+}
+
+#[test]
+fn view_request_ux_detail_handlers_return_actions() {
+    // obligation: spec.mother-view-request-ux.mvru3-detail-api
+    let list_response = view_buffer::handle_list_view_request_details(&StubRuntime);
+    assert_eq!(list_response.status, 200);
+    let list_payload: serde_json::Value = serde_json::from_slice(&list_response.body).unwrap();
+    assert_eq!(
+        list_payload
+            .get("details")
+            .and_then(|details| details.as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+
+    let detail_request = HttpRequest {
+        method: "GET".to_string(),
+        path: "/api/view-requests/req_1/detail".to_string(),
+        headers: vec![],
+        body: vec![],
+    };
+    let detail_response =
+        view_buffer::handle_get_view_request_detail(&detail_request, &StubRuntime);
+    assert_eq!(detail_response.status, 200);
+    let detail_payload: serde_json::Value = serde_json::from_slice(&detail_response.body).unwrap();
+    assert_eq!(
+        detail_payload
+            .get("detail")
+            .and_then(|detail| detail.get("available_actions"))
+            .and_then(|actions| actions.as_array())
+            .and_then(|actions| actions.first())
+            .and_then(|action| action.get("kind"))
+            .and_then(|kind| kind.as_str()),
+        Some("open_matched_shape")
+    );
+}
+
+#[test]
+fn view_request_ux_open_shape_handler_opens_linked_shape() {
+    // obligation: spec.mother-view-request-ux.mvru4-open-linked-shape-action
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-requests/open-shape".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::OpenRequestShapeRequest {
+            request_id: "req_1".to_string(),
+            shape_id: Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+        })
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_open_view_request_shape(&request, &StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload.get("request_id").and_then(|value| value.as_str()),
+        Some("req_1")
+    );
+    assert_eq!(
+        payload
+            .get("open_outcome")
+            .and_then(|outcome| outcome.get("outcome"))
+            .and_then(|value| value.as_str()),
+        Some("opened")
+    );
+}
+
+#[test]
+fn view_request_ux_open_shape_handler_rejects_unlinked_shape() {
+    // obligation: spec.mother-view-request-ux.mvru4-open-linked-shape-action
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-requests/open-shape".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&serde_json::json!({
+            "request_id": "req_1",
+            "shape_id": "unlinked.shape"
+        }))
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_open_view_request_shape(&request, &StubRuntime);
+    assert_eq!(response.status, 400);
 }
 
 #[test]

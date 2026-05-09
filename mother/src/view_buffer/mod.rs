@@ -15,12 +15,14 @@ pub use model::{
     Buffer, BufferState, CataloguedFact, CataloguedSource, CataloguedSourceKind, DisplayRequest,
     DisplayRequestOutcome, FactKind, Frame, FrameKind, MajorMode, MinorMode, ObservabilityGap,
     ObservabilityGapStatus, ObservationState, PayloadContract, ShapeMatch, ShapeMatchKind,
-    SourceAvailability, ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeCreation,
-    ViewShapeMaturity, ViewShapeScope, Window, WindowConnectionState,
+    SourceAvailability, ViewRequestAction, ViewRequestActionKind, ViewRequestDetail,
+    ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeCreation, ViewShapeMaturity,
+    ViewShapeScope, Window, WindowConnectionState,
 };
 pub use payload::{FramedJsonPayload, PayloadFrame};
 pub use service::{
     mother_status_shape, ComposeViewRequest, ComposedViewRequest, ConnectWindowRequest,
-    DisconnectWindowRequest, KillBufferRequest, OpenBufferOutcome, OpenBufferRequest, OpenedBuffer,
-    ProposedInitialShape, ProposedShapeMatch, ViewBufferService, SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+    DisconnectWindowRequest, KillBufferRequest, OpenBufferOutcome, OpenBufferRequest,
+    OpenRequestShapeOutcome, OpenRequestShapeRequest, OpenedBuffer, ProposedInitialShape,
+    ProposedShapeMatch, ViewBufferService, SHAPE_MATCH_CONFIDENCE_THRESHOLD,
 };

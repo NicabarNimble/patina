@@ -300,6 +300,112 @@ impl ViewShapeAdaptation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewRequestActionKind {
+    OpenMatchedShape,
+    OpenAdaptedShape,
+    OpenCreatedShape,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ViewRequestAction {
+    pub kind: ViewRequestActionKind,
+    pub shape_id: String,
+    pub label: String,
+}
+
+impl ViewRequestAction {
+    pub fn open_matched_shape(shape_id: String) -> Self {
+        Self {
+            kind: ViewRequestActionKind::OpenMatchedShape,
+            shape_id,
+            label: "Open matched shape".to_string(),
+        }
+    }
+
+    pub fn open_adapted_shape(shape_id: String) -> Self {
+        Self {
+            kind: ViewRequestActionKind::OpenAdaptedShape,
+            shape_id,
+            label: "Open adapted shape".to_string(),
+        }
+    }
+
+    pub fn open_created_shape(shape_id: String) -> Self {
+        Self {
+            kind: ViewRequestActionKind::OpenCreatedShape,
+            shape_id,
+            label: "Open created shape".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewRequestDetail {
+    pub request: DisplayRequest,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shape_match: Option<ShapeMatch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shape_adaptation: Option<ViewShapeAdaptation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adapted_shape: Option<ViewShape>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shape_creation: Option<ViewShapeCreation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_shape: Option<ViewShape>,
+    pub available_actions: Vec<ViewRequestAction>,
+}
+
+impl ViewRequestDetail {
+    pub fn from_parts(
+        request: DisplayRequest,
+        shape_match: Option<ShapeMatch>,
+        shape_adaptation: Option<ViewShapeAdaptation>,
+        adapted_shape: Option<ViewShape>,
+        shape_creation: Option<ViewShapeCreation>,
+        created_shape: Option<ViewShape>,
+        matched_shape: Option<ViewShape>,
+    ) -> Self {
+        // obligation: spec.mother-view-request-ux.mvru1-detail-model
+        let mut available_actions = Vec::new();
+        if let Some(shape) = matched_shape.filter(|shape| shape.active) {
+            available_actions.push(ViewRequestAction::open_matched_shape(shape.shape_id));
+        }
+        if let Some(shape) = adapted_shape.as_ref().filter(|shape| shape.active) {
+            available_actions.push(ViewRequestAction::open_adapted_shape(
+                shape.shape_id.clone(),
+            ));
+        }
+        if let Some(shape) = created_shape.as_ref().filter(|shape| shape.active) {
+            available_actions.push(ViewRequestAction::open_created_shape(
+                shape.shape_id.clone(),
+            ));
+        }
+
+        Self {
+            request,
+            shape_match,
+            shape_adaptation,
+            adapted_shape,
+            shape_creation,
+            created_shape,
+            available_actions,
+        }
+    }
+
+    pub fn linked_action_for_shape(&self, shape_id: Option<&str>) -> Option<&ViewRequestAction> {
+        match shape_id {
+            Some(shape_id) => self
+                .available_actions
+                .iter()
+                .find(|action| action.shape_id == shape_id),
+            None if self.available_actions.len() == 1 => self.available_actions.first(),
+            None => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Buffer {
     pub buffer_id: String,
     pub name: String,
@@ -530,6 +636,69 @@ mod tests {
                 "request_outcome": "unable"
             })
         );
+    }
+
+    #[test]
+    fn view_request_ux_detail_exposes_created_shape_action() {
+        // obligation: spec.mother-view-request-ux.mvru1-detail-model
+        let request = DisplayRequest::pending(
+            "req_1".to_string(),
+            "local-user".to_string(),
+            "pi".to_string(),
+            "show runtime summary".to_string(),
+            Utc::now(),
+        );
+        let creation = ViewShapeCreation::created_without_opening(
+            request.request_id.clone(),
+            "initial::req_1::test".to_string(),
+            vec![ViewRequirement {
+                fact_path: "mother.status.version".to_string(),
+                required: true,
+                purpose: "display Mother version".to_string(),
+            }],
+        );
+        let created_shape = ViewShape {
+            shape_id: creation.created_shape_id.clone(),
+            title: "Mother Runtime Summary".to_string(),
+            source_ref: "local-allium-view-library".to_string(),
+            scope: ViewShapeScope::MotherUser,
+            version: 1,
+            active: true,
+            major_mode: MajorMode::Table,
+            minor_modes: vec![MinorMode::Pinned],
+            maturity: ViewShapeMaturity::Exploratory,
+            payload_contract: PayloadContract::FramedJson,
+            payload_version: 1,
+            vision_id: None,
+            project_uid: None,
+            replaced_by: None,
+            requirements: creation.requirements.clone(),
+        };
+
+        let detail = ViewRequestDetail::from_parts(
+            request,
+            None,
+            None,
+            None,
+            Some(creation),
+            Some(created_shape),
+            None,
+        );
+
+        assert_eq!(detail.available_actions.len(), 1);
+        assert_eq!(
+            detail.available_actions[0].kind,
+            ViewRequestActionKind::OpenCreatedShape
+        );
+        assert_eq!(
+            detail
+                .linked_action_for_shape(Some("initial::req_1::test"))
+                .map(|action| action.label.as_str()),
+            Some("Open created shape")
+        );
+        assert!(detail
+            .linked_action_for_shape(Some("unlinked.shape"))
+            .is_none());
     }
 
     #[test]

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::*;
 use crate::view_buffer::{
     ComposeViewRequest, ConnectWindowRequest, DisconnectWindowRequest, KillBufferRequest,
-    OpenBufferOutcome, OpenBufferRequest, ViewShape,
+    OpenBufferOutcome, OpenBufferRequest, OpenRequestShapeRequest, ViewShape,
 };
 
 #[derive(Serialize)]
@@ -26,6 +26,16 @@ struct RequestsResponse<T> {
 #[derive(Serialize)]
 struct RequestResponse<T> {
     request: T,
+}
+
+#[derive(Serialize)]
+struct RequestDetailsResponse<T> {
+    details: T,
+}
+
+#[derive(Serialize)]
+struct RequestDetailResponse<T> {
+    detail: T,
 }
 
 #[derive(Serialize)]
@@ -142,6 +152,36 @@ pub fn handle_get_view_request(
     }
 }
 
+pub fn handle_list_view_request_details(runtime: &(impl ViewBufferApi + ?Sized)) -> HttpResponse {
+    // obligation: spec.mother-view-request-ux.mvru3-detail-api
+    match runtime.view_request_details_list() {
+        Ok(details) => HttpResponse::json(200, &RequestDetailsResponse { details }),
+        Err(error) => json_error(500, &format!("list view request details failed: {}", error)),
+    }
+}
+
+pub fn handle_get_view_request_detail(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    // obligation: spec.mother-view-request-ux.mvru3-detail-api
+    let Some(request_id) = request.path.strip_prefix("/api/view-requests/") else {
+        return json_error(400, "missing view request id");
+    };
+    let Some(request_id) = request_id.strip_suffix("/detail") else {
+        return json_error(400, "missing view request detail suffix");
+    };
+    if request_id.trim().is_empty() {
+        return json_error(400, "missing view request id");
+    }
+
+    match runtime.view_request_detail_get(request_id) {
+        Ok(Some(detail)) => HttpResponse::json(200, &RequestDetailResponse { detail }),
+        Ok(None) => json_error(404, &format!("unknown view request '{}'", request_id)),
+        Err(error) => json_error(500, &format!("get view request detail failed: {}", error)),
+    }
+}
+
 pub fn handle_compose_view_request(
     request: &HttpRequest,
     runtime: &(impl ViewBufferApi + ?Sized),
@@ -156,6 +196,32 @@ pub fn handle_compose_view_request(
     match runtime.view_request_compose(compose_request) {
         Ok(composed) => HttpResponse::json(200, &composed),
         Err(error) => json_error(500, &format!("compose view request failed: {}", error)),
+    }
+}
+
+pub fn handle_open_view_request_shape(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    // obligation: spec.mother-view-request-ux.mvru4-open-linked-shape-action
+    let Some(open_request) = parse_json::<OpenRequestShapeRequest>(request) else {
+        return json_error(400, "Invalid JSON");
+    };
+    if open_request.request_id.trim().is_empty() {
+        return json_error(400, "missing view request id");
+    }
+    if open_request
+        .shape_id
+        .as_deref()
+        .is_some_and(|shape_id| shape_id.trim().is_empty())
+    {
+        return json_error(400, "missing view shape id");
+    }
+
+    match runtime.view_request_open_shape(open_request) {
+        Ok(Some(outcome)) => HttpResponse::json(200, &outcome),
+        Ok(None) => json_error(404, "unknown view request"),
+        Err(error) => json_error(400, &format!("open view request shape failed: {}", error)),
     }
 }
 

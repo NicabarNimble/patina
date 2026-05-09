@@ -117,10 +117,19 @@ pub trait ApiRuntime {
         &self,
         request_id: &str,
     ) -> Result<Option<crate::view_buffer::DisplayRequest>>;
+    fn view_request_details_list(&self) -> Result<Vec<crate::view_buffer::ViewRequestDetail>>;
+    fn view_request_detail_get(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewRequestDetail>>;
     fn view_request_compose(
         &self,
         request: crate::view_buffer::ComposeViewRequest,
     ) -> Result<crate::view_buffer::ComposedViewRequest>;
+    fn view_request_open_shape(
+        &self,
+        request: crate::view_buffer::OpenRequestShapeRequest,
+    ) -> Result<Option<crate::view_buffer::OpenRequestShapeOutcome>>;
     fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>>;
     fn view_buffer_open(
         &self,
@@ -351,10 +360,19 @@ pub trait ViewBufferApi {
         &self,
         request_id: &str,
     ) -> Result<Option<crate::view_buffer::DisplayRequest>>;
+    fn view_request_details_list(&self) -> Result<Vec<crate::view_buffer::ViewRequestDetail>>;
+    fn view_request_detail_get(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewRequestDetail>>;
     fn view_request_compose(
         &self,
         request: crate::view_buffer::ComposeViewRequest,
     ) -> Result<crate::view_buffer::ComposedViewRequest>;
+    fn view_request_open_shape(
+        &self,
+        request: crate::view_buffer::OpenRequestShapeRequest,
+    ) -> Result<Option<crate::view_buffer::OpenRequestShapeOutcome>>;
     fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>>;
     fn view_buffer_open(
         &self,
@@ -407,11 +425,29 @@ impl<T: ApiRuntime + ?Sized> ViewBufferApi for T {
         ApiRuntime::view_request_get(self, request_id)
     }
 
+    fn view_request_details_list(&self) -> Result<Vec<crate::view_buffer::ViewRequestDetail>> {
+        ApiRuntime::view_request_details_list(self)
+    }
+
+    fn view_request_detail_get(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewRequestDetail>> {
+        ApiRuntime::view_request_detail_get(self, request_id)
+    }
+
     fn view_request_compose(
         &self,
         request: crate::view_buffer::ComposeViewRequest,
     ) -> Result<crate::view_buffer::ComposedViewRequest> {
         ApiRuntime::view_request_compose(self, request)
+    }
+
+    fn view_request_open_shape(
+        &self,
+        request: crate::view_buffer::OpenRequestShapeRequest,
+    ) -> Result<Option<crate::view_buffer::OpenRequestShapeOutcome>> {
+        ApiRuntime::view_request_open_shape(self, request)
     }
 
     fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>> {
@@ -606,7 +642,10 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let view_shape_deactivate_runtime = Arc::clone(&runtime);
     let view_requests_list_runtime = Arc::clone(&runtime);
     let view_request_get_runtime = Arc::clone(&runtime);
+    let view_request_details_list_runtime = Arc::clone(&runtime);
+    let view_request_detail_get_runtime = Arc::clone(&runtime);
     let view_request_compose_runtime = Arc::clone(&runtime);
+    let view_request_open_shape_runtime = Arc::clone(&runtime);
     let view_buffers_list_runtime = Arc::clone(&runtime);
     let view_buffer_open_runtime = Arc::clone(&runtime);
     let view_buffer_connect_runtime = Arc::clone(&runtime);
@@ -685,8 +724,17 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         get_view_request: Arc::new(move |request| {
             view_buffer::handle_get_view_request(request, &*view_request_get_runtime)
         }),
+        get_view_request_details: Arc::new(move |_request| {
+            view_buffer::handle_list_view_request_details(&*view_request_details_list_runtime)
+        }),
+        get_view_request_detail: Arc::new(move |request| {
+            view_buffer::handle_get_view_request_detail(request, &*view_request_detail_get_runtime)
+        }),
         post_view_request_compose: Arc::new(move |request| {
             view_buffer::handle_compose_view_request(request, &*view_request_compose_runtime)
+        }),
+        post_view_request_open_shape: Arc::new(move |request| {
+            view_buffer::handle_open_view_request_shape(request, &*view_request_open_shape_runtime)
         }),
         get_view_buffers: Arc::new(move |_request| {
             view_buffer::handle_list_view_buffers(&*view_buffers_list_runtime)

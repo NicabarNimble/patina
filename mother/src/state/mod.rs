@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::{
     view_buffer::{
         self, Buffer, DisplayRequest, DisplayRequestOutcome, Frame, ObservabilityGap, ShapeMatch,
-        ViewShape, Window,
+        ViewShape, ViewShapeAdaptation, ViewShapeCreation, Window,
     },
     TaskIntent, TaskIntentKind,
 };
@@ -1861,6 +1861,29 @@ impl MotherRuntimeStore {
         view_buffer::store::list_shape_matches(&conn)
     }
 
+    pub fn save_view_shape_adaptation(&self, adaptation: &ViewShapeAdaptation) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_shape_adaptation(&conn, adaptation)
+    }
+
+    pub fn get_view_shape_adaptation(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<ViewShapeAdaptation>> {
+        let conn = self.open()?;
+        view_buffer::store::get_shape_adaptation(&conn, request_id)
+    }
+
+    pub fn save_view_shape_creation(&self, creation: &ViewShapeCreation) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_shape_creation(&conn, creation)
+    }
+
+    pub fn get_view_shape_creation(&self, request_id: &str) -> Result<Option<ViewShapeCreation>> {
+        let conn = self.open()?;
+        view_buffer::store::get_shape_creation(&conn, request_id)
+    }
+
     pub fn upsert_view_shape(&self, shape: &ViewShape) -> Result<()> {
         let conn = self.open()?;
         view_buffer::store::upsert_shape(&conn, shape)
@@ -2039,6 +2062,58 @@ mod tests {
         assert!(!reopened
             .update_view_display_request_outcome("missing", &DisplayRequestOutcome::Unable)
             .unwrap());
+    }
+
+    #[test]
+    fn view_request_ux_shape_artifacts_are_persistent() {
+        // obligation: spec.mother-view-request-ux.mvru2-persist-request-artifacts
+        use crate::view_buffer::{
+            DisplayRequest, ViewRequirement, ViewShapeAdaptation, ViewShapeCreation,
+        };
+
+        let store = temp_store();
+        let request = DisplayRequest::pending(
+            "req_ux".to_string(),
+            "local-user".to_string(),
+            "pi".to_string(),
+            "show runtime summary".to_string(),
+            Utc::now(),
+        );
+        let adaptation = ViewShapeAdaptation::created_without_opening(
+            request.request_id.clone(),
+            "mother.status.default".to_string(),
+            "mother.status.default::adapted::test".to_string(),
+        );
+        let creation = ViewShapeCreation::created_without_opening(
+            request.request_id.clone(),
+            "initial::req_ux::test".to_string(),
+            vec![ViewRequirement {
+                fact_path: "mother.status.version".to_string(),
+                required: true,
+                purpose: "display Mother version".to_string(),
+            }],
+        );
+
+        store.save_view_display_request(&request).unwrap();
+        store.save_view_shape_adaptation(&adaptation).unwrap();
+        store.save_view_shape_creation(&creation).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(
+            reopened
+                .get_view_shape_adaptation(&request.request_id)
+                .unwrap(),
+            Some(adaptation)
+        );
+        assert_eq!(
+            reopened
+                .get_view_shape_creation(&request.request_id)
+                .unwrap(),
+            Some(creation)
+        );
     }
 
     #[test]

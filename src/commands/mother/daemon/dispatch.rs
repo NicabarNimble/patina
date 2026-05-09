@@ -8,6 +8,55 @@ impl ServerState {
             .seed_view_shape(&mother_crate::view_buffer::mother_status_shape())?;
         Ok(())
     }
+
+    fn build_view_request_detail(
+        &self,
+        request: mother_crate::view_buffer::DisplayRequest,
+    ) -> anyhow::Result<mother_crate::view_buffer::ViewRequestDetail> {
+        // obligation: spec.mother-view-request-ux.mvru1-detail-model
+        // obligation: spec.mother-view-request-ux.mvru6-no-fake-data-guardrails
+        let shape_match = self
+            .runtime_store
+            .get_view_shape_match(&request.request_id)?;
+        let shape_adaptation = self
+            .runtime_store
+            .get_view_shape_adaptation(&request.request_id)?;
+        let adapted_shape = shape_adaptation
+            .as_ref()
+            .map(|adaptation| {
+                self.runtime_store
+                    .get_view_shape(&adaptation.adapted_shape_id)
+            })
+            .transpose()?
+            .flatten();
+        let shape_creation = self
+            .runtime_store
+            .get_view_shape_creation(&request.request_id)?;
+        let created_shape = shape_creation
+            .as_ref()
+            .map(|creation| {
+                self.runtime_store
+                    .get_view_shape(&creation.created_shape_id)
+            })
+            .transpose()?
+            .flatten();
+        let matched_shape = shape_match
+            .as_ref()
+            .and_then(|shape_match| shape_match.shape_id.as_deref())
+            .map(|shape_id| self.runtime_store.get_view_shape(shape_id))
+            .transpose()?
+            .flatten();
+
+        Ok(mother_crate::view_buffer::ViewRequestDetail::from_parts(
+            request,
+            shape_match,
+            shape_adaptation,
+            adapted_shape,
+            shape_creation,
+            created_shape,
+            matched_shape,
+        ))
+    }
 }
 
 impl ApiRuntime for ServerState {
@@ -687,6 +736,30 @@ impl ApiRuntime for ServerState {
         self.runtime_store.get_view_display_request(request_id)
     }
 
+    fn view_request_details_list(
+        &self,
+    ) -> anyhow::Result<Vec<mother_crate::view_buffer::ViewRequestDetail>> {
+        // obligation: spec.mother-view-request-ux.mvru3-detail-api
+        self.ensure_builtin_view_shapes()?;
+        self.runtime_store
+            .list_view_display_requests()?
+            .into_iter()
+            .map(|request| self.build_view_request_detail(request))
+            .collect()
+    }
+
+    fn view_request_detail_get(
+        &self,
+        request_id: &str,
+    ) -> anyhow::Result<Option<mother_crate::view_buffer::ViewRequestDetail>> {
+        // obligation: spec.mother-view-request-ux.mvru3-detail-api
+        self.ensure_builtin_view_shapes()?;
+        self.runtime_store
+            .get_view_display_request(request_id)?
+            .map(|request| self.build_view_request_detail(request))
+            .transpose()
+    }
+
     fn view_request_compose(
         &self,
         request: mother_crate::view_buffer::ComposeViewRequest,
@@ -716,8 +789,16 @@ impl ApiRuntime for ServerState {
         if let Some(shape_match) = &composed.shape_match {
             self.runtime_store.save_view_shape_match(shape_match)?;
         }
+        if let Some(shape_adaptation) = &composed.shape_adaptation {
+            self.runtime_store
+                .save_view_shape_adaptation(shape_adaptation)?;
+        }
         if let Some(adapted_shape) = &composed.adapted_shape {
             self.runtime_store.upsert_view_shape(adapted_shape)?;
+        }
+        if let Some(shape_creation) = &composed.shape_creation {
+            self.runtime_store
+                .save_view_shape_creation(shape_creation)?;
         }
         if let Some(created_shape) = &composed.created_shape {
             self.runtime_store.upsert_view_shape(created_shape)?;
@@ -733,6 +814,44 @@ impl ApiRuntime for ServerState {
             }
         }
         Ok(composed)
+    }
+
+    fn view_request_open_shape(
+        &self,
+        request: mother_crate::view_buffer::OpenRequestShapeRequest,
+    ) -> anyhow::Result<Option<mother_crate::view_buffer::OpenRequestShapeOutcome>> {
+        // obligation: spec.mother-view-request-ux.mvru4-open-linked-shape-action
+        // obligation: spec.mother-view-request-ux.mvru5-non-mutating-history
+        let Some(detail) = self.view_request_detail_get(&request.request_id)? else {
+            return Ok(None);
+        };
+        let details = self.health_details()?;
+        let catalog = mother_crate::view_buffer::DataCatalog::mother_status(
+            mother_crate::view_buffer::MotherStatusFacts {
+                version: self.version(),
+                uptime_secs: self.uptime_secs(),
+                control_plane_ready: details.control_plane_ready,
+                registered_projects: details.registered_projects,
+                children_ready_count: details.children_ready_count,
+                children_total: details.children_total,
+                startup_profile: details.startup_profile,
+                memory_pressure: details.memory.pressure,
+                observed_at: Utc::now(),
+            },
+        );
+        let shapes = self.runtime_store.list_view_shapes()?;
+        let mut service =
+            mother_crate::view_buffer::ViewBufferService::with_catalog_and_shapes(catalog, shapes);
+        let outcome = service.open_request_shape(&detail, request)?;
+        match &outcome.open_outcome {
+            mother_crate::view_buffer::OpenBufferOutcome::Opened(opened) => {
+                self.runtime_store.save_view_buffer(&opened.buffer)?;
+            }
+            mother_crate::view_buffer::OpenBufferOutcome::ObservabilityGap(gap) => {
+                self.runtime_store.save_view_observability_gap(gap)?;
+            }
+        }
+        Ok(Some(outcome))
     }
 
     fn view_buffers_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::Buffer>> {

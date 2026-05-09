@@ -8,8 +8,8 @@ use serde_json::json;
 use super::{
     Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind,
     FramedJsonPayload, MajorMode, MinorMode, ObservabilityGap, PayloadContract, ShapeMatch,
-    ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeCreation,
-    ViewShapeMaturity, ViewShapeScope, Window, WindowConnectionState,
+    ShapeMatchKind, ViewRequestDetail, ViewRequirement, ViewShape, ViewShapeAdaptation,
+    ViewShapeCreation, ViewShapeMaturity, ViewShapeScope, Window, WindowConnectionState,
 };
 use crate::view_buffer::catalog::{DataCatalog, MOTHER_STATUS_SHAPE_ID, MOTHER_STATUS_SOURCE_ID};
 
@@ -98,6 +98,21 @@ pub struct OpenedBuffer {
 pub enum OpenBufferOutcome {
     Opened(OpenedBuffer),
     ObservabilityGap(ObservabilityGap),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OpenRequestShapeRequest {
+    pub request_id: String,
+    #[serde(default)]
+    pub shape_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OpenRequestShapeOutcome {
+    pub request_id: String,
+    pub shape_id: String,
+    pub open_outcome: OpenBufferOutcome,
 }
 
 #[derive(Debug, Clone)]
@@ -454,6 +469,51 @@ impl ViewBufferService {
             return Err(format!("inactive view shape '{}'", shape_id));
         }
         Ok(())
+    }
+
+    pub fn open_request_shape(
+        &mut self,
+        detail: &ViewRequestDetail,
+        request: OpenRequestShapeRequest,
+    ) -> Result<OpenRequestShapeOutcome> {
+        // obligation: spec.mother-view-request-ux.mvru4-open-linked-shape-action
+        // obligation: spec.mother-view-request-ux.mvru5-non-mutating-history
+        // obligation: spec.mother-view-request-ux.mvru6-no-fake-data-guardrails
+        if request.request_id != detail.request.request_id {
+            return Err(anyhow!(
+                "request detail '{}' does not match open action '{}'",
+                detail.request.request_id,
+                request.request_id
+            ));
+        }
+        if request.shape_id.is_none() && detail.available_actions.len() > 1 {
+            return Err(anyhow!(
+                "shape_id is required when request '{}' has multiple open actions",
+                request.request_id
+            ));
+        }
+        let action = detail
+            .linked_action_for_shape(request.shape_id.as_deref())
+            .ok_or_else(|| match request.shape_id.as_deref() {
+                Some(shape_id) => anyhow!(
+                    "shape '{}' is not an openable shape linked to request '{}'",
+                    shape_id,
+                    request.request_id
+                ),
+                None => anyhow!(
+                    "request '{}' has no openable linked shape",
+                    request.request_id
+                ),
+            })?;
+        let shape_id = action.shape_id.clone();
+        let open_outcome = self.open_buffer(OpenBufferRequest {
+            shape_id: shape_id.clone(),
+        })?;
+        Ok(OpenRequestShapeOutcome {
+            request_id: request.request_id,
+            shape_id,
+            open_outcome,
+        })
     }
 
     pub fn open_buffer(&mut self, request: OpenBufferRequest) -> Result<OpenBufferOutcome> {
@@ -1232,6 +1292,64 @@ mod tests {
             MOTHER_STATUS_SHAPE_ID
         );
         assert!(composed.open_outcome.is_none());
+    }
+
+    #[test]
+    fn view_request_ux_opens_only_linked_shape_without_mutating_request() {
+        // obligation: spec.mother-view-request-ux.mvru4-open-linked-shape-action
+        // obligation: spec.mother-view-request-ux.mvru5-non-mutating-history
+        // obligation: spec.mother-view-request-ux.mvru6-no-fake-data-guardrails
+        let request = DisplayRequest {
+            request_id: "req_ux".to_string(),
+            user_id: "local-user".to_string(),
+            agent_id: "pi".to_string(),
+            raw_request: "show mother status".to_string(),
+            requested_at: Utc::now(),
+            outcome: DisplayRequestOutcome::Unable,
+        };
+        let shape = mother_status_shape();
+        let detail = ViewRequestDetail::from_parts(
+            request.clone(),
+            Some(ShapeMatch {
+                request_id: request.request_id.clone(),
+                shape_id: Some(shape.shape_id.clone()),
+                match_kind: ShapeMatchKind::ExplicitUserChoice,
+                confidence: 1.0,
+            }),
+            None,
+            None,
+            None,
+            None,
+            Some(shape),
+        );
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+
+        let outcome = service
+            .open_request_shape(
+                &detail,
+                OpenRequestShapeRequest {
+                    request_id: request.request_id.clone(),
+                    shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                },
+            )
+            .expect("linked shape should open");
+
+        assert_eq!(outcome.request_id, request.request_id);
+        assert_eq!(outcome.shape_id, MOTHER_STATUS_SHAPE_ID);
+        assert!(matches!(outcome.open_outcome, OpenBufferOutcome::Opened(_)));
+        assert_eq!(detail.request.outcome, DisplayRequestOutcome::Unable);
+        assert_eq!(service.list_buffers().len(), 1);
+
+        let error = service
+            .open_request_shape(
+                &detail,
+                OpenRequestShapeRequest {
+                    request_id: "req_ux".to_string(),
+                    shape_id: Some("unlinked.shape".to_string()),
+                },
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("not an openable shape linked"));
     }
 
     #[test]
