@@ -22,7 +22,7 @@ exit_criteria:
   checked: true
 - id: mvrc2-request-persistence
   text: Display requests and shape matches persist in Mother state with deterministic create/get/list/update behavior independent of renderer state.
-  checked: false
+  checked: true
 - id: mvrc3-compose-api
   text: Mother exposes a structured request-composition API that captures raw user display requests and accepts agent-proposed shape matches without parsing natural language inside Mother.
   checked: false
@@ -186,7 +186,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 
 - [x] `mvrc0-allium-code-alignment`
 - [x] `mvrc1-request-model`
-- [ ] `mvrc2-request-persistence`
+- [x] `mvrc2-request-persistence`
 - [ ] `mvrc3-compose-api`
 - [ ] `mvrc4-explicit-exact-open`
 - [ ] `mvrc5-fail-closed-outcomes`

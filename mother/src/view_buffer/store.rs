@@ -4,14 +4,40 @@ use rusqlite::{params, types::Type, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Serialize};
 
 use super::{
-    Buffer, BufferState, Frame, FrameKind, MajorMode, MinorMode, ObservabilityGap,
-    ObservabilityGapStatus, PayloadContract, ViewRequirement, ViewShape, ViewShapeMaturity,
-    ViewShapeScope, Window, WindowConnectionState,
+    Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind, MajorMode,
+    MinorMode, ObservabilityGap, ObservabilityGapStatus, PayloadContract, ShapeMatch,
+    ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeMaturity, ViewShapeScope, Window,
+    WindowConnectionState,
 };
 
 pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
+        CREATE TABLE IF NOT EXISTS mother_view_display_requests (
+            request_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            raw_request TEXT NOT NULL,
+            requested_at TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            CHECK (LENGTH(TRIM(raw_request)) > 0),
+            CHECK (outcome IN ('pending', 'buffer_opened', 'observability_gap_reported', 'unable'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mother_view_display_requests_outcome_requested
+        ON mother_view_display_requests(outcome, requested_at DESC);
+
+        CREATE TABLE IF NOT EXISTS mother_view_shape_matches (
+            request_id TEXT PRIMARY KEY,
+            shape_id TEXT,
+            match_kind TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            created_at TEXT NOT NULL,
+            CHECK (match_kind IN ('exact', 'explicit_user_choice', 'similar', 'none')),
+            CHECK (confidence >= 0.0 AND confidence <= 1.0),
+            FOREIGN KEY (request_id) REFERENCES mother_view_display_requests(request_id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS mother_view_shapes (
             shape_id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
@@ -107,6 +133,129 @@ pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
         "#,
     )?;
     Ok(())
+}
+
+pub(crate) fn save_display_request(conn: &Connection, request: &DisplayRequest) -> Result<()> {
+    conn.execute(
+        r#"
+        INSERT INTO mother_view_display_requests (
+            request_id, user_id, agent_id, raw_request, requested_at, outcome
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        ON CONFLICT(request_id) DO UPDATE SET
+            user_id = excluded.user_id,
+            agent_id = excluded.agent_id,
+            raw_request = excluded.raw_request,
+            requested_at = excluded.requested_at,
+            outcome = excluded.outcome
+        "#,
+        params![
+            &request.request_id,
+            &request.user_id,
+            &request.agent_id,
+            &request.raw_request,
+            request.requested_at.to_rfc3339(),
+            enum_to_db(&request.outcome)?,
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn get_display_request(
+    conn: &Connection,
+    request_id: &str,
+) -> Result<Option<DisplayRequest>> {
+    conn.query_row(
+        r#"
+        SELECT request_id, user_id, agent_id, raw_request, requested_at, outcome
+        FROM mother_view_display_requests
+        WHERE request_id = ?1
+        "#,
+        params![request_id],
+        map_display_request_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub(crate) fn list_display_requests(conn: &Connection) -> Result<Vec<DisplayRequest>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT request_id, user_id, agent_id, raw_request, requested_at, outcome
+        FROM mother_view_display_requests
+        ORDER BY requested_at DESC, request_id ASC
+        "#,
+    )?;
+    let rows = stmt
+        .query_map([], map_display_request_row)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub(crate) fn update_display_request_outcome(
+    conn: &Connection,
+    request_id: &str,
+    outcome: &DisplayRequestOutcome,
+) -> Result<bool> {
+    let updated = conn.execute(
+        r#"
+        UPDATE mother_view_display_requests
+        SET outcome = ?2
+        WHERE request_id = ?1
+        "#,
+        params![request_id, enum_to_db(outcome)?],
+    )?;
+    Ok(updated > 0)
+}
+
+pub(crate) fn save_shape_match(conn: &Connection, shape_match: &ShapeMatch) -> Result<()> {
+    conn.execute(
+        r#"
+        INSERT INTO mother_view_shape_matches (
+            request_id, shape_id, match_kind, confidence, created_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5)
+        ON CONFLICT(request_id) DO UPDATE SET
+            shape_id = excluded.shape_id,
+            match_kind = excluded.match_kind,
+            confidence = excluded.confidence,
+            created_at = excluded.created_at
+        "#,
+        params![
+            &shape_match.request_id,
+            shape_match.shape_id.as_deref(),
+            enum_to_db(&shape_match.match_kind)?,
+            shape_match.confidence,
+            Utc::now().to_rfc3339(),
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn get_shape_match(conn: &Connection, request_id: &str) -> Result<Option<ShapeMatch>> {
+    conn.query_row(
+        r#"
+        SELECT request_id, shape_id, match_kind, confidence
+        FROM mother_view_shape_matches
+        WHERE request_id = ?1
+        "#,
+        params![request_id],
+        map_shape_match_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub(crate) fn list_shape_matches(conn: &Connection) -> Result<Vec<ShapeMatch>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT request_id, shape_id, match_kind, confidence
+        FROM mother_view_shape_matches
+        ORDER BY request_id ASC
+        "#,
+    )?;
+    let rows = stmt
+        .query_map([], map_shape_match_row)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 pub(crate) fn upsert_shape(conn: &Connection, shape: &ViewShape) -> Result<()> {
@@ -428,6 +577,26 @@ pub(crate) fn list_gaps(conn: &Connection) -> Result<Vec<ObservabilityGap>> {
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+fn map_display_request_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DisplayRequest> {
+    Ok(DisplayRequest {
+        request_id: row.get(0)?,
+        user_id: row.get(1)?,
+        agent_id: row.get(2)?,
+        raw_request: row.get(3)?,
+        requested_at: time_from_db(row.get::<_, String>(4)?, 4)?,
+        outcome: enum_from_db::<DisplayRequestOutcome>(row.get::<_, String>(5)?, 5)?,
+    })
+}
+
+fn map_shape_match_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ShapeMatch> {
+    Ok(ShapeMatch {
+        request_id: row.get(0)?,
+        shape_id: row.get(1)?,
+        match_kind: enum_from_db::<ShapeMatchKind>(row.get::<_, String>(2)?, 2)?,
+        confidence: row.get(3)?,
+    })
 }
 
 fn map_shape_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ViewShape> {

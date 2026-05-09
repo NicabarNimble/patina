@@ -4,7 +4,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 
 use crate::{
-    view_buffer::{self, Buffer, Frame, ObservabilityGap, ViewShape, Window},
+    view_buffer::{
+        self, Buffer, DisplayRequest, DisplayRequestOutcome, Frame, ObservabilityGap, ShapeMatch,
+        ViewShape, Window,
+    },
     TaskIntent, TaskIntentKind,
 };
 
@@ -1819,6 +1822,45 @@ impl MotherRuntimeStore {
         Ok(())
     }
 
+    pub fn save_view_display_request(&self, request: &DisplayRequest) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_display_request(&conn, request)
+    }
+
+    pub fn get_view_display_request(&self, request_id: &str) -> Result<Option<DisplayRequest>> {
+        let conn = self.open()?;
+        view_buffer::store::get_display_request(&conn, request_id)
+    }
+
+    pub fn list_view_display_requests(&self) -> Result<Vec<DisplayRequest>> {
+        let conn = self.open()?;
+        view_buffer::store::list_display_requests(&conn)
+    }
+
+    pub fn update_view_display_request_outcome(
+        &self,
+        request_id: &str,
+        outcome: &DisplayRequestOutcome,
+    ) -> Result<bool> {
+        let conn = self.open()?;
+        view_buffer::store::update_display_request_outcome(&conn, request_id, outcome)
+    }
+
+    pub fn save_view_shape_match(&self, shape_match: &ShapeMatch) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_shape_match(&conn, shape_match)
+    }
+
+    pub fn get_view_shape_match(&self, request_id: &str) -> Result<Option<ShapeMatch>> {
+        let conn = self.open()?;
+        view_buffer::store::get_shape_match(&conn, request_id)
+    }
+
+    pub fn list_view_shape_matches(&self) -> Result<Vec<ShapeMatch>> {
+        let conn = self.open()?;
+        view_buffer::store::list_shape_matches(&conn)
+    }
+
     pub fn upsert_view_shape(&self, shape: &ViewShape) -> Result<()> {
         let conn = self.open()?;
         view_buffer::store::upsert_shape(&conn, shape)
@@ -1933,6 +1975,70 @@ mod tests {
             std::env::temp_dir().join(format!("patina-knowledge-runtime-{}", uuid::Uuid::new_v4()));
         let path = root.join("mother/state.db");
         MotherRuntimeStore::new_with_project(path, ProjectUid::new("2bdc808e").unwrap())
+    }
+
+    #[test]
+    fn view_display_requests_and_shape_matches_are_persistent() {
+        // obligation: entity-state.DisplayRequest + entity-state.ShapeMatch
+        // obligation: spec.mother-view-request-composer.mvrc2-request-persistence
+        use crate::view_buffer::{
+            DisplayRequest, DisplayRequestOutcome, ShapeMatch, ShapeMatchKind,
+        };
+
+        let store = temp_store();
+        let requested_at = chrono::DateTime::parse_from_rfc3339("2026-05-09T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let request = DisplayRequest::pending(
+            "req_1".to_string(),
+            "local-user".to_string(),
+            "pi".to_string(),
+            "show mother status".to_string(),
+            requested_at,
+        );
+        let shape_match = ShapeMatch {
+            request_id: request.request_id.clone(),
+            shape_id: Some("mother.status.default".to_string()),
+            match_kind: ShapeMatchKind::ExplicitUserChoice,
+            confidence: 1.0,
+        };
+
+        store.save_view_display_request(&request).unwrap();
+        store.save_view_shape_match(&shape_match).unwrap();
+        assert!(store
+            .update_view_display_request_outcome(
+                &request.request_id,
+                &DisplayRequestOutcome::BufferOpened,
+            )
+            .unwrap());
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        let mut expected_request = request.clone();
+        expected_request.outcome = DisplayRequestOutcome::BufferOpened;
+        assert_eq!(
+            reopened
+                .get_view_display_request(&request.request_id)
+                .unwrap(),
+            Some(expected_request.clone())
+        );
+        assert_eq!(
+            reopened.list_view_display_requests().unwrap(),
+            vec![expected_request]
+        );
+        assert_eq!(
+            reopened.get_view_shape_match(&request.request_id).unwrap(),
+            Some(shape_match.clone())
+        );
+        assert_eq!(
+            reopened.list_view_shape_matches().unwrap(),
+            vec![shape_match]
+        );
+        assert!(!reopened
+            .update_view_display_request_outcome("missing", &DisplayRequestOutcome::Unable)
+            .unwrap());
     }
 
     #[test]

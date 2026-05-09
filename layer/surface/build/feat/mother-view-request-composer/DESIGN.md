@@ -179,6 +179,18 @@ Implemented the Allium request-composer vocabulary in `mother/src/view_buffer/mo
 
 This is model-only; persistence, APIs, and composition behavior remain later exit criteria.
 
+### `mvrc2-request-persistence`
+
+Persisted request-composer state through the existing Mother runtime store seam:
+
+- added `mother_view_display_requests` and `mother_view_shape_matches` tables;
+- added deterministic save/get/list/update functions for display requests;
+- added deterministic save/get/list functions for one shape match per request;
+- added `MotherRuntimeStore` wrappers for request/match operations;
+- added persistence tests covering request capture, match round-trip, outcome updates, and missing update fail-closed behavior.
+
+This still does not expose composition APIs or open buffers from requests; those remain later exit criteria.
+
 ## Commits
 
 No implementation commits yet. This design prepared the spec for implementation slices.
