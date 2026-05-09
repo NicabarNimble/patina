@@ -247,9 +247,23 @@ Tests should cover:
 - opening a buffer from seeded and persisted library shapes;
 - observability gaps for missing required facts or unavailable sources.
 
+## Implementation Notes
+
+### `mvsl1-shape-model`
+
+Implemented the Allium-aligned shape model in `mother/src/view_buffer/model.rs`:
+
+- added `ViewShapeMaturity::{Exploratory, Candidate, Stable, Promoted}` with kebab-case serde representation;
+- added `ViewShape.source_ref`;
+- added optional `vision_id`, `project_uid`, and `replaced_by` storage projections;
+- updated `mother_status_shape()` to carry `source_ref = "local-allium-view-library"` and `maturity = Stable`;
+- updated payload/model tests so the WIT-framed payload path still compiles against the enriched shape model.
+
+This is model-only. Shape persistence, API exposure, seeded-library ownership, and library-based open lookup remain later exit criteria.
+
 ## Commits
 
-No implementation commits yet. Promotion/polish changes prepare the spec for `mvsl0-read-before-write`.
+No implementation commits yet. Promotion/polish changes prepared the spec for `mvsl0-read-before-write`. `mvsl1-shape-model` implementation should be committed as the next scalpel commit.
 
 ## Build Readiness
 

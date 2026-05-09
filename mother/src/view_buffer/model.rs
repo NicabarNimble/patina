@@ -65,6 +65,15 @@ pub enum ViewShapeScope {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum ViewShapeMaturity {
+    Exploratory,
+    Candidate,
+    Stable,
+    Promoted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum CataloguedSourceKind {
     Registry,
     Eventlog,
@@ -162,13 +171,18 @@ pub struct ViewRequirement {
 pub struct ViewShape {
     pub shape_id: String,
     pub title: String,
+    pub source_ref: String,
     pub scope: ViewShapeScope,
     pub version: u32,
     pub active: bool,
     pub major_mode: MajorMode,
     pub minor_modes: Vec<MinorMode>,
+    pub maturity: ViewShapeMaturity,
     pub payload_contract: PayloadContract,
     pub payload_version: u32,
+    pub vision_id: Option<String>,
+    pub project_uid: Option<String>,
+    pub replaced_by: Option<String>,
     pub requirements: Vec<ViewRequirement>,
 }
 
@@ -282,13 +296,18 @@ mod tests {
         let shape = ViewShape {
             shape_id: "mother.status.default".to_string(),
             title: "Mother Status".to_string(),
+            source_ref: "local-allium-view-library".to_string(),
             scope: ViewShapeScope::MotherUser,
             version: 1,
             active: true,
             major_mode: MajorMode::Table,
             minor_modes: vec![MinorMode::Pinned],
+            maturity: ViewShapeMaturity::Stable,
             payload_contract: PayloadContract::FramedJson,
             payload_version: 1,
+            vision_id: None,
+            project_uid: None,
+            replaced_by: None,
             requirements: vec![ViewRequirement {
                 fact_path: "mother.status.control_plane_ready".to_string(),
                 required: true,
@@ -298,6 +317,11 @@ mod tests {
 
         let buffer = Buffer::live_from_shape("buf_1".to_string(), &shape, Utc::now());
 
+        assert_eq!(shape.source_ref, "local-allium-view-library");
+        assert_eq!(shape.maturity, ViewShapeMaturity::Stable);
+        assert_eq!(shape.vision_id, None);
+        assert_eq!(shape.project_uid, None);
+        assert_eq!(shape.replaced_by, None);
         assert_eq!(buffer.name, "*Mother Status*");
         assert_eq!(buffer.state, BufferState::Live);
         assert_eq!(buffer.major_mode, MajorMode::Table);

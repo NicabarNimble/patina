@@ -7,8 +7,8 @@ use serde_json::json;
 
 use super::{
     Buffer, BufferState, Frame, FrameKind, FramedJsonPayload, MajorMode, MinorMode,
-    ObservabilityGap, PayloadContract, ViewRequirement, ViewShape, ViewShapeScope, Window,
-    WindowConnectionState,
+    ObservabilityGap, PayloadContract, ViewRequirement, ViewShape, ViewShapeMaturity,
+    ViewShapeScope, Window, WindowConnectionState,
 };
 use crate::view_buffer::catalog::{DataCatalog, MOTHER_STATUS_SHAPE_ID, MOTHER_STATUS_SOURCE_ID};
 
@@ -242,13 +242,18 @@ pub fn mother_status_shape() -> ViewShape {
     ViewShape {
         shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
         title: "Mother Status".to_string(),
+        source_ref: "local-allium-view-library".to_string(),
         scope: ViewShapeScope::MotherUser,
         version: 1,
         active: true,
         major_mode: MajorMode::Table,
         minor_modes: vec![MinorMode::Pinned],
+        maturity: ViewShapeMaturity::Stable,
         payload_contract: PayloadContract::FramedJson,
         payload_version: 1,
+        vision_id: None,
+        project_uid: None,
+        replaced_by: None,
         requirements: vec![
             required("mother.status.version", "display Mother binary version"),
             required(
