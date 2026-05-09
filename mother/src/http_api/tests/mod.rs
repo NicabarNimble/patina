@@ -86,14 +86,6 @@ impl ApiRuntime for StubRuntime {
         }))
     }
 
-    fn atlas_dashboard_html(&self) -> Result<String> {
-        Ok("<html><body>atlas</body></html>".to_string())
-    }
-
-    fn atlas_snapshot(&self) -> Result<serde_json::Value> {
-        Ok(serde_json::json!({"summary": {"spec_count": 0}}))
-    }
-
     fn bridge_translate(
         &self,
         request: crate::bridge::BridgeRequest,
@@ -461,27 +453,6 @@ fn interface_control_route_rejects_missing_operation_id() {
 }
 
 #[test]
-fn atlas_snapshot_route_returns_json_payload() {
-    let response = atlas::handle_atlas_snapshot(&StubRuntime);
-    assert_eq!(response.status, 200);
-    let json: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
-    assert_eq!(
-        json.get("summary")
-            .and_then(|v| v.get("spec_count"))
-            .and_then(|v| v.as_u64()),
-        Some(0)
-    );
-}
-
-#[test]
-fn atlas_dashboard_route_returns_html_payload() {
-    let response = atlas::handle_atlas_dashboard(&StubRuntime);
-    assert_eq!(response.status, 200);
-    let body = String::from_utf8(response.body).unwrap();
-    assert!(body.contains("atlas"));
-}
-
-#[test]
 fn child_call_route_dispatches_typed_operation() {
     let request = HttpRequest {
         method: "POST".to_string(),
@@ -668,7 +639,7 @@ fn bridge_translate_route_returns_allow_and_deny_payloads() {
         })
         .unwrap(),
     };
-    let allow_response = atlas::handle_bridge_translate(&allow_request, &StubRuntime);
+    let allow_response = bridge::handle_bridge_translate(&allow_request, &StubRuntime);
     assert_eq!(allow_response.status, 200);
     let allow_json: serde_json::Value = serde_json::from_slice(&allow_response.body).unwrap();
     assert_eq!(
@@ -687,7 +658,7 @@ fn bridge_translate_route_returns_allow_and_deny_payloads() {
         })
         .unwrap(),
     };
-    let deny_response = atlas::handle_bridge_translate(&deny_request, &StubRuntime);
+    let deny_response = bridge::handle_bridge_translate(&deny_request, &StubRuntime);
     assert_eq!(deny_response.status, 200);
     let deny_json: serde_json::Value = serde_json::from_slice(&deny_response.body).unwrap();
     assert_eq!(
@@ -705,7 +676,7 @@ fn bridge_translate_route_rejects_invalid_json() {
         body: b"not-json".to_vec(),
     };
 
-    let response = atlas::handle_bridge_translate(&request, &StubRuntime);
+    let response = bridge::handle_bridge_translate(&request, &StubRuntime);
     assert_eq!(response.status, 400);
 }
 

@@ -9,8 +9,6 @@ pub struct RouteTable {
     pub get_health: RouteHandler,
     pub get_ready: RouteHandler,
     pub get_version: RouteHandler,
-    pub get_atlas_dashboard: RouteHandler,
-    pub get_atlas_snapshot: RouteHandler,
     pub post_bridge_translate: RouteHandler,
     pub post_scry: RouteHandler,
     pub post_federation_status: RouteHandler,
@@ -51,20 +49,6 @@ impl Router {
             ("GET", "/health") => (self.routes.get_health)(request),
             ("GET", "/ready") => (self.routes.get_ready)(request),
             ("GET", "/version") => (self.routes.get_version)(request),
-            ("GET", "/atlas") | ("GET", "/atlas/index.html") => {
-                if self.require_auth && !self.check_auth(request) {
-                    json_error(401, "Unauthorized")
-                } else {
-                    (self.routes.get_atlas_dashboard)(request)
-                }
-            }
-            ("GET", "/atlas/atlas.json") | ("GET", "/api/atlas/snapshot") => {
-                if self.require_auth && !self.check_auth(request) {
-                    json_error(401, "Unauthorized")
-                } else {
-                    (self.routes.get_atlas_snapshot)(request)
-                }
-            }
             ("POST", "/api/bridge/translate") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -219,12 +203,6 @@ mod tests {
             get_health: Arc::new(|_| ok_json()),
             get_ready: Arc::new(|_| ok_json()),
             get_version: Arc::new(|_| ok_json()),
-            get_atlas_dashboard: Arc::new(|_| HttpResponse {
-                status: 200,
-                headers: vec![("Content-Type".to_string(), "text/html".to_string())],
-                body: b"<html>atlas</html>".to_vec(),
-            }),
-            get_atlas_snapshot: Arc::new(|_| ok_json()),
             post_bridge_translate: Arc::new(|_| ok_json()),
             post_scry: Arc::new(|_| ok_json()),
             post_federation_status: Arc::new(|_| ok_json()),
@@ -258,26 +236,15 @@ mod tests {
     }
 
     #[test]
-    fn atlas_routes_require_auth_when_router_requires_auth() {
-        let router = Router::new(true, "token-123".to_string(), test_routes());
-
-        let html = router.route(&request("GET", "/atlas", None));
-        assert_eq!(html.status, 401);
-
-        let json = router.route(&request("GET", "/atlas/atlas.json", None));
-        assert_eq!(json.status, 401);
-    }
-
-    #[test]
-    fn atlas_routes_allow_with_valid_auth_header() {
+    fn removed_atlas_routes_are_not_wired() {
         let router = Router::new(true, "token-123".to_string(), test_routes());
         let header = "Bearer token-123";
 
         let html = router.route(&request("GET", "/atlas", Some(header)));
-        assert_eq!(html.status, 200);
+        assert_eq!(html.status, 404);
 
-        let json = router.route(&request("GET", "/atlas/atlas.json", Some(header)));
-        assert_eq!(json.status, 200);
+        let json = router.route(&request("GET", "/api/atlas/snapshot", Some(header)));
+        assert_eq!(json.status, 404);
     }
 
     #[test]

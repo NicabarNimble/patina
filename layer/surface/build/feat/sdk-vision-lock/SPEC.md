@@ -20,7 +20,7 @@ related:
 - layer/surface/build/refactor/legacy-and-grammar-disposition/SPEC.md
 - layer/surface/build/feat/mother-grant-audit-coverage/SPEC.md
 - layer/surface/build/feat/job-aligned-mct-backoffice/SPEC.md
-- layer/surface/build/feat/atlas-native-mother-spec-lens/SPEC.md
+- layer/allium/mother/mother-view-composer-target.allium
 beliefs:
 - '[[sdk-is-mct-entry-point]]'
 - '[[wasi-is-foundation-not-option]]'

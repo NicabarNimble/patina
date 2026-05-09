@@ -116,20 +116,6 @@ impl ApiRuntime for ServerState {
         Ok(self.registry.call(child_name, &request)?.payload)
     }
 
-    fn atlas_dashboard_html(&self) -> anyhow::Result<String> {
-        let root = patina::session::SessionManager::find_project_root()
-            .or_else(|_| std::env::current_dir())
-            .map_err(|error| anyhow::anyhow!("resolve atlas project root: {}", error))?;
-        crate::commands::atlas::dashboard_html_for_root(&root, Some(3))
-    }
-
-    fn atlas_snapshot(&self) -> anyhow::Result<serde_json::Value> {
-        let root = patina::session::SessionManager::find_project_root()
-            .or_else(|_| std::env::current_dir())
-            .map_err(|error| anyhow::anyhow!("resolve atlas project root: {}", error))?;
-        crate::commands::atlas::snapshot_json_for_root(&root)
-    }
-
     fn bridge_translate(
         &self,
         request: mother_crate::bridge::BridgeRequest,

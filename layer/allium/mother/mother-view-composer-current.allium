@@ -13,7 +13,7 @@
 -- Code references:
 --   - mother/src/state/mod.rs project_registry and mother_project_identities
 --   - src/commands/mother/mod.rs projects list/check-in commands
---   - mother/src/http_api.rs federation and atlas HTTP surfaces
+--   - mother/src/http_api.rs federation HTTP surfaces
 
 entity MotherOperator {
     name: String

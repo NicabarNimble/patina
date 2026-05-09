@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::http_daemon::{json_error, HttpRequest, HttpResponse};
 use crate::http_routes::RouteTable;
 
-mod atlas;
+mod bridge;
 mod child;
 mod federation;
 mod health;
@@ -59,8 +59,6 @@ pub trait ApiRuntime {
         args: serde_json::Value,
         correlation: Option<crate::CallCorrelation>,
     ) -> Result<serde_json::Value>;
-    fn atlas_dashboard_html(&self) -> Result<String>;
-    fn atlas_snapshot(&self) -> Result<serde_json::Value>;
     fn bridge_translate(
         &self,
         request: crate::bridge::BridgeRequest,
@@ -138,24 +136,14 @@ impl<T: ApiRuntime + ?Sized> HealthApi for T {
     }
 }
 
-pub trait AtlasApi {
-    fn atlas_dashboard_html(&self) -> Result<String>;
-    fn atlas_snapshot(&self) -> Result<serde_json::Value>;
+pub trait BridgeApi {
     fn bridge_translate(
         &self,
         request: crate::bridge::BridgeRequest,
     ) -> Result<crate::bridge::BridgeResponse>;
 }
 
-impl<T: ApiRuntime + ?Sized> AtlasApi for T {
-    fn atlas_dashboard_html(&self) -> Result<String> {
-        ApiRuntime::atlas_dashboard_html(self)
-    }
-
-    fn atlas_snapshot(&self) -> Result<serde_json::Value> {
-        ApiRuntime::atlas_snapshot(self)
-    }
-
+impl<T: ApiRuntime + ?Sized> BridgeApi for T {
     fn bridge_translate(
         &self,
         request: crate::bridge::BridgeRequest,
@@ -442,8 +430,6 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let health_runtime = Arc::clone(&runtime);
     let ready_runtime = Arc::clone(&runtime);
     let version_runtime = Arc::clone(&runtime);
-    let atlas_dashboard_runtime = Arc::clone(&runtime);
-    let atlas_runtime = Arc::clone(&runtime);
     let bridge_runtime = Arc::clone(&runtime);
     let scry_runtime = Arc::clone(&runtime);
     let federation_status_runtime = Arc::clone(&runtime);
@@ -467,12 +453,8 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         get_health: Arc::new(move |_request| health::handle_health(&*health_runtime)),
         get_ready: Arc::new(move |_request| health::handle_ready(&*ready_runtime)),
         get_version: Arc::new(move |_request| health::handle_version(&*version_runtime)),
-        get_atlas_dashboard: Arc::new(move |_request| {
-            atlas::handle_atlas_dashboard(&*atlas_dashboard_runtime)
-        }),
-        get_atlas_snapshot: Arc::new(move |_request| atlas::handle_atlas_snapshot(&*atlas_runtime)),
         post_bridge_translate: Arc::new(move |request| {
-            atlas::handle_bridge_translate(request, &*bridge_runtime)
+            bridge::handle_bridge_translate(request, &*bridge_runtime)
         }),
         post_scry: Arc::new(move |request| scry::handle_scry(request, &*scry_runtime)),
         post_federation_status: Arc::new(move |request| {

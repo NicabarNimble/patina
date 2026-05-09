@@ -4,8 +4,6 @@ use std::path::Path;
 const FOLDER_TEXT_TO_PARQUET_PANDO_NAME: &str = "folder-text-to-parquet";
 const FOLDER_TEXT_TO_PARQUET_MANIFEST: &str =
     include_str!("../../resources/pandos/folder-text-to-parquet/pando.toml");
-const ATLAS_PANDO_NAME: &str = "atlas";
-const ATLAS_PANDO_MANIFEST: &str = include_str!("../../resources/pandos/atlas/pando.toml");
 
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum PandoCommands {
@@ -75,10 +73,6 @@ fn seed_first_party_pandos(pandos_root: &Path) -> Result<()> {
         FOLDER_TEXT_TO_PARQUET_MANIFEST,
     )?;
 
-    let atlas = pandos_root.join(ATLAS_PANDO_NAME);
-    std::fs::create_dir_all(&atlas)?;
-    std::fs::write(atlas.join("pando.toml"), ATLAS_PANDO_MANIFEST)?;
-
     Ok(())
 }
 
@@ -107,8 +101,6 @@ pub fn native_command_names() -> Vec<String> {
         "serve",
         "interface",
         "report",
-        // `atlas` namespace is intentionally pando-owned; native `patina atlas`
-        // remains an additive wrapper/fallback surface.
         "measure",
         "ai",
         "hook",
@@ -158,12 +150,6 @@ mod tests {
         assert!(folder_manifest.contains("name = \"folder-text-to-parquet\""));
         assert!(folder_manifest.contains("[[children]]"));
         assert!(folder_manifest.contains("[composition]"));
-
-        let atlas_manifest_path = temp.path().join(ATLAS_PANDO_NAME).join("pando.toml");
-        let atlas_manifest = std::fs::read_to_string(atlas_manifest_path).unwrap();
-        assert!(atlas_manifest.contains("name = \"atlas\""));
-        assert!(atlas_manifest.contains("[[children]]"));
-        assert!(atlas_manifest.contains("[composition]"));
     }
 
     #[test]
@@ -187,10 +173,11 @@ mod tests {
     }
 
     #[test]
-    fn native_command_names_reserve_all_except_atlas_namespace() {
+    fn native_command_names_include_active_native_surfaces() {
         let names = native_command_names();
         assert!(names.iter().any(|name| name == "mother"));
         assert!(names.iter().any(|name| name == "spec"));
+        assert!(names.iter().any(|name| name == "measure"));
         assert!(!names.iter().any(|name| name == "atlas"));
     }
 }

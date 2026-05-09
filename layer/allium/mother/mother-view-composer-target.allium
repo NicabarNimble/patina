@@ -1,25 +1,36 @@
 -- allium: 3
 -- mother-view-composer-target.allium
 
--- Scope: Target Projects activity view composer v1.
+-- Scope: Target Mother view composer behavior.
+--
+-- Mental model:
+--   - Allium is the first pass at agents-as-Lisp for Mother display behavior.
+--   - Mother owns Emacs-like live buffers over existing observed data.
+--   - Agents create, adapt, and revise view shapes instead of writing arbitrary UI code.
+--   - Frames such as SvelteKit, TUI, and future Emacs clients connect windows to buffers.
+--
 -- Includes:
---   - agent request to project activity display plan
---   - reusable view recipes keyed by user, vision, project, data domain, and intent
---   - ephemeral buffer replacement on correction intent
---   - immutable correction/artifact events
---   - renderer-neutral view contract for Svelte first and TUI later
---   - WIT-framed boundaries with versioned JSON payloads that can mature into typed WIT
+--   - user requests for live displays over catalogued Mother sources
+--   - local/user editable Allium view shapes compiled into Mother view records
+--   - shape matching, similar-shape adaptation, and new shape creation
+--   - explicit backing requirements for every shape
+--   - fail-closed observability gaps when required data is missing
+--   - Emacs vocabulary: buffer, window, frame, major mode, minor modes
+--   - buffer lifecycle outside agent session lifetime
+--   - buffer replacement when a user revises a shape
+--   - WIT-framed JSON payloads that can mature toward typed WIT
+--   - maturation of shapes, derivations, and display patterns
 -- Excludes:
---   - implementation framework choice beyond renderer-neutral contract
---   - non-project data domains
---   - direct mutation of project data from the view
---   - hard-coded request thresholds; thresholds come from interpreted user intent
--- Builds on current code:
---   - project_registry checked-in timestamps from Mother state
---   - mother_project_identities user_id and vision_id bindings
---   - append-only eventlog semantics
+--   - mutation of Mother operational data from a display view
+--   - arbitrary generated Svelte/TypeScript per view request
+--   - multiplayer/shared buffer semantics beyond not blocking future sharing
+--   - concrete domain dashboards as a fixed roadmap
+--
+-- First renderer target:
+--   - TypeScript + SvelteKit should be the first frame implementation.
+--   - SvelteKit is a frame/renderer client, not the owner of buffers.
 
-entity ViewUser {
+entity MotherUser {
     user_id: String
     display_name: String?
 }
@@ -28,370 +39,619 @@ entity ViewAgent {
     agent_id: String
 }
 
-entity ViewRenderer {
-    renderer_kind: svelte | tui | other
+entity MotherInstance {
+    mother_id: String
+    display_capability: limited | normal | large_screen | multi_display
 }
 
-entity ProjectActivityDataset {
-    records: ProjectActivityRecord with dataset = this
-    record_count: records.count
+entity VisionContext {
+    vision_id: String
+    user: MotherUser
 }
 
-entity ProjectActivityRecord {
-    dataset: ProjectActivityDataset
-
+entity ProjectContext {
     project_uid: String
-    project_id: String?
     project_path: String
-    user_id: String?
-    vision_id: String?
-    checked_in_at: Timestamp
-}
-
-value CheckInAgeFilter {
-    threshold: Duration
-}
-
-entity VisionProfile {
-    user: ViewUser
-    vision_id: String
-    recipes: ViewRecipe with vision_profile = this
-}
-
-entity ProjectViewSettings {
-    project_uid: String
-    user: ViewUser
-    vision_id: String
-    recipes: ViewRecipe with project_settings = this
     transferable_with_project: Boolean
 }
 
-entity ViewRecipe {
-    recipe_id: String
-    vision_profile: VisionProfile?
-    project_settings: ProjectViewSettings?
+entity MotherDisplayContext {
+    mother: MotherInstance
+    user: MotherUser
+    vision: VisionContext?
+    project: ProjectContext?
 
-    owner_scope: system_default | vision_profile | project_settings
-    data_domain: projects_activity
-    normalized_intent: list_projects_by_check_in | isolate_projects_by_check_in_age
+    shapes: ViewShape with context = this
+    buffers: Buffer with context = this
+    gaps: ObservabilityGap with context = this
+}
 
+entity MotherDataCatalog {
+    sources: CataloguedSource with catalog = this
+    facts: CataloguedFact with catalog = this
+
+    source_count: sources.count
+    fact_count: facts.count
+}
+
+entity CataloguedSource {
+    catalog: MotherDataCatalog
+
+    source_id: String
+    source_kind: registry | eventlog | database | artifact | file | log | indexed_external_source | derived_index
+    availability: available | unavailable | stale
+    last_observed_at: Timestamp?
+
+    facts: CataloguedFact with source = this
+}
+
+entity CataloguedFact {
+    catalog: MotherDataCatalog
+    source: CataloguedSource
+
+    fact_path: String
+    fact_kind: raw | derived
+    observation_state: observed | stale | missing
+    inputs: Set<CataloguedFact>
+}
+
+value MinorMode {
+    name: compact | filtered | grouped | pinned | alerting | follow_tail | highlighted | sorted
+}
+
+entity ViewShape {
+    context: MotherDisplayContext
+
+    shape_id: String
+    title: String
+    source_ref: String
+    scope: mother_user | vision | project | buffer_local
     version: Integer
     active: Boolean
-    code_ref: String
-    renderer_contract: String
-    boundary_frame: wit_component | direct_http
-    payload_contract: versioned_json | typed_wit
-    payload_maturity: exploratory | candidate | stable | promoted
-    replaced_by: ViewRecipe?
+
+    major_mode: table | list | graph | timeline | log | markdown | document | browser | image | artifact | custom
+    minor_modes: Set<MinorMode>
+
+    maturity: exploratory | candidate | stable | promoted
+    payload_contract: framed_json | typed_wit | hybrid
+    payload_version: Integer
+
+    vision: VisionContext?
+    project: ProjectContext?
+
+    requirements: ViewRequirement with shape = this
+    derivations: ViewDerivation with shape = this
+    patterns: DisplayPattern with shape = this
+
+    replaced_by: ViewShape?
+}
+
+entity ViewRequirement {
+    shape: ViewShape
+    fact: CataloguedFact
+    required: Boolean
+    purpose: String
+}
+
+entity ViewDerivation {
+    shape: ViewShape
+
+    derivation_id: String
+    label: String
+    expression_ref: String
+    inputs: Set<CataloguedFact>
+    maturity: exploratory | candidate | stable | promoted
+}
+
+entity DisplayPattern {
+    shape: ViewShape
+
+    pattern_id: String
+    pattern_kind: grouping | sorting | filtering | highlighting | alerting | sectioning | mode_behavior
+    maturity: exploratory | candidate | stable | promoted
 }
 
 entity DisplayRequest {
     request_id: String
-    user: ViewUser
+    context: MotherDisplayContext
+    user: MotherUser
     agent: ViewAgent
     raw_request: String
-    project_uid: String?
-    vision_id: String
     requested_at: Timestamp
-    interpretation_state: pending | clarified | ready | unable
 
-    transitions interpretation_state {
-        pending -> clarified
-        pending -> ready
+    outcome: pending | buffer_opened | observability_gap_reported | unable
+
+    transitions outcome {
+        pending -> buffer_opened
+        pending -> observability_gap_reported
         pending -> unable
-        clarified -> ready
-        clarified -> unable
-        terminal: ready, unable
+        terminal: buffer_opened, observability_gap_reported, unable
     }
 }
 
-entity DisplayIntent {
+entity ShapeMatch {
     request: DisplayRequest
-    data_domain: projects_activity
-    normalized_intent: list_projects_by_check_in | isolate_projects_by_check_in_age
+    shape: ViewShape?
+    match_kind: exact | explicit_user_choice | similar | none
     confidence: Decimal
-    check_in_age_filter: CheckInAgeFilter?
 }
 
-entity ViewBuffer {
+entity Buffer {
+    context: MotherDisplayContext
+    shape: ViewShape
+
     buffer_id: String
-    request: DisplayRequest
-    recipe: ViewRecipe
-    renderer: ViewRenderer
-
-    buffer_state: active | replaced | closed
-    title: String
+    name: String
+    state: live | stale | blocked | replaced | killed
     created_at: Timestamp
+    stale_at: Timestamp?
+    blocked_at: Timestamp?
     replaced_at: Timestamp?
+    killed_at: Timestamp?
+    has_last_known_payload: Boolean
 
-    transitions buffer_state {
-        active -> replaced
-        active -> closed
-        terminal: replaced, closed
+    replacement: Buffer?
+    windows: Window with buffer = this
+
+    transitions state {
+        live -> stale
+        stale -> live
+        live -> blocked
+        stale -> blocked
+        blocked -> live
+        live -> replaced
+        stale -> replaced
+        blocked -> replaced
+        live -> killed
+        stale -> killed
+        blocked -> killed
+        terminal: replaced, killed
     }
 }
 
-entity ViewRecipeArtifact {
-    artifact_id: String
-    recipe: ViewRecipe
-    event_kind: created | revised | superseded
+entity Frame {
+    context: MotherDisplayContext
+
+    frame_id: String
+    frame_kind: sveltekit | tui | emacs | other
+    implementation_language: typescript | rust | elisp | other
+    connected_at: Timestamp
+
+    windows: Window with frame = this
+}
+
+entity Window {
+    frame: Frame
+    buffer: Buffer?
+
+    window_id: String
+    connection_state: connected | disconnected
+    connected_at: Timestamp?
+    disconnected_at: Timestamp?
+
+    transitions connection_state {
+        connected -> disconnected
+        disconnected -> connected
+    }
+}
+
+entity ObservabilityGap {
+    context: MotherDisplayContext
+
+    gap_id: String
+    request: DisplayRequest?
+    shape: ViewShape?
+    missing_fact_path: String
+    missing_source_id: String?
+    reason: String
+    status: open | linked_to_work_item | resolved
+    created_at: Timestamp
+    resolved_at: Timestamp?
+
+    transitions status {
+        open -> linked_to_work_item
+        open -> resolved
+        linked_to_work_item -> resolved
+        terminal: resolved
+    }
+}
+
+entity ViewShapeRevision {
+    revision_id: String
+    user: MotherUser
+    agent: ViewAgent
+    previous_shape: ViewShape
+    previous_buffer: Buffer?
+    revision_scope: buffer_local | mother_user | vision | project
+    revision_origin: user_correction | user_request | agent_adaptation
+    revision_state: applied | proposed | rejected | reverted
     reason: String
     created_at: Timestamp
 }
 
-entity ViewCorrectionEvent {
-    correction_id: String
-    user: ViewUser
-    agent: ViewAgent
-    previous_buffer: ViewBuffer
-    correction_intent: String
+entity ViewMaturationEvent {
+    maturation_id: String
+    target_kind: shape | derivation | pattern
+    shape: ViewShape?
+    derivation: ViewDerivation?
+    pattern: DisplayPattern?
+    origin: user_requested | mother_suggested | agent_inferred
+    from_maturity: exploratory | candidate | stable
+    to_maturity: candidate | stable | promoted
     created_at: Timestamp
 }
 
+entity ObservabilityImprovementArtifact {
+    artifact_id: String
+    context: MotherDisplayContext
+    source_gap: ObservabilityGap?
+    source_maturation: ViewMaturationEvent?
+    desired_fact_path: String
+    reason: String
+    created_at: Timestamp
+    work_item_created: Boolean
+}
+
 config {
-    clarification_confidence_threshold: Decimal = 0.60
+    shape_match_confidence_threshold: Decimal = 0.60
 }
 
 given {
-    dataset: ProjectActivityDataset
+    catalog: MotherDataCatalog
 }
 
-rule InterpretProjectsActivityRequest {
-    when: UserAsksAgentForDisplay(user, agent, raw_request, project_uid?, vision_id)
+rule CaptureUserDisplayRequest {
+    when: UserAsksAgentForMotherDisplay(context, user, agent, raw_request)
     requires: raw_request != ""
     ensures: DisplayRequest.created(
-        request_id: agent.agent_id + "::" + now,
+        request_id: agent.agent_id + "::display::" + now,
+        context: context,
         user: user,
         agent: agent,
         raw_request: raw_request,
-        project_uid: project_uid,
-        vision_id: vision_id,
         requested_at: now,
-        interpretation_state: pending
+        outcome: pending
     )
-    ensures: DisplayInterpretationRequested(user: user, agent: agent, raw_request: raw_request, project_uid: project_uid, vision_id: vision_id)
+    ensures: ViewShapeDiscoveryRequested(context: context, user: user, agent: agent, raw_request: raw_request)
 }
 
-rule AskForClarificationWhenIntentConfidenceIsLow {
-    when: DisplayIntentProposed(request, data_domain, normalized_intent, confidence, check_in_age_filter?)
-    requires: request.interpretation_state = pending
-    requires: confidence < config.clarification_confidence_threshold
-    ensures: request.interpretation_state = clarified
-    ensures: AgentClarificationRequested(request: request, reason: "low_confidence_display_intent")
-}
-
-rule AcceptProjectsActivityIntentWhenConfident {
-    when: DisplayIntentProposed(request, data_domain, normalized_intent, confidence, check_in_age_filter?)
-    requires: request.interpretation_state = pending
-    requires: confidence >= config.clarification_confidence_threshold
-    requires: data_domain = projects_activity
-    ensures: DisplayIntent.created(
+rule SelectExplicitUserRequestedShape {
+    when: AgentProposesShapeMatch(request, shape, match_kind, confidence)
+    requires: request.outcome = pending
+    requires: match_kind = explicit_user_choice
+    requires: shape.active
+    ensures: ShapeMatch.created(
         request: request,
-        data_domain: projects_activity,
-        normalized_intent: normalized_intent,
-        confidence: confidence,
-        check_in_age_filter: check_in_age_filter
+        shape: shape,
+        match_kind: explicit_user_choice,
+        confidence: confidence
     )
-    ensures: request.interpretation_state = ready
+    ensures: ViewRequirementsCheckRequested(request: request, shape: shape)
 }
 
-rule AcceptClarifiedProjectsActivityIntent {
-    when: UserClarifiesDisplayIntent(request, data_domain, normalized_intent, check_in_age_filter?)
-    requires: request.interpretation_state = clarified
-    requires: data_domain = projects_activity
-    ensures: DisplayIntent.created(
+rule SelectExactShapeMatch {
+    when: AgentProposesShapeMatch(request, shape, match_kind, confidence)
+    requires: request.outcome = pending
+    requires: match_kind = exact
+    requires: confidence >= config.shape_match_confidence_threshold
+    requires: shape.active
+    ensures: ShapeMatch.created(
         request: request,
-        data_domain: projects_activity,
-        normalized_intent: normalized_intent,
-        confidence: 1.0,
-        check_in_age_filter: check_in_age_filter
+        shape: shape,
+        match_kind: exact,
+        confidence: confidence
     )
-    ensures: request.interpretation_state = ready
+    ensures: ViewRequirementsCheckRequested(request: request, shape: shape)
 }
 
-rule SelectProjectRecipeBeforeVisionRecipe {
-    when: intent: DisplayIntent.created
-    requires: intent.request.project_uid != null
-    for settings in ProjectViewSettings where settings.project_uid = intent.request.project_uid and settings.user = intent.request.user and settings.vision_id = intent.request.vision_id:
-        for recipe in settings.recipes where active and data_domain = intent.data_domain and normalized_intent = intent.normalized_intent:
-            ensures: ViewRecipeSelected(request: intent.request, intent: intent, recipe: recipe, selection_basis: "project_settings")
-}
-
-rule SelectVisionRecipeWhenProjectRecipeIsAbsent {
-    when: intent: DisplayIntent.created
-    requires: intent.request.project_uid = null or not ProjectViewSettings.any(settings => settings.project_uid = intent.request.project_uid and settings.user = intent.request.user and settings.vision_id = intent.request.vision_id and settings.recipes.any(recipe => recipe.active and recipe.data_domain = intent.data_domain and recipe.normalized_intent = intent.normalized_intent))
-    for profile in VisionProfile where profile.user = intent.request.user and profile.vision_id = intent.request.vision_id:
-        for recipe in profile.recipes where active and data_domain = intent.data_domain and normalized_intent = intent.normalized_intent:
-            ensures: ViewRecipeSelected(request: intent.request, intent: intent, recipe: recipe, selection_basis: "vision_profile")
-}
-
-rule OpenProjectsActivityBuffer {
-    when: ViewRecipeSelected(request, intent, recipe, selection_basis)
-    requires: recipe.data_domain = projects_activity
-    ensures: ViewContractFrameApplied(
+rule AdaptSimilarShapeWhenNoExactShapeExists {
+    when: AgentProposesShapeMatch(request, similar_shape, match_kind, confidence)
+    requires: request.outcome = pending
+    requires: match_kind = similar
+    requires: confidence >= config.shape_match_confidence_threshold
+    ensures: ShapeMatch.created(
         request: request,
-        recipe: recipe,
-        boundary_frame: recipe.boundary_frame,
-        payload_contract: recipe.payload_contract,
-        payload_maturity: recipe.payload_maturity
+        shape: similar_shape,
+        match_kind: similar,
+        confidence: confidence
     )
-    ensures: ProjectActivityViewPlanCreated(
-        request: request,
-        recipe: recipe,
-        sort_basis: "checked_in_at",
-        sort_direction: "ascending_oldest_first",
-        check_in_age_filter: intent.check_in_age_filter
-    )
-    ensures: ViewBuffer.created(
-        buffer_id: request.request_id + "::projects-activity",
-        request: request,
-        recipe: recipe,
-        renderer: default,
-        buffer_state: active,
-        title: "Projects by last check-in",
-        created_at: now,
-        replaced_at: null
-    )
-}
-
-rule IsolateProjectsMatchingRequestedCheckInAgeFilter {
-    when: ProjectActivityViewPlanCreated(request, recipe, _, _, check_in_age_filter)
-    requires: check_in_age_filter != null
-    for record in dataset.records where record.checked_in_at <= now - check_in_age_filter.threshold:
-        ensures: ProjectIsolatedByRequestedCheckInAge(
-            request: request,
-            project_uid: record.project_uid,
-            checked_in_at: record.checked_in_at,
-            threshold: check_in_age_filter.threshold
-        )
-}
-
-rule RecordCorrectionIntentAndReplaceBuffer {
-    when: UserCorrectsDisplayedView(user, agent, buffer, correction_intent)
-    requires: buffer.buffer_state = active
-    ensures: ViewCorrectionEvent.created(
-        correction_id: buffer.buffer_id + "::correction::" + now,
-        user: user,
-        agent: agent,
-        previous_buffer: buffer,
-        correction_intent: correction_intent,
-        created_at: now
-    )
-    ensures: buffer.buffer_state = replaced
-    ensures: buffer.replaced_at = now
-    ensures: ViewRecipeRevisionRequested(buffer: buffer, correction_intent: correction_intent)
-}
-
-rule ReviseProjectRecipeFromCorrection {
-    when: ViewRecipeRevisionAccepted(buffer, revised_code_ref, reason)
-    requires: buffer.buffer_state = replaced
-    ensures: buffer.recipe.active = false
-    ensures: ViewRecipe.created(
-        recipe_id: buffer.recipe.recipe_id + "::v" + (buffer.recipe.version + 1),
-        vision_profile: buffer.recipe.vision_profile,
-        project_settings: buffer.recipe.project_settings,
-        owner_scope: buffer.recipe.owner_scope,
-        data_domain: buffer.recipe.data_domain,
-        normalized_intent: buffer.recipe.normalized_intent,
-        version: buffer.recipe.version + 1,
+    ensures: ViewShape.created(
+        context: request.context,
+        shape_id: similar_shape.shape_id + "::adapted::" + now,
+        title: "Adapted " + similar_shape.title,
+        source_ref: "local-allium-view-library",
+        scope: mother_user,
+        version: 1,
         active: true,
-        code_ref: revised_code_ref,
-        renderer_contract: buffer.recipe.renderer_contract,
-        boundary_frame: buffer.recipe.boundary_frame,
-        payload_contract: buffer.recipe.payload_contract,
-        payload_maturity: candidate,
+        major_mode: similar_shape.major_mode,
+        minor_modes: similar_shape.minor_modes,
+        maturity: exploratory,
+        payload_contract: framed_json,
+        payload_version: 1,
+        vision: request.context.vision,
+        project: request.context.project,
         replaced_by: null
     )
-    ensures: ViewRecipeArtifact.created(
-        artifact_id: buffer.recipe.recipe_id + "::artifact::" + now,
-        recipe: buffer.recipe,
-        event_kind: revised,
+    ensures: ViewShapeAdaptationRequested(request: request, precedent: similar_shape)
+}
+
+rule CreateInitialShapeWhenNoShapeMatches {
+    when: AgentFindsNoUsableShape(request)
+    requires: request.outcome = pending
+    ensures: ShapeMatch.created(
+        request: request,
+        shape: null,
+        match_kind: none,
+        confidence: 0.0
+    )
+    ensures: ViewShapeCreationRequested(request: request, source_ref: "local-allium-view-library")
+}
+
+rule OpenLiveBufferWhenRequiredFactsAreObserved {
+    when: ViewRequirementsSatisfied(request, shape)
+    requires: request.outcome = pending
+    requires: shape.requirements.all(req => req.fact.observation_state = observed and req.fact.source.availability = available)
+    ensures: Buffer.created(
+        context: request.context,
+        shape: shape,
+        buffer_id: request.request_id + "::buffer",
+        name: "*" + shape.title + "*",
+        state: live,
+        created_at: now,
+        stale_at: null,
+        blocked_at: null,
+        replaced_at: null,
+        killed_at: null,
+        has_last_known_payload: false,
+        replacement: null
+    )
+    ensures: request.outcome = buffer_opened
+    ensures: WitFramedJsonPayloadStarted(request: request, shape: shape, payload_version: shape.payload_version)
+}
+
+rule RecordObservabilityGapWhenRequiredFactIsMissing {
+    when: ViewRequirementMissing(request, shape, missing_fact_path, missing_source_id, reason)
+    requires: request.outcome = pending
+    ensures: ObservabilityGap.created(
+        context: request.context,
+        gap_id: request.request_id + "::gap::" + missing_fact_path,
+        request: request,
+        shape: shape,
+        missing_fact_path: missing_fact_path,
+        missing_source_id: missing_source_id,
         reason: reason,
+        status: open,
+        created_at: now,
+        resolved_at: null
+    )
+    ensures: request.outcome = observability_gap_reported
+    ensures: AgentInformsUserViewCannotOpen(request: request, missing_fact_path: missing_fact_path, reason: reason)
+}
+
+rule ConnectWindowToExistingBuffer {
+    when: FrameConnectsWindowToBuffer(frame, window, buffer)
+    requires: buffer.state = live or buffer.state = stale or buffer.state = blocked
+    ensures: window.buffer = buffer
+    ensures: window.connection_state = connected
+    ensures: window.connected_at = now
+}
+
+rule DisconnectWindowWithoutKillingBuffer {
+    when: FrameDisconnectsWindow(window)
+    requires: window.connection_state = connected
+    ensures: window.connection_state = disconnected
+    ensures: window.disconnected_at = now
+}
+
+rule KillBufferWhenUserClosesBuffer {
+    when: UserKillsBuffer(user, buffer)
+    requires: buffer.context.user = user
+    requires: buffer.state = live or buffer.state = stale or buffer.state = blocked
+    ensures: buffer.state = killed
+    ensures: buffer.killed_at = now
+}
+
+rule MarkLiveBufferStaleWhenBackingSourceIsUnavailable {
+    when: BackingRequirementBecomesUnavailable(buffer, requirement, reason)
+    requires: buffer.state = live
+    requires: buffer.has_last_known_payload
+    ensures: buffer.state = stale
+    ensures: buffer.stale_at = now
+    ensures: BufferStalenessReported(buffer: buffer, requirement: requirement, reason: reason)
+}
+
+rule MarkLiveBufferBlockedWhenRequiredBackingCannotBeTrusted {
+    when: BackingRequirementBecomesUnavailable(buffer, requirement, reason)
+    requires: buffer.state = live or buffer.state = stale
+    requires: not buffer.has_last_known_payload
+    ensures: buffer.state = blocked
+    ensures: buffer.blocked_at = now
+    ensures: ObservabilityGap.created(
+        context: buffer.context,
+        gap_id: buffer.buffer_id + "::gap::" + requirement.fact.fact_path,
+        request: null,
+        shape: buffer.shape,
+        missing_fact_path: requirement.fact.fact_path,
+        missing_source_id: requirement.fact.source.source_id,
+        reason: reason,
+        status: open,
+        created_at: now,
+        resolved_at: null
+    )
+}
+
+rule ReplaceBufferWhenUserRevisesViewShape {
+    when: UserCorrectsBufferView(user, agent, buffer, correction_intent, revision_scope)
+    requires: buffer.context.user = user
+    requires: buffer.state = live or buffer.state = stale or buffer.state = blocked
+    ensures: ViewShapeRevision.created(
+        revision_id: buffer.buffer_id + "::revision::" + now,
+        user: user,
+        agent: agent,
+        previous_shape: buffer.shape,
+        previous_buffer: buffer,
+        revision_scope: revision_scope,
+        revision_origin: user_correction,
+        revision_state: applied,
+        reason: correction_intent,
+        created_at: now
+    )
+    ensures: buffer.state = replaced
+    ensures: buffer.replaced_at = now
+    ensures: ViewShapeRevisionApplied(buffer: buffer, correction_intent: correction_intent, revision_scope: revision_scope)
+}
+
+rule PromoteMatureViewArtifact {
+    when: ViewArtifactMatures(target_kind, shape, derivation, pattern, origin, from_maturity, to_maturity)
+    requires: from_maturity != to_maturity
+    ensures: ViewMaturationEvent.created(
+        maturation_id: "maturation::" + now,
+        target_kind: target_kind,
+        shape: shape,
+        derivation: derivation,
+        pattern: pattern,
+        origin: origin,
+        from_maturity: from_maturity,
+        to_maturity: to_maturity,
         created_at: now
     )
 }
 
-rule PromoteStableJsonViewPlanToTypedWitContract {
-    when: ViewPayloadShapeStabilized(recipe, typed_contract_ref)
-    requires: recipe.boundary_frame = wit_component
-    requires: recipe.payload_contract = versioned_json
-    requires: recipe.payload_maturity = stable
-    ensures: recipe.payload_contract = typed_wit
-    ensures: recipe.payload_maturity = promoted
-    ensures: recipe.renderer_contract = typed_contract_ref
-    ensures: ViewRecipeArtifact.created(
-        artifact_id: recipe.recipe_id + "::promotion::" + now,
-        recipe: recipe,
-        event_kind: revised,
-        reason: "stable_view_plan_promoted_to_typed_wit",
-        created_at: now
+rule CreateObservabilityImprovementFromMatureDerivation {
+    when: ViewMaturationEventRecorded(event, desired_fact_path, reason)
+    requires: event.target_kind = derivation
+    requires: event.to_maturity = stable or event.to_maturity = promoted
+    ensures: ObservabilityImprovementArtifact.created(
+        artifact_id: event.maturation_id + "::observability-improvement",
+        context: event.shape.context,
+        source_gap: null,
+        source_maturation: event,
+        desired_fact_path: desired_fact_path,
+        reason: reason,
+        created_at: now,
+        work_item_created: false
     )
 }
 
-rule PreserveProjectViewSettingsDuringProjectTransfer {
-    when: ProjectTransferred(project_uid, from_node, to_node)
-    for settings in ProjectViewSettings where project_uid = project_uid and transferable_with_project:
-        ensures: ProjectViewSettingsTransferred(project_uid: project_uid, settings: settings, from_node: from_node, to_node: to_node)
+rule LinkObservabilityGapToWorkItem {
+    when: UserPromotesObservabilityGapToWorkItem(user, gap, work_item_id)
+    requires: gap.context.user = user
+    requires: gap.status = open
+    ensures: gap.status = linked_to_work_item
+    ensures: ObservabilityWorkItemLinked(gap: gap, work_item_id: work_item_id)
 }
 
-surface AgentDrivenProjectActivityView {
-    facing user: ViewUser
-    context dataset: ProjectActivityDataset
+rule ResolveObservabilityGapWhenFactBecomesObserved {
+    when: CataloguedFactBecomesObserved(gap, fact)
+    requires: gap.status = open or gap.status = linked_to_work_item
+    requires: fact.fact_path = gap.missing_fact_path
+    requires: fact.observation_state = observed
+    ensures: gap.status = resolved
+    ensures: gap.resolved_at = now
+}
+
+invariant BuffersOnlyOpenFromObservedRequiredFacts {
+    for buffer in Buffers where buffer.state = live:
+        buffer.shape.requirements.all(req => req.fact.observation_state = observed and req.fact.source.availability = available)
+}
+
+invariant DisplayViewsDoNotMutateMotherOperationalFacts {
+    for request in DisplayRequests:
+        request.outcome in {pending, buffer_opened, observability_gap_reported, unable}
+}
+
+surface AgentViewCompositionSurface {
+    facing user: MotherUser
+    context display_context: MotherDisplayContext
 
     exposes:
         user.user_id
         user.display_name
-        dataset.record_count
+        display_context.mother.mother_id
+        display_context.mother.display_capability
+        display_context.vision?.vision_id
+        display_context.project?.project_uid
 
-        for record in dataset.records:
-            record.project_uid
-            record.project_id
-            record.project_path
-            record.user_id
-            record.vision_id
-            record.checked_in_at
+        for shape in display_context.shapes:
+            shape.shape_id
+            shape.title
+            shape.scope
+            shape.version
+            shape.active
+            shape.major_mode
+            shape.minor_modes
+            shape.maturity
+            shape.payload_contract
 
     provides:
-        UserAsksAgentForDisplay(user, agent, raw_request, project_uid?, vision_id)
-        UserClarifiesDisplayIntent(request, data_domain, normalized_intent, check_in_age_filter?)
-        UserCorrectsDisplayedView(user, agent, buffer, correction_intent)
+        UserAsksAgentForMotherDisplay(display_context, user, agent, raw_request)
+        UserCorrectsBufferView(user, agent, buffer, correction_intent, revision_scope)
+        UserKillsBuffer(user, buffer)
+        UserPromotesObservabilityGapToWorkItem(user, gap, work_item_id)
 }
 
-surface ViewComposerRuntime {
+surface MotherDataCatalogSurface {
     facing agent: ViewAgent
+    context catalog: MotherDataCatalog
 
     exposes:
         agent.agent_id
+        catalog.source_count
+        catalog.fact_count
+
+        for source in catalog.sources:
+            source.source_id
+            source.source_kind
+            source.availability
+            source.last_observed_at
+
+        for fact in catalog.facts:
+            fact.fact_path
+            fact.fact_kind
+            fact.observation_state
+            fact.source.source_id
 
     provides:
-        DisplayIntentProposed(request, data_domain, normalized_intent, confidence, check_in_age_filter?)
-        ViewRecipeRevisionAccepted(buffer, revised_code_ref, reason)
-        ProjectTransferred(project_uid, from_node, to_node)
+        AgentProposesShapeMatch(request, shape, match_kind, confidence)
+        AgentFindsNoUsableShape(request)
+        ViewRequirementsSatisfied(request, shape)
+        ViewRequirementMissing(request, shape, missing_fact_path, missing_source_id, reason)
+        ViewArtifactMatures(target_kind, shape, derivation, pattern, origin, from_maturity, to_maturity)
+        ViewMaturationEventRecorded(event, desired_fact_path, reason)
+        CataloguedFactBecomesObserved(gap, fact)
 }
 
-surface RendererNeutralViewContract {
-    facing renderer: ViewRenderer
-    context buffer: ViewBuffer
+surface FrameBufferSurface {
+    facing frame: Frame
+    context display_context: MotherDisplayContext
 
     exposes:
-        renderer.renderer_kind
-        buffer.buffer_id
-        buffer.buffer_state
-        buffer.title
-        buffer.created_at
-        buffer.replaced_at
-        buffer.recipe.recipe_id
-        buffer.recipe.code_ref
-        buffer.recipe.renderer_contract
-        buffer.recipe.boundary_frame
-        buffer.recipe.payload_contract
-        buffer.recipe.payload_maturity
+        frame.frame_id
+        frame.frame_kind
+        frame.implementation_language
+
+        for buffer in display_context.buffers:
+            buffer.buffer_id
+            buffer.name
+            buffer.state
+            buffer.created_at
+            buffer.stale_at
+            buffer.blocked_at
+            buffer.replaced_at
+            buffer.killed_at
+            buffer.shape.shape_id
+            buffer.shape.major_mode
+            buffer.shape.minor_modes
+            buffer.shape.payload_contract
+            buffer.shape.payload_version
 
     provides:
-        ViewRecipeSelected(request, intent, recipe, selection_basis)
-        ViewPayloadShapeStabilized(recipe, typed_contract_ref)
+        FrameConnectsWindowToBuffer(frame, window, buffer)
+        FrameDisconnectsWindow(window)
+        BackingRequirementBecomesUnavailable(buffer, requirement, reason)
 }
 
-open question "Should revised recipes after correction always remain project-scoped, or can a correction promote to the user's vision profile when the user says it is a general preference?"
-open question "Should Svelte be the first renderer implementation while the Allium contract remains renderer-neutral?"
-open question "What evidence is required before a versioned JSON view-plan shape is considered stable enough to promote into typed WIT?"
+open question "Should buffer-local overrides be represented as ViewShape records with scope buffer_local, or as a separate overlay entity attached to Buffer?"
+open question "Which first major modes must the SvelteKit TypeScript frame support before the composer is useful: table, log, markdown, graph, or timeline?"
+open question "What evidence threshold allows agent-inferred promotion from framed JSON into typed WIT without explicit user confirmation?"
+open question "How should future shared or multiplayer buffers extend private user buffers without changing the v1 buffer lifecycle?"

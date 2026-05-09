@@ -145,9 +145,6 @@ patina assay search "term"          # Ranked factual search via FTS5
 patina assay belief <belief-id>      # Ground a belief against code and facts
 patina context --topic "architecture"
 patina report                        # Generate project state report
-patina atlas --json                  # Spec + MCT visibility snapshot (Mother-backed when available)
-patina atlas --html --output .tmp/atlas/spec-atlas.html
-patina atlas --serve --port 7417     # Local fallback read-only dashboard server
 patina measure --full                # Health view from measurement data
 patina eval --combined               # Evaluate retrieval pipeline quality
 patina bench retrieval               # Benchmark retrieval quality
@@ -211,9 +208,7 @@ patina mother search "belief query"
 patina mother sources
 patina mother graph                  # Cross-project relationship graph
 
-patina pando list --json             # Includes first-party pandos (atlas, folder-text-to-parquet)
-curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/atlas
-curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/atlas/atlas.json
+patina pando list --json             # Includes first-party pandos such as folder-text-to-parquet
 
 patina model list
 patina model add e5-base-v2
