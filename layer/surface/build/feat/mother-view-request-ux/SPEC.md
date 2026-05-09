@@ -42,6 +42,7 @@ exit_criteria:
   text: Deterministic tests cover detail construction, persisted creation/adaptation artifacts, HTTP detail/open endpoints, fail-closed unlinked shapes, and Allium/spec obligation comments.
   checked: true
 validated_against_commit: 19d38db22289732d5cccc4084661c3ad78605cce
+last_freshness_check: 2026-05-09T20:58:25Z
 ---
 # feat: Mother View Request UX
 
