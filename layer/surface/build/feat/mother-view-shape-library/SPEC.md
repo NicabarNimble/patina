@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-view-shape-library
-status: draft
+status: ready
 created: 2026-05-09
 sessions:
   origin: 20260508-144836-859149000
@@ -14,6 +14,7 @@ beliefs:
 - '[[spec-driven-design]]'
 - '[[contracts-before-consumers]]'
 - '[[allium-as-agent-display-lisp]]'
+- '[[allium-as-business-backlog]]'
 exit_criteria:
 - id: mvsl0-read-before-write
   text: Implementation begins from documented reads of the completed view-buffer runtime, Mother store, and API route patterns before changing shape-library code.
@@ -82,8 +83,8 @@ Primary Allium entities targeted here:
 Primary Allium rules partially enabled here:
 
 - `SelectExplicitUserRequestedShape` — by allowing explicit shape ids to be stored and selected.
-- `OpenLiveBufferWhenRequiredFactsAreObserved` — now from library shapes.
-- `RecordObservabilityGapWhenRequiredFactIsMissing` — preserved for library shapes.
+- `OpenLiveBufferWhenRequiredFactsAreObserved` — now from library shapes, with required requirements validated against observed facts and available sources.
+- `RecordObservabilityGapWhenRequiredFactIsMissing` — preserved for library shapes when a required requirement cannot be satisfied.
 
 ## Non-Goals
 
@@ -122,12 +123,15 @@ requirements:
 
 The representation may stay Rust/SQLite JSON-friendly in this slice, but it must be data that can later be generated from or round-tripped with Allium-local view metadata.
 
+Allium `vision: VisionContext?` and `project: ProjectContext?` may be stored as the stable projections `vision_id: Option<String>` and `project_uid: Option<String>` in Rust/SQLite. This is a storage projection, not a semantic change.
+
 ## Solution
 
 Add a shape-library layer to `mother/src/view_buffer/`:
 
 - extend the model with Allium-aligned shape fields where missing;
 - persist shapes and requirements in Mother state;
+- treat `ViewRequirement.required == true` as opening blockers; optional requirements may be stored for future display enrichment but must not cause fake data to be invented;
 - seed/register the Mother status proof shape;
 - update service lookup so `open_buffer(shape_id)` resolves an active library shape first;
 - expose HTTP/control-plane handlers for shape list/read/upsert/deactivate;
@@ -173,4 +177,4 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 
 ## Build Readiness
 
-Not ready until the read-before-write pass is recorded and API/persistence seams are confirmed against the completed buffer runtime.
+Ready to promote as the next implementation spec after this polish pass. The first implementation task remains `mvsl0-read-before-write`: record the read-before-write findings in `DESIGN.md` before changing runtime code.
