@@ -42,8 +42,8 @@ The target is backend/runtime only. Renderer UX remains future work.
 
 | Allium construct/rule | Follow-on spec |
 |---|---|
-| `AdaptSimilarShapeWhenNoExactShapeExists` | [[mother-view-shape-adaptation]] or later extension of this composer |
-| `CreateInitialShapeWhenNoShapeMatches` | [[mother-view-initial-shape-creation]] or later extension of this composer |
+| `AdaptSimilarShapeWhenNoExactShapeExists` | [[mother-view-shape-adaptation]] |
+| `CreateInitialShapeWhenNoShapeMatches` | [[mother-view-initial-shape-creation]] |
 | `ReplaceBufferWhenUserRevisesViewShape` / `ViewShapeRevision` | [[mother-view-buffer-revision]] |
 | `LinkObservabilityGapToWorkItem` / `ResolveObservabilityGapWhenFactBecomesObserved` | [[mother-view-observability-workflow]] |
 | `ViewMaturationEvent` / `ObservabilityImprovementArtifact` | [[mother-view-maturation]] |
@@ -215,6 +215,20 @@ Completed deterministic test and trace coverage for the implemented request-comp
 - service tests for explicit open, exact open at threshold, missing required fact observability gap, missing/inactive shape refusal, low-confidence exact refusal, similar/no-match refusal, and existing view-buffer guardrails in `mother/src/view_buffer/service.rs`.
 
 All relevant tests carry Allium/spec obligation comments.
+
+### `mvrc7-follow-on-backlog`
+
+Split behaviors outside this request-composer slice into explicit draft follow-on specs:
+
+- [[mother-view-shape-adaptation]] for adapting similar shapes into new exploratory shapes;
+- [[mother-view-initial-shape-creation]] for creating initial structured shapes when no shape matches;
+- [[mother-view-request-ux]] for user-facing request-composition flows and statuses;
+- [[mother-view-buffer-revision]] for corrections and buffer replacement;
+- [[mother-view-observability-workflow]] for gap-to-work and gap resolution;
+- [[mother-view-maturation]] for shape/derivation/pattern maturation;
+- [[mother-sveltekit-frame]] for the first renderer frame.
+
+This keeps [[mother-view-request-composer]] focused on capture, structured match validation, and safe opening.
 
 ## Commits
 

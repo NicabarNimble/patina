@@ -37,7 +37,7 @@ exit_criteria:
   checked: true
 - id: mvrc7-follow-on-backlog
   text: Behaviors outside this slice are explicitly split into follow-on specs for similar-shape adaptation, initial-shape creation, request UX, revision, maturation, and renderer frames.
-  checked: false
+  checked: true
 ---
 # feat: Mother View Request Composer
 
@@ -106,10 +106,11 @@ Primary Allium rules intentionally deferred:
 
 - Mother does not parse natural language in this slice.
 - Mother does not embed LLM prompts or arbitrary agent code in request records.
-- Similar-shape adaptation does not create new shapes yet.
-- No-match requests do not auto-generate shapes yet.
+- Similar-shape adaptation does not create new shapes yet; it belongs to [[mother-view-shape-adaptation]].
+- No-match requests do not auto-generate shapes yet; it belongs to [[mother-view-initial-shape-creation]].
+- User-facing request UX belongs to [[mother-view-request-ux]].
 - User correction/revision flow remains in [[mother-view-buffer-revision]].
-- SvelteKit/TUI/Emacs renderer behavior remains outside this spec.
+- SvelteKit/TUI/Emacs renderer behavior remains outside this spec and begins with [[mother-sveltekit-frame]].
 
 ## Target Shape
 
@@ -191,7 +192,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 - [x] `mvrc4-explicit-exact-open`
 - [x] `mvrc5-fail-closed-outcomes`
 - [x] `mvrc6-tests-and-trace`
-- [ ] `mvrc7-follow-on-backlog`
+- [x] `mvrc7-follow-on-backlog`
 
 ## Build Readiness
 
