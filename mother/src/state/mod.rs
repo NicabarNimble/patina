@@ -4,7 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 
 use crate::{
-    view_buffer::{self, Buffer, Frame, ObservabilityGap, Window},
+    view_buffer::{self, Buffer, Frame, ObservabilityGap, ViewShape, Window},
     TaskIntent, TaskIntentKind,
 };
 
@@ -1819,6 +1819,26 @@ impl MotherRuntimeStore {
         Ok(())
     }
 
+    pub fn upsert_view_shape(&self, shape: &ViewShape) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::upsert_shape(&conn, shape)
+    }
+
+    pub fn get_view_shape(&self, shape_id: &str) -> Result<Option<ViewShape>> {
+        let conn = self.open()?;
+        view_buffer::store::get_shape(&conn, shape_id)
+    }
+
+    pub fn list_view_shapes(&self) -> Result<Vec<ViewShape>> {
+        let conn = self.open()?;
+        view_buffer::store::list_shapes(&conn)
+    }
+
+    pub fn deactivate_view_shape(&self, shape_id: &str) -> Result<bool> {
+        let conn = self.open()?;
+        view_buffer::store::deactivate_shape(&conn, shape_id)
+    }
+
     pub fn save_view_buffer(&self, buffer: &Buffer) -> Result<()> {
         let conn = self.open()?;
         view_buffer::store::save_buffer(&conn, buffer)
@@ -1904,6 +1924,66 @@ mod tests {
             std::env::temp_dir().join(format!("patina-knowledge-runtime-{}", uuid::Uuid::new_v4()));
         let path = root.join("mother/state.db");
         MotherRuntimeStore::new_with_project(path, ProjectUid::new("2bdc808e").unwrap())
+    }
+
+    #[test]
+    fn view_shapes_and_requirements_are_persistent() {
+        // obligation: entity-state.ViewShape + entity-state.ViewRequirement
+        // obligation: spec.mother-view-shape-library.mvsl2-shape-persistence
+        use crate::view_buffer::{
+            MajorMode, MinorMode, PayloadContract, ViewRequirement, ViewShape, ViewShapeMaturity,
+            ViewShapeScope,
+        };
+
+        let store = temp_store();
+        let shape = ViewShape {
+            shape_id: "test.shape.default".to_string(),
+            title: "Test Shape".to_string(),
+            source_ref: "local-allium-view-library".to_string(),
+            scope: ViewShapeScope::Project,
+            version: 7,
+            active: true,
+            major_mode: MajorMode::Table,
+            minor_modes: vec![MinorMode::Pinned, MinorMode::Sorted],
+            maturity: ViewShapeMaturity::Candidate,
+            payload_contract: PayloadContract::FramedJson,
+            payload_version: 3,
+            vision_id: Some("vision-1".to_string()),
+            project_uid: Some("2bdc808e".to_string()),
+            replaced_by: Some("test.shape.v8".to_string()),
+            requirements: vec![
+                ViewRequirement {
+                    fact_path: "alpha.fact".to_string(),
+                    required: true,
+                    purpose: "required display fact".to_string(),
+                },
+                ViewRequirement {
+                    fact_path: "beta.fact".to_string(),
+                    required: false,
+                    purpose: "optional enrichment fact".to_string(),
+                },
+            ],
+        };
+
+        store.upsert_view_shape(&shape).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(
+            reopened.get_view_shape(&shape.shape_id).unwrap(),
+            Some(shape.clone())
+        );
+        assert_eq!(reopened.list_view_shapes().unwrap(), vec![shape.clone()]);
+
+        assert!(reopened.deactivate_view_shape(&shape.shape_id).unwrap());
+        let deactivated = reopened
+            .get_view_shape(&shape.shape_id)
+            .unwrap()
+            .expect("shape remains after deactivation");
+        assert!(!deactivated.active);
+        assert!(!reopened.deactivate_view_shape("missing.shape").unwrap());
     }
 
     #[test]

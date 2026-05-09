@@ -1,16 +1,54 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use rusqlite::{params, types::Type, Connection};
+use rusqlite::{params, types::Type, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Serialize};
 
 use super::{
     Buffer, BufferState, Frame, FrameKind, MajorMode, MinorMode, ObservabilityGap,
-    ObservabilityGapStatus, PayloadContract, Window, WindowConnectionState,
+    ObservabilityGapStatus, PayloadContract, ViewRequirement, ViewShape, ViewShapeMaturity,
+    ViewShapeScope, Window, WindowConnectionState,
 };
 
 pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
+        CREATE TABLE IF NOT EXISTS mother_view_shapes (
+            shape_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            source_ref TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            active INTEGER NOT NULL,
+            major_mode TEXT NOT NULL,
+            minor_modes_json TEXT NOT NULL,
+            maturity TEXT NOT NULL,
+            payload_contract TEXT NOT NULL,
+            payload_version INTEGER NOT NULL,
+            vision_id TEXT,
+            project_uid TEXT,
+            replaced_by TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK (scope IN ('mother-user', 'vision', 'project', 'buffer-local')),
+            CHECK (active IN (0, 1)),
+            CHECK (major_mode IN ('table', 'list', 'graph', 'timeline', 'log', 'markdown', 'document', 'browser', 'image', 'artifact', 'custom')),
+            CHECK (maturity IN ('exploratory', 'candidate', 'stable', 'promoted')),
+            CHECK (payload_contract IN ('framed-json', 'typed-wit', 'hybrid'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mother_view_shapes_active_scope
+        ON mother_view_shapes(active, scope, shape_id);
+
+        CREATE TABLE IF NOT EXISTS mother_view_shape_requirements (
+            shape_id TEXT NOT NULL,
+            fact_path TEXT NOT NULL,
+            required INTEGER NOT NULL,
+            purpose TEXT NOT NULL,
+            PRIMARY KEY (shape_id, fact_path),
+            CHECK (required IN (0, 1)),
+            FOREIGN KEY (shape_id) REFERENCES mother_view_shapes(shape_id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS mother_view_buffers (
             buffer_id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -69,6 +107,125 @@ pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
         "#,
     )?;
     Ok(())
+}
+
+pub(crate) fn upsert_shape(conn: &Connection, shape: &ViewShape) -> Result<()> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        r#"
+        INSERT INTO mother_view_shapes (
+            shape_id, title, source_ref, scope, version, active, major_mode,
+            minor_modes_json, maturity, payload_contract, payload_version,
+            vision_id, project_uid, replaced_by, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+        ON CONFLICT(shape_id) DO UPDATE SET
+            title = excluded.title,
+            source_ref = excluded.source_ref,
+            scope = excluded.scope,
+            version = excluded.version,
+            active = excluded.active,
+            major_mode = excluded.major_mode,
+            minor_modes_json = excluded.minor_modes_json,
+            maturity = excluded.maturity,
+            payload_contract = excluded.payload_contract,
+            payload_version = excluded.payload_version,
+            vision_id = excluded.vision_id,
+            project_uid = excluded.project_uid,
+            replaced_by = excluded.replaced_by,
+            updated_at = excluded.updated_at
+        "#,
+        params![
+            &shape.shape_id,
+            &shape.title,
+            &shape.source_ref,
+            enum_to_db(&shape.scope)?,
+            i64::from(shape.version),
+            bool_to_db(shape.active),
+            enum_to_db(&shape.major_mode)?,
+            serde_json::to_string(&shape.minor_modes)?,
+            enum_to_db(&shape.maturity)?,
+            enum_to_db(&shape.payload_contract)?,
+            i64::from(shape.payload_version),
+            shape.vision_id.as_deref(),
+            shape.project_uid.as_deref(),
+            shape.replaced_by.as_deref(),
+            &now,
+            &now,
+        ],
+    )?;
+    conn.execute(
+        "DELETE FROM mother_view_shape_requirements WHERE shape_id = ?1",
+        params![&shape.shape_id],
+    )?;
+    for requirement in &shape.requirements {
+        conn.execute(
+            r#"
+            INSERT INTO mother_view_shape_requirements (shape_id, fact_path, required, purpose)
+            VALUES (?1, ?2, ?3, ?4)
+            "#,
+            params![
+                &shape.shape_id,
+                &requirement.fact_path,
+                bool_to_db(requirement.required),
+                &requirement.purpose,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+pub(crate) fn get_shape(conn: &Connection, shape_id: &str) -> Result<Option<ViewShape>> {
+    let shape = conn
+        .query_row(
+            r#"
+            SELECT shape_id, title, source_ref, scope, version, active, major_mode,
+                   minor_modes_json, maturity, payload_contract, payload_version,
+                   vision_id, project_uid, replaced_by
+            FROM mother_view_shapes
+            WHERE shape_id = ?1
+            "#,
+            params![shape_id],
+            map_shape_row,
+        )
+        .optional()?;
+
+    shape
+        .map(|mut shape| {
+            shape.requirements = list_shape_requirements(conn, &shape.shape_id)?;
+            Ok(shape)
+        })
+        .transpose()
+}
+
+pub(crate) fn list_shapes(conn: &Connection) -> Result<Vec<ViewShape>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT shape_id, title, source_ref, scope, version, active, major_mode,
+               minor_modes_json, maturity, payload_contract, payload_version,
+               vision_id, project_uid, replaced_by
+        FROM mother_view_shapes
+        ORDER BY shape_id ASC
+        "#,
+    )?;
+    let mut shapes = stmt
+        .query_map([], map_shape_row)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    for shape in &mut shapes {
+        shape.requirements = list_shape_requirements(conn, &shape.shape_id)?;
+    }
+    Ok(shapes)
+}
+
+pub(crate) fn deactivate_shape(conn: &Connection, shape_id: &str) -> Result<bool> {
+    let updated = conn.execute(
+        r#"
+        UPDATE mother_view_shapes
+        SET active = 0, updated_at = ?2
+        WHERE shape_id = ?1
+        "#,
+        params![shape_id, Utc::now().to_rfc3339()],
+    )?;
+    Ok(updated > 0)
 }
 
 pub(crate) fn save_buffer(conn: &Connection, buffer: &Buffer) -> Result<()> {
@@ -273,6 +430,50 @@ pub(crate) fn list_gaps(conn: &Connection) -> Result<Vec<ObservabilityGap>> {
     Ok(rows)
 }
 
+fn map_shape_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ViewShape> {
+    Ok(ViewShape {
+        shape_id: row.get(0)?,
+        title: row.get(1)?,
+        source_ref: row.get(2)?,
+        scope: enum_from_db::<ViewShapeScope>(row.get::<_, String>(3)?, 3)?,
+        version: u32_from_db(row.get::<_, i64>(4)?, 4)?,
+        active: bool_from_db(row.get::<_, i64>(5)?, 5)?,
+        major_mode: enum_from_db::<MajorMode>(row.get::<_, String>(6)?, 6)?,
+        minor_modes: json_from_db::<Vec<MinorMode>>(row.get::<_, String>(7)?, 7)?,
+        maturity: enum_from_db::<ViewShapeMaturity>(row.get::<_, String>(8)?, 8)?,
+        payload_contract: enum_from_db::<PayloadContract>(row.get::<_, String>(9)?, 9)?,
+        payload_version: u32_from_db(row.get::<_, i64>(10)?, 10)?,
+        vision_id: row.get(11)?,
+        project_uid: row.get(12)?,
+        replaced_by: row.get(13)?,
+        requirements: vec![],
+    })
+}
+
+fn list_shape_requirements(
+    conn: &Connection,
+    shape_id: &str,
+) -> rusqlite::Result<Vec<ViewRequirement>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT fact_path, required, purpose
+        FROM mother_view_shape_requirements
+        WHERE shape_id = ?1
+        ORDER BY fact_path ASC
+        "#,
+    )?;
+    let rows = stmt
+        .query_map(params![shape_id], |row| {
+            Ok(ViewRequirement {
+                fact_path: row.get(0)?,
+                required: bool_from_db(row.get::<_, i64>(1)?, 1)?,
+                purpose: row.get(2)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 fn map_buffer_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Buffer> {
     Ok(Buffer {
         buffer_id: row.get(0)?,
@@ -323,6 +524,24 @@ fn opt_time_from_db(
     column: usize,
 ) -> rusqlite::Result<Option<DateTime<Utc>>> {
     value.map(|value| time_from_db(value, column)).transpose()
+}
+
+fn bool_to_db(value: bool) -> i64 {
+    i64::from(value)
+}
+
+fn bool_from_db(value: i64, column: usize) -> rusqlite::Result<bool> {
+    match value {
+        0 => Ok(false),
+        1 => Ok(true),
+        _ => Err(from_sql_error(
+            column,
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("expected SQLite boolean 0 or 1, got {}", value),
+            ),
+        )),
+    }
 }
 
 fn u32_from_db(value: i64, column: usize) -> rusqlite::Result<u32> {

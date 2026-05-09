@@ -24,7 +24,7 @@ exit_criteria:
   checked: true
 - id: mvsl2-shape-persistence
   text: View shapes and requirements persist in Mother state with deterministic list/get/upsert/deactivate behavior and no dependency on renderer state.
-  checked: false
+  checked: true
 - id: mvsl3-shape-api
   text: Mother exposes control-plane APIs to list, read, create/update, and deactivate view shapes without accepting arbitrary executable UI code.
   checked: false
@@ -168,7 +168,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 
 - [x] `mvsl0-read-before-write`
 - [x] `mvsl1-shape-model`
-- [ ] `mvsl2-shape-persistence`
+- [x] `mvsl2-shape-persistence`
 - [ ] `mvsl3-shape-api`
 - [ ] `mvsl4-open-from-library`
 - [ ] `mvsl5-proof-shapes-seeded`

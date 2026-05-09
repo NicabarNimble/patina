@@ -261,6 +261,19 @@ Implemented the Allium-aligned shape model in `mother/src/view_buffer/model.rs`:
 
 This is model-only. Shape persistence, API exposure, seeded-library ownership, and library-based open lookup remain later exit criteria.
 
+### `mvsl2-shape-persistence`
+
+Implemented persistent shape-library storage through the existing Mother runtime store seam:
+
+- added `mother_view_shapes` and `mother_view_shape_requirements` tables in `mother/src/view_buffer/store.rs`;
+- added deterministic `upsert_shape`, `get_shape`, `list_shapes`, and `deactivate_shape` store functions;
+- stored enum values using the existing kebab-case serde/database convention;
+- persisted requirements separately from shape rows so required/optional semantics survive round trips;
+- added `MotherRuntimeStore` wrappers in `mother/src/state/mod.rs`;
+- added a persistence test for list/get/upsert/deactivate behavior, optional requirements, and Allium projection fields.
+
+This still does not expose control-plane APIs or use library shapes when opening buffers; those remain `mvsl3-shape-api` and `mvsl4-open-from-library`.
+
 ## Commits
 
 No implementation commits yet. Promotion/polish changes prepared the spec for `mvsl0-read-before-write`. `mvsl1-shape-model` implementation should be committed as the next scalpel commit.
