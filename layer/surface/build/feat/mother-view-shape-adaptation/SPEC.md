@@ -39,6 +39,7 @@ exit_criteria:
   text: Behaviors outside this slice are explicitly split into follow-on specs for adapted-shape editing UX, opening an adapted shape after user/agent confirmation, initial shape creation, revision, maturation, and renderer frames.
   checked: true
 validated_against_commit: f35b5a01b3bef4ca2f8a2618cd7eb282dee5ba93
+last_freshness_check: 2026-05-09T17:40:48Z
 ---
 # feat: Mother View Shape Adaptation
 
