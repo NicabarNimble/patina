@@ -30,7 +30,7 @@ exit_criteria:
   checked: true
 - id: mvsl4-open-from-library
   text: Opening a buffer can use an active persisted shape from the shape library, validates declared requirements through the data catalog, and still fails closed with observability gaps.
-  checked: false
+  checked: true
 - id: mvsl5-proof-shapes-seeded
   text: The existing Mother status proof shape is seeded or represented as a library shape so built-in-only shape lookup is no longer the only path.
   checked: false
@@ -170,7 +170,7 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 - [x] `mvsl1-shape-model`
 - [x] `mvsl2-shape-persistence`
 - [x] `mvsl3-shape-api`
-- [ ] `mvsl4-open-from-library`
+- [x] `mvsl4-open-from-library`
 - [ ] `mvsl5-proof-shapes-seeded`
 - [ ] `mvsl6-tests-and-trace`
 - [ ] `mvsl7-follow-on-backlog`

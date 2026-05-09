@@ -288,6 +288,18 @@ Exposed structured shape-library control-plane APIs through the existing Mother 
 
 This still does not make `open_buffer` read persisted shapes; that remains `mvsl4-open-from-library`.
 
+### `mvsl4-open-from-library`
+
+Integrated active library shapes into buffer opening:
+
+- added `ViewBufferService::with_catalog_and_shapes` so callers can provide Mother-owned shape records instead of relying only on the built-in proof shape;
+- made `open_buffer` reject inactive shapes before validating requirements;
+- updated daemon `view_buffer_open` to load shapes from `MotherRuntimeStore` and pass them into the service;
+- kept a temporary built-in fallback only when no shapes are stored, preserving existing behavior until `mvsl5-proof-shapes-seeded` makes `mother.status.default` seeded library data;
+- added service tests for opening an active library shape and refusing an inactive library shape.
+
+Required data validation still uses `DataCatalog::observed_required_fact`, so library shapes inherit the existing fail-closed observability-gap behavior.
+
 ## Commits
 
 No implementation commits yet. Promotion/polish changes prepared the spec for `mvsl0-read-before-write`. `mvsl1-shape-model` implementation should be committed as the next scalpel commit.

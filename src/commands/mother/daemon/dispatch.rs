@@ -688,7 +688,12 @@ impl ApiRuntime for ServerState {
                 observed_at: Utc::now(),
             },
         );
-        let mut service = mother_crate::view_buffer::ViewBufferService::with_catalog(catalog);
+        let mut shapes = self.runtime_store.list_view_shapes()?;
+        if shapes.is_empty() {
+            shapes.push(mother_crate::view_buffer::mother_status_shape());
+        }
+        let mut service =
+            mother_crate::view_buffer::ViewBufferService::with_catalog_and_shapes(catalog, shapes);
         let outcome = service.open_buffer(request)?;
         match &outcome {
             mother_crate::view_buffer::OpenBufferOutcome::Opened(opened) => {

@@ -60,10 +60,19 @@ pub struct ViewBufferService {
 
 impl ViewBufferService {
     pub fn with_catalog(catalog: DataCatalog) -> Self {
-        let proof_shape = mother_status_shape();
+        Self::with_catalog_and_shapes(catalog, vec![mother_status_shape()])
+    }
+
+    pub fn with_catalog_and_shapes(
+        catalog: DataCatalog,
+        shapes: impl IntoIterator<Item = ViewShape>,
+    ) -> Self {
         Self {
             catalog,
-            shapes: BTreeMap::from([(proof_shape.shape_id.clone(), proof_shape)]),
+            shapes: shapes
+                .into_iter()
+                .map(|shape| (shape.shape_id.clone(), shape))
+                .collect(),
             buffers: BTreeMap::new(),
             frames: BTreeMap::new(),
             windows: BTreeMap::new(),
@@ -93,6 +102,9 @@ impl ViewBufferService {
             .get(&request.shape_id)
             .cloned()
             .ok_or_else(|| anyhow!("unknown view shape '{}'", request.shape_id))?;
+        if !shape.active {
+            return Err(anyhow!("inactive view shape '{}'", request.shape_id));
+        }
 
         if let Some(missing) = shape
             .requirements
@@ -331,6 +343,47 @@ mod tests {
         assert_eq!(opened.payload.frame.protocol, "patina:view-buffer");
         assert_eq!(service.list_buffers().len(), 1);
         assert_eq!(service.list_gaps().len(), 0);
+    }
+
+    #[test]
+    fn opens_live_buffer_from_active_library_shape() {
+        // obligation: spec.mother-view-shape-library.mvsl4-open-from-library
+        // obligation: rule-success.OpenLiveBufferWhenRequiredFactsAreObserved
+        let mut shape = mother_status_shape();
+        shape.shape_id = "project.status.summary".to_string();
+        shape.title = "Project Status Summary".to_string();
+        shape.requirements = vec![required("mother.status.version", "display Mother version")];
+        let mut service = ViewBufferService::with_catalog_and_shapes(status_catalog(), vec![shape]);
+
+        let outcome = service
+            .open_buffer(OpenBufferRequest {
+                shape_id: "project.status.summary".to_string(),
+            })
+            .expect("library shape should open");
+
+        let OpenBufferOutcome::Opened(opened) = outcome else {
+            panic!("expected opened buffer");
+        };
+        assert_eq!(opened.buffer.shape_id, "project.status.summary");
+        assert_eq!(opened.buffer.name, "*Project Status Summary*");
+        assert_eq!(service.list_buffers().len(), 1);
+    }
+
+    #[test]
+    fn inactive_library_shape_does_not_open() {
+        // obligation: spec.mother-view-shape-library.mvsl4-open-from-library
+        let mut shape = mother_status_shape();
+        shape.active = false;
+        let mut service = ViewBufferService::with_catalog_and_shapes(status_catalog(), vec![shape]);
+
+        let error = service
+            .open_buffer(OpenBufferRequest {
+                shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
+            })
+            .unwrap_err();
+
+        assert!(error.to_string().contains("inactive view shape"));
+        assert_eq!(service.list_buffers().len(), 0);
     }
 
     #[test]
