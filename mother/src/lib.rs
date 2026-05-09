@@ -48,8 +48,10 @@ pub use state::{
 };
 pub use toys::{GrantedIngressSource, GrantedToys};
 pub use view_buffer::{
-    Buffer, BufferState, CataloguedFact, CataloguedSource, CataloguedSourceKind, Frame, FrameKind,
-    FramedJsonPayload, MajorMode, MinorMode, ObservabilityGap, ObservabilityGapStatus,
-    ObservationState, PayloadContract, PayloadFrame, ViewRequirement, ViewShape, ViewShapeScope,
-    Window, WindowConnectionState,
+    mother_status_shape, Buffer, BufferState, CataloguedFact, CataloguedSource,
+    CataloguedSourceKind, DataCatalog, Frame, FrameKind, FramedJsonPayload, MajorMode, MinorMode,
+    MotherStatusFacts, ObservabilityGap, ObservabilityGapStatus, ObservationState,
+    OpenBufferOutcome, OpenBufferRequest, OpenedBuffer, PayloadContract, PayloadFrame,
+    ViewBufferService, ViewRequirement, ViewShape, ViewShapeScope, Window, WindowConnectionState,
+    MOTHER_STATUS_SHAPE_ID,
 };

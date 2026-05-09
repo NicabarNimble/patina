@@ -4,12 +4,18 @@
 //! `layer/allium/mother/mother-view-composer-target.allium` and scoped by
 //! `mother-view-buffer-runtime`.
 
+mod catalog;
 mod model;
 mod payload;
+mod service;
 
+pub use catalog::{DataCatalog, MotherStatusFacts, MOTHER_STATUS_SHAPE_ID};
 pub use model::{
     Buffer, BufferState, CataloguedFact, CataloguedSource, CataloguedSourceKind, FactKind, Frame,
     FrameKind, MajorMode, MinorMode, ObservabilityGap, ObservabilityGapStatus, ObservationState,
     PayloadContract, ViewRequirement, ViewShape, ViewShapeScope, Window, WindowConnectionState,
 };
 pub use payload::{FramedJsonPayload, PayloadFrame};
+pub use service::{
+    mother_status_shape, OpenBufferOutcome, OpenBufferRequest, OpenedBuffer, ViewBufferService,
+};
