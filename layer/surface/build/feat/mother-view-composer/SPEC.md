@@ -33,7 +33,7 @@ exit_criteria:
   checked: true
 - id: mvc4-initial-shape-creation
   text: No-match requests can create initial structured shapes with explicit backing requirements and no invented data.
-  checked: false
+  checked: true
 - id: mvc5-revision-and-replacement
   text: User corrections create shape revisions and replace live/stale/blocked buffers while preserving history.
   checked: false
@@ -69,7 +69,7 @@ Mother View Composer / Mother View System
 ├── v0.69.0: [[mother-view-shape-library]]
 ├── v0.70.0: [[mother-view-request-composer]]
 ├── v0.70.1: [[mother-view-shape-adaptation]]
-├── future: [[mother-view-initial-shape-creation]]
+├── v0.70.2: [[mother-view-initial-shape-creation]]
 ├── future: [[mother-view-request-ux]]
 ├── future: [[mother-view-buffer-revision]]
 ├── future: [[mother-view-observability-workflow]]
@@ -87,6 +87,7 @@ Completed backend slices:
 - [[mother-view-shape-library]] — `v0.69.0`
 - [[mother-view-request-composer]] — `v0.70.0`
 - [[mother-view-shape-adaptation]] — `v0.70.1`
+- [[mother-view-initial-shape-creation]] — `v0.70.2`
 
 Current honest system label:
 
@@ -148,10 +149,10 @@ The parent/umbrella completion may use a minor or major bump when the whole Moth
 - [[mother-view-shape-library]]: persistent Mother-owned `ViewShape` and `ViewRequirement` records.
 - [[mother-view-request-composer]]: structured request capture, shape-match persistence, explicit/exact safe opening.
 - [[mother-view-shape-adaptation]]: similar-shape adaptation into exploratory shapes.
+- [[mother-view-initial-shape-creation]]: initial structured shapes for no-match requests.
 
 ### Planned
 
-- [[mother-view-initial-shape-creation]]: create initial shapes for no-match requests.
 - [[mother-view-request-ux]]: expose request statuses and flows to users/agents/renderers.
 - [[mother-view-buffer-revision]]: apply corrections, create revisions, and replace buffers.
 - [[mother-view-observability-workflow]]: link/resolve observability gaps.
@@ -174,7 +175,7 @@ Implementation slices carry their own tests and releases.
 - [x] `mvc1-backend-substrate`
 - [x] `mvc2-request-to-buffer-path`
 - [x] `mvc3-shape-adaptation`
-- [ ] `mvc4-initial-shape-creation`
+- [x] `mvc4-initial-shape-creation`
 - [ ] `mvc5-revision-and-replacement`
 - [ ] `mvc6-observability-workflow`
 - [ ] `mvc7-maturation`
