@@ -117,10 +117,11 @@ Tests should cover:
 ## Commits
 
 1. `feat: model mother view shape adaptation` — adds structured `ViewShapeAdaptation` result data and wires `ComposedViewRequest` to carry a non-opening adaptation result for `mvsa1-adaptation-model`.
+2. `feat: adapt similar mother view shapes` — creates exploratory adapted shapes from confident similar matches, returns the adaptation response, persists adapted shapes through daemon/store seams, and verifies fail-closed guardrails.
 
 ## Build Readiness
 
-Ready for the next implementation criterion. The Allium/code alignment pass and adaptation model are recorded; `mvsa0-allium-code-alignment` and `mvsa1-adaptation-model` are checked.
+Implemented and ready to complete. All exit criteria are checked, including follow-on backlog boundaries.
 
 ## Open Questions
 

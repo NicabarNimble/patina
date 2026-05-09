@@ -469,6 +469,69 @@ fn daemon_options_default() {
 }
 
 #[test]
+fn daemon_view_request_compose_persists_adapted_shape() {
+    // obligation: spec.mother-view-shape-adaptation.mvsa3-adapted-shape-persistence
+    // obligation: spec.mother-view-shape-adaptation.mvsa4-compose-integration
+    with_temp_project(|project_root| {
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry: ChildRegistry::new(),
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let composed = <ServerState as mother_crate::http_api::ApiRuntime>::view_request_compose(
+            &state,
+            mother_crate::view_buffer::ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show something like mother status".to_string(),
+                proposed_match: Some(mother_crate::view_buffer::ProposedShapeMatch {
+                    shape_id: Some(mother_crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+                    match_kind: mother_crate::view_buffer::ShapeMatchKind::Similar,
+                    confidence: mother_crate::view_buffer::SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+                }),
+            },
+        )
+        .expect("compose should adapt similar shape");
+
+        let adapted_shape = composed
+            .adapted_shape
+            .expect("daemon compose should return adapted shape");
+        assert_eq!(
+            composed.request.outcome,
+            mother_crate::view_buffer::DisplayRequestOutcome::Unable
+        );
+        assert!(composed.open_outcome.is_none());
+        assert_eq!(runtime_store.list_view_buffers().unwrap().len(), 0);
+        assert_eq!(
+            runtime_store
+                .get_view_shape_match(&composed.request.request_id)
+                .unwrap()
+                .expect("shape match should persist")
+                .match_kind,
+            mother_crate::view_buffer::ShapeMatchKind::Similar
+        );
+        let persisted_shape = runtime_store
+            .get_view_shape(&adapted_shape.shape_id)
+            .unwrap()
+            .expect("adapted shape should persist through daemon");
+        assert_eq!(persisted_shape.shape_id, adapted_shape.shape_id);
+        assert_eq!(
+            persisted_shape.maturity,
+            mother_crate::view_buffer::ViewShapeMaturity::Exploratory
+        );
+    });
+}
+
+#[test]
 fn rivet_dispatch_denied_when_profile_disabled() {
     with_temp_project(|project_root| {
         let runtime_store = patina::mother::MotherRuntimeStore::new(

@@ -2102,6 +2102,78 @@ mod tests {
     }
 
     #[test]
+    fn view_shape_adaptation_persists_adapted_shape_metadata() {
+        // obligation: spec.mother-view-shape-adaptation.mvsa3-adapted-shape-persistence
+        // obligation: rule-success.AdaptSimilarShapeWhenNoExactShapeExists
+        use crate::view_buffer::{
+            ComposeViewRequest, DataCatalog, MotherStatusFacts, ProposedShapeMatch, ShapeMatchKind,
+            ViewBufferService, ViewShapeMaturity, SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+        };
+
+        let store = temp_store();
+        let precedent = crate::view_buffer::mother_status_shape();
+        let mut service = ViewBufferService::with_catalog_and_shapes(
+            DataCatalog::mother_status(MotherStatusFacts {
+                version: "0.70.0".to_string(),
+                uptime_secs: 42,
+                control_plane_ready: true,
+                registered_projects: 2,
+                children_ready_count: 1,
+                children_total: 2,
+                startup_profile: "full".to_string(),
+                memory_pressure: "ok".to_string(),
+                observed_at: Utc::now(),
+            }),
+            vec![precedent.clone()],
+        );
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show something like mother status".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: Some(precedent.shape_id.clone()),
+                    match_kind: ShapeMatchKind::Similar,
+                    confidence: SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+                }),
+            })
+            .unwrap();
+        let adapted_shape = composed
+            .adapted_shape
+            .expect("similar match should return adapted shape");
+
+        store.upsert_view_shape(&adapted_shape).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        let mut persisted = reopened
+            .get_view_shape(&adapted_shape.shape_id)
+            .unwrap()
+            .expect("adapted shape should persist");
+        let mut expected = adapted_shape;
+        persisted
+            .requirements
+            .sort_by(|left, right| left.fact_path.cmp(&right.fact_path));
+        expected
+            .requirements
+            .sort_by(|left, right| left.fact_path.cmp(&right.fact_path));
+        assert_eq!(persisted, expected);
+        assert_eq!(persisted.maturity, ViewShapeMaturity::Exploratory);
+        assert_eq!(persisted.source_ref, precedent.source_ref);
+        assert_eq!(persisted.scope, precedent.scope);
+        assert_eq!(persisted.major_mode, precedent.major_mode);
+        assert_eq!(persisted.minor_modes, precedent.minor_modes);
+        assert_eq!(persisted.payload_contract, precedent.payload_contract);
+        assert_eq!(persisted.payload_version, precedent.payload_version);
+        let mut expected_requirements = precedent.requirements;
+        expected_requirements.sort_by(|left, right| left.fact_path.cmp(&right.fact_path));
+        assert_eq!(persisted.requirements, expected_requirements);
+    }
+
+    #[test]
     fn seed_view_shape_is_idempotent_and_preserves_existing_shape() {
         // obligation: spec.mother-view-shape-library.mvsl5-proof-shapes-seeded
         let store = temp_store();

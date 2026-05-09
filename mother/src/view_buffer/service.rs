@@ -41,7 +41,10 @@ pub struct ComposeViewRequest {
 pub struct ComposedViewRequest {
     pub request: DisplayRequest,
     pub shape_match: Option<ShapeMatch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub shape_adaptation: Option<ViewShapeAdaptation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adapted_shape: Option<ViewShape>,
     pub open_outcome: Option<OpenBufferOutcome>,
     pub reason: Option<String>,
 }
@@ -125,6 +128,10 @@ impl ViewBufferService {
         self.gaps.values().cloned().collect()
     }
 
+    pub fn list_shapes(&self) -> Vec<ViewShape> {
+        self.shapes.values().cloned().collect()
+    }
+
     pub fn compose_request(&mut self, request: ComposeViewRequest) -> Result<ComposedViewRequest> {
         if request.raw_request.trim().is_empty() {
             return Err(anyhow!("raw display request must not be empty"));
@@ -144,6 +151,7 @@ impl ViewBufferService {
                 request: display_request,
                 shape_match: None,
                 shape_adaptation: None,
+                adapted_shape: None,
                 open_outcome: None,
                 reason: Some("no shape match proposed".to_string()),
             });
@@ -156,6 +164,33 @@ impl ViewBufferService {
             confidence: proposed_match.confidence,
         };
 
+        if shape_match.match_kind == ShapeMatchKind::Similar {
+            return match self.adapt_similar_shape(&display_request.request_id, &shape_match) {
+                Ok((shape_adaptation, adapted_shape)) => {
+                    display_request.outcome = DisplayRequestOutcome::Unable;
+                    Ok(ComposedViewRequest {
+                        request: display_request,
+                        shape_match: Some(shape_match),
+                        shape_adaptation: Some(shape_adaptation),
+                        adapted_shape: Some(adapted_shape),
+                        open_outcome: None,
+                        reason: None,
+                    })
+                }
+                Err(reason) => {
+                    display_request.outcome = DisplayRequestOutcome::Unable;
+                    Ok(ComposedViewRequest {
+                        request: display_request,
+                        shape_match: Some(shape_match),
+                        shape_adaptation: None,
+                        adapted_shape: None,
+                        open_outcome: None,
+                        reason: Some(reason),
+                    })
+                }
+            };
+        }
+
         let should_open = match self.validate_openable_match(&shape_match) {
             Ok(()) => true,
             Err(reason) => {
@@ -164,6 +199,7 @@ impl ViewBufferService {
                     request: display_request,
                     shape_match: Some(shape_match),
                     shape_adaptation: None,
+                    adapted_shape: None,
                     open_outcome: None,
                     reason: Some(reason),
                 });
@@ -186,6 +222,7 @@ impl ViewBufferService {
                 request: display_request,
                 shape_match: Some(shape_match),
                 shape_adaptation: None,
+                adapted_shape: None,
                 open_outcome: Some(open_outcome),
                 reason: None,
             });
@@ -206,9 +243,64 @@ impl ViewBufferService {
                 }
                 self.validate_active_shape(shape_match)
             }
-            ShapeMatchKind::Similar => Err("similar shape adaptation is deferred".to_string()),
+            ShapeMatchKind::Similar => Err("similar shape adaptation is unavailable".to_string()),
             ShapeMatchKind::None => Err("no usable shape matched request".to_string()),
         }
+    }
+
+    fn adapt_similar_shape(
+        &mut self,
+        request_id: &str,
+        shape_match: &ShapeMatch,
+    ) -> std::result::Result<(ViewShapeAdaptation, ViewShape), String> {
+        // obligation: spec.mother-view-shape-adaptation.mvsa2-adapted-shape-creation
+        // obligation: spec.mother-view-shape-adaptation.mvsa4-compose-integration
+        // obligation: rule-success.AdaptSimilarShapeWhenNoExactShapeExists
+        if shape_match.confidence < SHAPE_MATCH_CONFIDENCE_THRESHOLD {
+            return Err(format!(
+                "similar shape match confidence {:.2} below threshold {:.2}",
+                shape_match.confidence, SHAPE_MATCH_CONFIDENCE_THRESHOLD
+            ));
+        }
+        let precedent_shape_id = shape_match
+            .shape_id
+            .as_deref()
+            .ok_or_else(|| "similar shape match is missing shape_id".to_string())?;
+        let precedent = self
+            .shapes
+            .get(precedent_shape_id)
+            .cloned()
+            .ok_or_else(|| format!("unknown view shape '{}'", precedent_shape_id))?;
+        if !precedent.active {
+            return Err(format!("inactive view shape '{}'", precedent_shape_id));
+        }
+
+        let adapted_shape_id = self.next_adapted_shape_id(&precedent);
+        let adapted_shape = ViewShape {
+            shape_id: adapted_shape_id.clone(),
+            title: format!("Adapted {}", precedent.title),
+            source_ref: precedent.source_ref.clone(),
+            scope: precedent.scope.clone(),
+            version: 1,
+            active: true,
+            major_mode: precedent.major_mode.clone(),
+            minor_modes: precedent.minor_modes.clone(),
+            maturity: ViewShapeMaturity::Exploratory,
+            payload_contract: precedent.payload_contract.clone(),
+            payload_version: precedent.payload_version,
+            vision_id: precedent.vision_id.clone(),
+            project_uid: precedent.project_uid.clone(),
+            replaced_by: None,
+            requirements: precedent.requirements.clone(),
+        };
+        let shape_adaptation = ViewShapeAdaptation::created_without_opening(
+            request_id.to_string(),
+            precedent.shape_id,
+            adapted_shape_id,
+        );
+        self.shapes
+            .insert(adapted_shape.shape_id.clone(), adapted_shape.clone());
+        Ok((shape_adaptation, adapted_shape))
     }
 
     fn validate_active_shape(&self, shape_match: &ShapeMatch) -> std::result::Result<(), String> {
@@ -351,6 +443,14 @@ impl ViewBufferService {
         format!(
             "buf_{}_{}",
             sanitize_id(&shape.shape_id),
+            uuid::Uuid::new_v4().simple()
+        )
+    }
+
+    fn next_adapted_shape_id(&self, precedent: &ViewShape) -> String {
+        format!(
+            "{}::adapted::{}",
+            precedent.shape_id,
             uuid::Uuid::new_v4().simple()
         )
     }
@@ -612,35 +712,156 @@ mod tests {
     }
 
     #[test]
-    fn similar_and_no_match_requests_do_not_open_buffers() {
+    fn no_match_request_does_not_open_buffer() {
         // obligation: spec.mother-view-request-composer.mvrc5-fail-closed-outcomes
         let mut service = ViewBufferService::with_catalog(status_catalog());
 
-        for proposed_match in [
-            ProposedShapeMatch {
-                shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
-                match_kind: ShapeMatchKind::Similar,
-                confidence: 0.9,
-            },
-            ProposedShapeMatch {
-                shape_id: None,
-                match_kind: ShapeMatchKind::None,
-                confidence: 0.0,
-            },
-        ] {
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show mother status".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: None,
+                    match_kind: ShapeMatchKind::None,
+                    confidence: 0.0,
+                }),
+            })
+            .expect("request should compose");
+
+        assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
+        assert!(composed.shape_adaptation.is_none());
+        assert!(composed.adapted_shape.is_none());
+        assert!(composed.open_outcome.is_none());
+        assert_eq!(service.list_buffers().len(), 0);
+    }
+
+    #[test]
+    fn view_shape_adaptation_creates_exploratory_shape_without_opening_buffer() {
+        // obligation: spec.mother-view-shape-adaptation.mvsa2-adapted-shape-creation
+        // obligation: spec.mother-view-shape-adaptation.mvsa4-compose-integration
+        // obligation: rule-success.AdaptSimilarShapeWhenNoExactShapeExists
+        let precedent = mother_status_shape();
+        let mut service =
+            ViewBufferService::with_catalog_and_shapes(status_catalog(), vec![precedent.clone()]);
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show something like mother status".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                    match_kind: ShapeMatchKind::Similar,
+                    confidence: SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+                }),
+            })
+            .expect("request should compose");
+
+        assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
+        assert!(composed.open_outcome.is_none());
+        assert_eq!(service.list_buffers().len(), 0);
+        let adaptation = composed
+            .shape_adaptation
+            .as_ref()
+            .expect("similar match should report adaptation");
+        let adapted_shape = composed
+            .adapted_shape
+            .as_ref()
+            .expect("similar match should return adapted shape");
+        assert_eq!(adaptation.precedent_shape_id, MOTHER_STATUS_SHAPE_ID);
+        assert_eq!(adaptation.adapted_shape_id, adapted_shape.shape_id);
+        assert!(!adaptation.opens_buffer);
+        assert!(adapted_shape
+            .shape_id
+            .starts_with("mother.status.default::adapted::"));
+        assert_eq!(adapted_shape.title, "Adapted Mother Status");
+        assert_eq!(adapted_shape.source_ref, precedent.source_ref);
+        assert_eq!(adapted_shape.scope, precedent.scope);
+        assert_eq!(adapted_shape.version, 1);
+        assert!(adapted_shape.active);
+        assert_eq!(adapted_shape.major_mode, precedent.major_mode);
+        assert_eq!(adapted_shape.minor_modes, precedent.minor_modes);
+        assert_eq!(adapted_shape.maturity, ViewShapeMaturity::Exploratory);
+        assert_eq!(adapted_shape.payload_contract, precedent.payload_contract);
+        assert_eq!(adapted_shape.payload_version, precedent.payload_version);
+        assert_eq!(adapted_shape.vision_id, precedent.vision_id);
+        assert_eq!(adapted_shape.project_uid, precedent.project_uid);
+        assert_eq!(adapted_shape.replaced_by, None);
+        assert_eq!(adapted_shape.requirements, precedent.requirements);
+        assert!(service
+            .list_shapes()
+            .iter()
+            .any(|shape| shape.shape_id == adapted_shape.shape_id));
+    }
+
+    #[test]
+    fn view_shape_adaptation_fails_closed_for_invalid_similar_matches() {
+        // obligation: spec.mother-view-shape-adaptation.mvsa5-fail-closed-guardrails
+        // obligation: rule-failure.AdaptSimilarShapeWhenNoExactShapeExists.1
+        let cases = [
+            (
+                Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                0.2,
+                "below threshold",
+            ),
+            (None, 0.9, "missing shape_id"),
+            (Some("missing.shape".to_string()), 0.9, "unknown view shape"),
+        ];
+
+        for (shape_id, confidence, expected_reason) in cases {
+            let mut service = ViewBufferService::with_catalog(status_catalog());
             let composed = service
                 .compose_request(ComposeViewRequest {
                     user_id: "local-user".to_string(),
                     agent_id: "pi".to_string(),
-                    raw_request: "show mother status".to_string(),
-                    proposed_match: Some(proposed_match),
+                    raw_request: "show something like mother status".to_string(),
+                    proposed_match: Some(ProposedShapeMatch {
+                        shape_id,
+                        match_kind: ShapeMatchKind::Similar,
+                        confidence,
+                    }),
                 })
                 .expect("request should compose");
 
             assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
+            assert!(composed.shape_adaptation.is_none());
+            assert!(composed.adapted_shape.is_none());
             assert!(composed.open_outcome.is_none());
+            assert_eq!(service.list_buffers().len(), 0);
+            assert_eq!(service.list_shapes().len(), 1);
+            assert!(composed
+                .reason
+                .expect("reason should explain fail-closed result")
+                .contains(expected_reason));
         }
+
+        let mut inactive_shape = mother_status_shape();
+        inactive_shape.active = false;
+        let mut service =
+            ViewBufferService::with_catalog_and_shapes(status_catalog(), vec![inactive_shape]);
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show something like mother status".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                    match_kind: ShapeMatchKind::Similar,
+                    confidence: 0.9,
+                }),
+            })
+            .expect("request should compose");
+
+        assert_eq!(composed.request.outcome, DisplayRequestOutcome::Unable);
+        assert!(composed.shape_adaptation.is_none());
+        assert!(composed.adapted_shape.is_none());
+        assert!(composed.open_outcome.is_none());
         assert_eq!(service.list_buffers().len(), 0);
+        assert!(composed
+            .reason
+            .expect("reason should explain inactive precedent")
+            .contains("inactive view shape"));
     }
 
     #[test]
@@ -671,6 +892,7 @@ mod tests {
             request,
             shape_match: Some(shape_match),
             shape_adaptation: Some(adaptation),
+            adapted_shape: None,
             open_outcome: None,
             reason: None,
         };

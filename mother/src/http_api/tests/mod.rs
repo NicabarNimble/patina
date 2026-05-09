@@ -512,6 +512,59 @@ fn view_request_compose_handler_returns_request_outcome() {
 }
 
 #[test]
+fn view_request_compose_handler_returns_shape_adaptation() {
+    // obligation: spec.mother-view-shape-adaptation.mvsa4-compose-integration
+    // obligation: rule-success.AdaptSimilarShapeWhenNoExactShapeExists
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-requests/compose".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::ComposeViewRequest {
+            user_id: "local-user".to_string(),
+            agent_id: "pi".to_string(),
+            raw_request: "show something like mother status".to_string(),
+            proposed_match: Some(crate::view_buffer::ProposedShapeMatch {
+                shape_id: Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+                match_kind: crate::view_buffer::ShapeMatchKind::Similar,
+                confidence: crate::view_buffer::SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+            }),
+        })
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_compose_view_request(&request, &StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload
+            .get("request")
+            .and_then(|request| request.get("outcome"))
+            .and_then(|value| value.as_str()),
+        Some("unable")
+    );
+    assert_eq!(
+        payload
+            .get("shape_adaptation")
+            .and_then(|adaptation| adaptation.get("precedent_shape_id"))
+            .and_then(|value| value.as_str()),
+        Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID)
+    );
+    assert!(payload
+        .get("shape_adaptation")
+        .and_then(|adaptation| adaptation.get("opens_buffer"))
+        .and_then(|value| value.as_bool())
+        .is_some_and(|opens| !opens));
+    assert!(payload
+        .get("adapted_shape")
+        .and_then(|shape| shape.get("shape_id"))
+        .and_then(|value| value.as_str())
+        .is_some_and(|shape_id| shape_id.starts_with("mother.status.default::adapted::")));
+    assert!(payload
+        .get("open_outcome")
+        .is_some_and(|value| value.is_null()));
+}
+
+#[test]
 fn view_request_compose_handler_rejects_blank_requests() {
     // obligation: spec.mother-view-request-composer.mvrc5-fail-closed-outcomes
     let request = HttpRequest {

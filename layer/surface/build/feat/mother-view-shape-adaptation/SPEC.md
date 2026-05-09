@@ -22,22 +22,22 @@ exit_criteria:
   checked: true
 - id: mvsa2-adapted-shape-creation
   text: A similar match above the confidence threshold creates a new exploratory active ViewShape derived from the precedent shape without arbitrary executable UI code.
-  checked: false
+  checked: true
 - id: mvsa3-adapted-shape-persistence
   text: Adapted shapes persist through the existing shape library and preserve requirements, mode metadata, payload contract/version, source_ref, scope, and optional vision/project projections.
-  checked: false
+  checked: true
 - id: mvsa4-compose-integration
   text: Request composition handles similar matches by persisting the ShapeMatch and adapted ViewShape, returning an adaptation outcome instead of opening a buffer immediately.
-  checked: false
+  checked: true
 - id: mvsa5-fail-closed-guardrails
   text: Missing/inactive precedent shapes, low-confidence similar matches, and invalid adaptation payloads do not create shapes, open buffers, or invent data.
-  checked: false
+  checked: true
 - id: mvsa6-tests-and-trace
   text: Deterministic tests cover successful adaptation, persisted adapted shapes, low-confidence/missing/inactive fail-closed behavior, and Allium obligation trace comments.
-  checked: false
+  checked: true
 - id: mvsa7-follow-on-backlog
   text: Behaviors outside this slice are explicitly split into follow-on specs for adapted-shape editing UX, opening an adapted shape after user/agent confirmation, initial shape creation, revision, maturation, and renderer frames.
-  checked: false
+  checked: true
 ---
 # feat: Mother View Shape Adaptation
 
@@ -151,6 +151,15 @@ Because Allium `DisplayRequest.outcome` has only `pending | buffer_opened | obse
 - Adapted shapes copy precedent requirements in this first slice; requirement editing/composition can come later.
 - `DisplayRequestOutcome` remains Allium v1-compatible; adaptation is represented by response data and persisted shape/match records.
 
+## Follow-on Backlog
+
+- [[mother-view-request-ux]] — adapted-shape confirmation, editing, and request UX.
+- [[mother-view-initial-shape-creation]] — no-match initial shape creation.
+- [[mother-view-buffer-revision]] — user corrections and replacement flows.
+- [[mother-view-maturation]] — candidate/stable/promotion behavior for adapted shapes.
+- [[mother-sveltekit-frame]] — visible renderer/frame attachment.
+- Later request-composer UX/API slice — explicit opening of adapted shapes after user or agent confirmation.
+
 ## Verification
 
 ```bash
@@ -166,12 +175,12 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 
 - [x] `mvsa0-allium-code-alignment`
 - [x] `mvsa1-adaptation-model`
-- [ ] `mvsa2-adapted-shape-creation`
-- [ ] `mvsa3-adapted-shape-persistence`
-- [ ] `mvsa4-compose-integration`
-- [ ] `mvsa5-fail-closed-guardrails`
-- [ ] `mvsa6-tests-and-trace`
-- [ ] `mvsa7-follow-on-backlog`
+- [x] `mvsa2-adapted-shape-creation`
+- [x] `mvsa3-adapted-shape-persistence`
+- [x] `mvsa4-compose-integration`
+- [x] `mvsa5-fail-closed-guardrails`
+- [x] `mvsa6-tests-and-trace`
+- [x] `mvsa7-follow-on-backlog`
 
 ## Build Readiness
 
