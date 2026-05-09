@@ -40,6 +40,7 @@ exit_criteria:
 - id: mvsl7-follow-on-backlog
   text: Remaining Allium business goals outside this slice are explicitly split into follow-on specs for request composition, shape revision/replacement, observability workflow, maturation, and renderer frames.
   checked: true
+validated_against_commit: 5c53a451879e9271c3c9ede3de73bad2c8f65154
 ---
 # feat: Mother View Shape Library
 
