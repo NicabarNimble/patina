@@ -40,6 +40,7 @@ exit_criteria:
 - id: mvmat8-validation
   text: '`cargo check -q`, targeted Mother tests, `cargo test -q -p mother`, `patina spec check mother-view-maturation --json`, and `allium check layer/allium/mother/mother-view-composer-target.allium` pass.'
   checked: true
+validated_against_commit: ca903bde
 ---
 # feat: Mother View Maturation
 
