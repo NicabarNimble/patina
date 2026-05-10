@@ -41,6 +41,7 @@ exit_criteria:
 - id: mvow7-tests-and-trace
   text: Deterministic tests cover linking, resolving, persistence, API response shape, fail-closed behavior, and Allium/spec obligation comments.
   checked: true
+validated_against_commit: 5878e24223bdcd2580d9057d9db7af465b8c6420
 ---
 # feat: Mother View Observability Workflow
 
