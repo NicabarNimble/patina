@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-view-maturation
-status: draft
+status: ready
 created: 2026-05-09
 target: mother-view-composer
 release_bump: patch
@@ -38,7 +38,7 @@ exit_criteria:
   text: Model, service, persistence, daemon, and HTTP tests cover successful shape/derivation/pattern maturation, observability improvement creation, and fail-closed guardrails.
   checked: false
 - id: mvmat8-validation
-  text: "`cargo check -q`, targeted Mother tests, `cargo test -q -p mother`, `patina spec check mother-view-maturation --json`, and `allium check layer/allium/mother/mother-view-composer-target.allium` pass."
+  text: '`cargo check -q`, targeted Mother tests, `cargo test -q -p mother`, `patina spec check mother-view-maturation --json`, and `allium check layer/allium/mother/mother-view-composer-target.allium` pass.'
   checked: false
 ---
 # feat: Mother View Maturation
