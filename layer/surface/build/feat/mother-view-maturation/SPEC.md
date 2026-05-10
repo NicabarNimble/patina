@@ -41,6 +41,7 @@ exit_criteria:
   text: '`cargo check -q`, targeted Mother tests, `cargo test -q -p mother`, `patina spec check mother-view-maturation --json`, and `allium check layer/allium/mother/mother-view-composer-target.allium` pass.'
   checked: true
 validated_against_commit: ca903bde
+last_freshness_check: 2026-05-10T01:20:24Z
 ---
 # feat: Mother View Maturation
 
