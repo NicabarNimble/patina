@@ -47,6 +47,7 @@ freshness_scope:
 - mother/src/view_buffer/service.rs
 - mother/src/view_buffer/store.rs
 - mother/src/http_api/view_buffer.rs
+- src/commands/mother/daemon/dispatch.rs
 ---
 # feat: Mother View Maturation
 
