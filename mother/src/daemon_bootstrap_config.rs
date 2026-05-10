@@ -331,6 +331,9 @@ mod tests {
                             &serde_json::json!({"buffers": []}),
                         )
                     }),
+                    get_view_buffer_payload: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
                     post_view_buffer_open: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
@@ -565,6 +568,9 @@ mod tests {
                             200,
                             &serde_json::json!({"buffers": []}),
                         )
+                    }),
+                    get_view_buffer_payload: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
                     }),
                     post_view_buffer_open: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))

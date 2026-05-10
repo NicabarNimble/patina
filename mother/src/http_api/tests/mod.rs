@@ -542,6 +542,33 @@ impl ApiRuntime for StubRuntime {
         Ok(vec![])
     }
 
+    fn view_buffer_payload_get(&self, buffer_id: &str) -> Result<crate::view_buffer::OpenedBuffer> {
+        let catalog =
+            crate::view_buffer::DataCatalog::mother_status(crate::view_buffer::MotherStatusFacts {
+                version: ApiRuntime::version(self),
+                uptime_secs: ApiRuntime::uptime_secs(self),
+                control_plane_ready: true,
+                registered_projects: 2,
+                children_ready_count: 1,
+                children_total: 2,
+                startup_profile: "full".to_string(),
+                memory_pressure: "ok".to_string(),
+                observed_at: chrono::Utc::now(),
+            });
+        let shape = crate::view_buffer::mother_status_shape();
+        let buffer = crate::view_buffer::Buffer::live_from_shape(
+            buffer_id.to_string(),
+            &shape,
+            chrono::Utc::now(),
+        );
+        let service = crate::view_buffer::ViewBufferService::with_catalog_shapes_and_buffers(
+            catalog,
+            vec![shape],
+            vec![buffer],
+        );
+        service.opened_buffer_payload(buffer_id)
+    }
+
     fn view_buffer_open(
         &self,
         request: crate::view_buffer::OpenBufferRequest,
@@ -1362,6 +1389,30 @@ fn view_buffer_open_handler_returns_framed_payload() {
             .and_then(|frame| frame.get("protocol"))
             .and_then(|value| value.as_str()),
         Some("patina:view-buffer")
+    );
+}
+
+#[test]
+fn view_buffer_payload_handler_returns_existing_framed_payload() {
+    // obligation: spec.mother-sveltekit-frame.mskf4-render-framed-json
+    let request = HttpRequest {
+        method: "GET".to_string(),
+        path: "/api/view-buffers/buf_1/payload".to_string(),
+        headers: vec![],
+        body: vec![],
+    };
+
+    let response = view_buffer::handle_get_view_buffer_payload(&request, &StubRuntime);
+    assert_eq!(response.status, 200);
+    let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
+    assert_eq!(
+        payload
+            .get("opened")
+            .and_then(|opened| opened.get("payload"))
+            .and_then(|payload| payload.get("frame"))
+            .and_then(|frame| frame.get("buffer_id"))
+            .and_then(|value| value.as_str()),
+        Some("buf_1")
     );
 }
 

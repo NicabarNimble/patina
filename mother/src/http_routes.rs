@@ -51,6 +51,7 @@ pub struct RouteTable {
     pub post_view_request_compose: RouteHandler,
     pub post_view_request_open_shape: RouteHandler,
     pub get_view_buffers: RouteHandler,
+    pub get_view_buffer_payload: RouteHandler,
     pub post_view_buffer_open: RouteHandler,
     pub post_view_buffer_connect: RouteHandler,
     pub post_view_buffer_disconnect: RouteHandler,
@@ -379,6 +380,15 @@ impl Router {
                     (self.routes.get_view_buffers)(request)
                 }
             }
+            ("GET", path)
+                if path.starts_with("/api/view-buffers/") && path.ends_with("/payload") =>
+            {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_buffer_payload)(request)
+                }
+            }
             ("POST", "/api/view-buffers/open") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -519,6 +529,7 @@ mod tests {
             post_view_request_compose: Arc::new(|_| ok_json()),
             post_view_request_open_shape: Arc::new(|_| ok_json()),
             get_view_buffers: Arc::new(|_| ok_json()),
+            get_view_buffer_payload: Arc::new(|_| ok_json()),
             post_view_buffer_open: Arc::new(|_| ok_json()),
             post_view_buffer_connect: Arc::new(|_| ok_json()),
             post_view_buffer_disconnect: Arc::new(|_| ok_json()),
@@ -594,6 +605,7 @@ mod tests {
             ("POST", "/api/view-requests/compose"),
             ("POST", "/api/view-requests/open-shape"),
             ("GET", "/api/view-buffers"),
+            ("GET", "/api/view-buffers/buf_1/payload"),
             ("POST", "/api/view-buffers/open"),
             ("POST", "/api/view-buffers/connect"),
             ("POST", "/api/view-buffers/disconnect"),

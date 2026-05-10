@@ -1053,6 +1053,33 @@ impl ApiRuntime for ServerState {
         self.runtime_store.list_view_buffers()
     }
 
+    fn view_buffer_payload_get(
+        &self,
+        buffer_id: &str,
+    ) -> anyhow::Result<mother_crate::view_buffer::OpenedBuffer> {
+        let details = self.health_details()?;
+        let catalog = mother_crate::view_buffer::DataCatalog::mother_status(
+            mother_crate::view_buffer::MotherStatusFacts {
+                version: self.version(),
+                uptime_secs: self.uptime_secs(),
+                control_plane_ready: details.control_plane_ready,
+                registered_projects: details.registered_projects,
+                children_ready_count: details.children_ready_count,
+                children_total: details.children_total,
+                startup_profile: details.startup_profile,
+                memory_pressure: details.memory.pressure,
+                observed_at: Utc::now(),
+            },
+        );
+        self.ensure_builtin_view_shapes()?;
+        let shapes = self.runtime_store.list_view_shapes()?;
+        let buffers = self.runtime_store.list_view_buffers()?;
+        let service = mother_crate::view_buffer::ViewBufferService::with_catalog_shapes_and_buffers(
+            catalog, shapes, buffers,
+        );
+        service.opened_buffer_payload(buffer_id)
+    }
+
     fn view_buffer_open(
         &self,
         request: mother_crate::view_buffer::OpenBufferRequest,

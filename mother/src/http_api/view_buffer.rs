@@ -95,6 +95,11 @@ struct BuffersResponse<T> {
     buffers: T,
 }
 
+#[derive(Serialize)]
+struct BufferPayloadResponse<T> {
+    opened: T,
+}
+
 #[derive(Debug, Deserialize)]
 struct DeactivateShapeRequest {
     shape_id: String,
@@ -517,6 +522,26 @@ pub fn handle_list_view_buffers(runtime: &(impl ViewBufferApi + ?Sized)) -> Http
     match runtime.view_buffers_list() {
         Ok(buffers) => HttpResponse::json(200, &BuffersResponse { buffers }),
         Err(error) => json_error(500, &format!("list view buffers failed: {}", error)),
+    }
+}
+
+pub fn handle_get_view_buffer_payload(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(buffer_id) = request.path.strip_prefix("/api/view-buffers/") else {
+        return json_error(404, "view buffer payload not found");
+    };
+    let Some(buffer_id) = buffer_id.strip_suffix("/payload") else {
+        return json_error(404, "view buffer payload not found");
+    };
+    if buffer_id.is_empty() {
+        return json_error(404, "view buffer payload not found");
+    }
+
+    match runtime.view_buffer_payload_get(buffer_id) {
+        Ok(opened) => HttpResponse::json(200, &BufferPayloadResponse { opened }),
+        Err(error) => json_error(400, &format!("get view buffer payload failed: {}", error)),
     }
 }
 

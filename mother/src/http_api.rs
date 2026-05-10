@@ -174,6 +174,7 @@ pub trait ApiRuntime {
         request: crate::view_buffer::OpenRequestShapeRequest,
     ) -> Result<Option<crate::view_buffer::OpenRequestShapeOutcome>>;
     fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>>;
+    fn view_buffer_payload_get(&self, buffer_id: &str) -> Result<crate::view_buffer::OpenedBuffer>;
     fn view_buffer_open(
         &self,
         request: crate::view_buffer::OpenBufferRequest,
@@ -472,6 +473,7 @@ pub trait ViewBufferApi {
         request: crate::view_buffer::OpenRequestShapeRequest,
     ) -> Result<Option<crate::view_buffer::OpenRequestShapeOutcome>>;
     fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>>;
+    fn view_buffer_payload_get(&self, buffer_id: &str) -> Result<crate::view_buffer::OpenedBuffer>;
     fn view_buffer_open(
         &self,
         request: crate::view_buffer::OpenBufferRequest,
@@ -647,6 +649,10 @@ impl<T: ApiRuntime + ?Sized> ViewBufferApi for T {
 
     fn view_buffers_list(&self) -> Result<Vec<crate::view_buffer::Buffer>> {
         ApiRuntime::view_buffers_list(self)
+    }
+
+    fn view_buffer_payload_get(&self, buffer_id: &str) -> Result<crate::view_buffer::OpenedBuffer> {
+        ApiRuntime::view_buffer_payload_get(self, buffer_id)
     }
 
     fn view_buffer_open(
@@ -877,6 +883,7 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let view_request_compose_runtime = Arc::clone(&runtime);
     let view_request_open_shape_runtime = Arc::clone(&runtime);
     let view_buffers_list_runtime = Arc::clone(&runtime);
+    let view_buffer_payload_get_runtime = Arc::clone(&runtime);
     let view_buffer_open_runtime = Arc::clone(&runtime);
     let view_buffer_connect_runtime = Arc::clone(&runtime);
     let view_buffer_disconnect_runtime = Arc::clone(&runtime);
@@ -1021,6 +1028,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         }),
         get_view_buffers: Arc::new(move |_request| {
             view_buffer::handle_list_view_buffers(&*view_buffers_list_runtime)
+        }),
+        get_view_buffer_payload: Arc::new(move |request| {
+            view_buffer::handle_get_view_buffer_payload(request, &*view_buffer_payload_get_runtime)
         }),
         post_view_buffer_open: Arc::new(move |request| {
             view_buffer::handle_open_view_buffer(request, &*view_buffer_open_runtime)

@@ -246,6 +246,28 @@ impl ViewBufferService {
         self.buffers.values().cloned().collect()
     }
 
+    pub fn opened_buffer_payload(&self, buffer_id: &str) -> Result<OpenedBuffer> {
+        let buffer = self
+            .buffers
+            .get(buffer_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("unknown view buffer '{}'", buffer_id))?;
+        if !buffer.state.is_connectable() {
+            return Err(anyhow!(
+                "view buffer '{}' is not renderable in state {:?}",
+                buffer.buffer_id,
+                buffer.state
+            ));
+        }
+        let shape = self
+            .shapes
+            .get(&buffer.shape_id)
+            .cloned()
+            .ok_or_else(|| anyhow!("unknown view shape '{}'", buffer.shape_id))?;
+        let payload = FramedJsonPayload::new(&buffer, &shape, self.payload_json_for_shape(&shape));
+        Ok(OpenedBuffer { buffer, payload })
+    }
+
     pub fn list_frames(&self) -> Vec<Frame> {
         self.frames.values().cloned().collect()
     }
@@ -2459,6 +2481,56 @@ mod tests {
         );
         assert_eq!(service.list_buffers().len(), 0);
         assert_eq!(service.list_gaps().len(), 1);
+    }
+
+    #[test]
+    fn view_buffer_payload_returns_existing_framed_payload_without_opening_new_buffer() {
+        // obligation: spec.mother-sveltekit-frame.mskf4-render-framed-json
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+        let outcome = service
+            .open_buffer(OpenBufferRequest {
+                shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
+            })
+            .expect("open should evaluate");
+        let OpenBufferOutcome::Opened(opened) = outcome else {
+            panic!("expected opened buffer");
+        };
+
+        let rendered = service
+            .opened_buffer_payload(&opened.buffer.buffer_id)
+            .expect("existing buffer payload should render");
+
+        assert_eq!(rendered.buffer.buffer_id, opened.buffer.buffer_id);
+        assert_eq!(
+            rendered.payload.frame.protocol,
+            "patina:view-buffer".to_string()
+        );
+        assert_eq!(rendered.payload.frame.buffer_id, opened.buffer.buffer_id);
+        assert_eq!(service.list_buffers().len(), 1);
+    }
+
+    #[test]
+    fn view_buffer_payload_rejects_terminal_buffers() {
+        // obligation: spec.mother-sveltekit-frame.mskf4-render-framed-json
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+        let outcome = service
+            .open_buffer(OpenBufferRequest {
+                shape_id: MOTHER_STATUS_SHAPE_ID.to_string(),
+            })
+            .expect("open should evaluate");
+        let OpenBufferOutcome::Opened(opened) = outcome else {
+            panic!("expected opened buffer");
+        };
+        service
+            .kill_buffer(KillBufferRequest {
+                buffer_id: opened.buffer.buffer_id.clone(),
+            })
+            .expect("kill should succeed");
+
+        let error = service
+            .opened_buffer_payload(&opened.buffer.buffer_id)
+            .expect_err("killed buffers are not renderable");
+        assert!(error.to_string().contains("not renderable"));
     }
 
     #[test]
