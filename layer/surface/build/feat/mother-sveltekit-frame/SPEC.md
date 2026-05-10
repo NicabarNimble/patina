@@ -33,6 +33,7 @@ exit_criteria:
   text: SvelteKit check/build, Rust tests for added Mother API surface, `patina spec check`, and Allium check pass.
   checked: true
 validated_against_commit: '75011474'
+last_freshness_check: 2026-05-09
 ---
 # feat: Mother SvelteKit Frame
 
