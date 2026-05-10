@@ -44,6 +44,7 @@ validated_against_commit: ca903bde
 last_freshness_check: 2026-05-10T01:20:24Z
 freshness_scope:
 - mother/src/view_buffer/model.rs
+- mother/src/view_buffer/service.rs
 ---
 # feat: Mother View Maturation
 
