@@ -43,6 +43,8 @@ exit_criteria:
   checked: true
 validated_against_commit: 5878e24223bdcd2580d9057d9db7af465b8c6420
 last_freshness_check: 2026-05-10T00:42:21Z
+freshness_scope:
+- Mother view observability gap detail, link/resolve workflow, catalog resolution checks, store/daemon persistence, HTTP API, fail-closed tests
 ---
 # feat: Mother View Observability Workflow
 
