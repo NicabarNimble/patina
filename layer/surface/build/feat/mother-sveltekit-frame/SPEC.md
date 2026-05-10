@@ -36,6 +36,7 @@ validated_against_commit: '75011474'
 last_freshness_check: 2026-05-09
 freshness_scope:
 - mother/src/view_buffer/service.rs
+- mother/src/http_api/view_buffer.rs
 ---
 # feat: Mother SvelteKit Frame
 
