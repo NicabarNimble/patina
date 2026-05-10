@@ -16,22 +16,22 @@ related:
 exit_criteria:
 - id: mskf1-frame-app
   text: A SvelteKit TypeScript frame exists in-repo with build/check scripts and documentation for connecting to a Mother daemon.
-  checked: false
+  checked: true
 - id: mskf2-mother-owned-state
   text: The frame reads buffers, windows, shapes, requests, and observability gaps from Mother APIs and keeps only renderer/session-local selection state.
-  checked: false
+  checked: true
 - id: mskf3-connect-disconnect
   text: The frame connects and disconnects SvelteKit windows through Mother-owned `/api/view-buffers/connect` and `/api/view-buffers/disconnect` calls.
-  checked: false
+  checked: true
 - id: mskf4-render-framed-json
   text: The frame renders Mother `framed_json` payload envelopes for live/stale/blocked buffers without inventing rows when payload data is unavailable.
-  checked: false
+  checked: true
 - id: mskf5-open-actions
   text: The frame can open an existing shape or request-linked shape only by calling Mother APIs and rendering the returned Mother-owned buffer/payload outcome.
-  checked: false
+  checked: true
 - id: mskf6-verification
   text: SvelteKit check/build, Rust tests for added Mother API surface, `patina spec check`, and Allium check pass.
-  checked: false
+  checked: true
 ---
 # feat: Mother SvelteKit Frame
 
@@ -55,7 +55,7 @@ Build the first SvelteKit frame as a renderer/client for Mother-owned buffers:
 
 ## Status
 
-Draft implementation slice under [[mother-view-composer]]. Expected release: `v0.70.7 — Mother View Composer: SvelteKit Frame`.
+Implemented in [[commit-75011474]]. Pending spec completion/release as `v0.70.7 — Mother View Composer: SvelteKit Frame`.
 
 ## Non-Goals
 
@@ -117,12 +117,12 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 
 ## Exit Criteria
 
-- [ ] `mskf1-frame-app`
-- [ ] `mskf2-mother-owned-state`
-- [ ] `mskf3-connect-disconnect`
-- [ ] `mskf4-render-framed-json`
-- [ ] `mskf5-open-actions`
-- [ ] `mskf6-verification`
+- [x] `mskf1-frame-app`
+- [x] `mskf2-mother-owned-state`
+- [x] `mskf3-connect-disconnect`
+- [x] `mskf4-render-framed-json`
+- [x] `mskf5-open-actions`
+- [x] `mskf6-verification`
 
 ## Build Readiness
 

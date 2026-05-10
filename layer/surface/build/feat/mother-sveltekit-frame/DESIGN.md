@@ -29,7 +29,7 @@ Add one Mother API:
 
 ## Commits
 
-1. Pending — add Mother payload endpoint and SvelteKit frame.
+1. [[commit-75011474]] — add Mother existing-buffer payload endpoint and SvelteKit renderer frame.
 
 ## Direct Code Targets
 
