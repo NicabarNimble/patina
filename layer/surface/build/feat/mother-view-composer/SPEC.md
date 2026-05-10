@@ -42,7 +42,7 @@ exit_criteria:
   checked: true
 - id: mvc7-maturation
   text: Shapes, derivations, display patterns, and observability-improvement artifacts can mature through Allium states.
-  checked: false
+  checked: true
 - id: mvc8-renderer-frame
   text: At least one renderer frame, starting with SvelteKit, connects to Mother-owned buffers without owning buffer or shape state.
   checked: false
@@ -73,7 +73,7 @@ Mother View Composer / Mother View System
 ├── v0.70.3: [[mother-view-request-ux]]
 ├── v0.70.4: [[mother-view-buffer-revision]]
 ├── v0.70.5: [[mother-view-observability-workflow]]
-├── future: [[mother-view-maturation]]
+├── v0.70.6: [[mother-view-maturation]]
 └── future: [[mother-sveltekit-frame]]
 ```
 
@@ -91,6 +91,7 @@ Completed backend slices:
 - [[mother-view-request-ux]] — `v0.70.3`
 - [[mother-view-buffer-revision]] — `v0.70.4`
 - [[mother-view-observability-workflow]] — `v0.70.5`
+- [[mother-view-maturation]] — `v0.70.6`
 
 Current honest system label:
 
@@ -156,10 +157,10 @@ The parent/umbrella completion may use a minor or major bump when the whole Moth
 - [[mother-view-request-ux]]: persisted request details and explicit linked-shape open actions.
 - [[mother-view-buffer-revision]]: structured corrections, shape history, and buffer replacement.
 - [[mother-view-observability-workflow]]: link and resolve observability gaps through catalog-backed checks.
+- [[mother-view-maturation]]: mature shapes, derivations, patterns, and observability-improvement artifacts.
 
 ### Planned
 
-- [[mother-view-maturation]]: mature shapes, derivations, patterns, and observability-improvement artifacts.
 - [[mother-sveltekit-frame]]: first visible renderer frame.
 
 ## Verification
@@ -181,7 +182,7 @@ Implementation slices carry their own tests and releases.
 - [x] `mvc4-initial-shape-creation`
 - [x] `mvc5-revision-and-replacement`
 - [x] `mvc6-observability-workflow`
-- [ ] `mvc7-maturation`
+- [x] `mvc7-maturation`
 - [ ] `mvc8-renderer-frame`
 
 ## Build Readiness
