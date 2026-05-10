@@ -39,7 +39,7 @@ exit_criteria:
   checked: true
 - id: mvc6-observability-workflow
   text: Observability gaps can be linked to work items and resolved when catalog facts become observed.
-  checked: false
+  checked: true
 - id: mvc7-maturation
   text: Shapes, derivations, display patterns, and observability-improvement artifacts can mature through Allium states.
   checked: false
@@ -72,7 +72,7 @@ Mother View Composer / Mother View System
 ├── v0.70.2: [[mother-view-initial-shape-creation]]
 ├── v0.70.3: [[mother-view-request-ux]]
 ├── v0.70.4: [[mother-view-buffer-revision]]
-├── future: [[mother-view-observability-workflow]]
+├── v0.70.5: [[mother-view-observability-workflow]]
 ├── future: [[mother-view-maturation]]
 └── future: [[mother-sveltekit-frame]]
 ```
@@ -90,6 +90,7 @@ Completed backend slices:
 - [[mother-view-initial-shape-creation]] — `v0.70.2`
 - [[mother-view-request-ux]] — `v0.70.3`
 - [[mother-view-buffer-revision]] — `v0.70.4`
+- [[mother-view-observability-workflow]] — `v0.70.5`
 
 Current honest system label:
 
@@ -154,10 +155,10 @@ The parent/umbrella completion may use a minor or major bump when the whole Moth
 - [[mother-view-initial-shape-creation]]: initial structured shapes for no-match requests.
 - [[mother-view-request-ux]]: persisted request details and explicit linked-shape open actions.
 - [[mother-view-buffer-revision]]: structured corrections, shape history, and buffer replacement.
+- [[mother-view-observability-workflow]]: link and resolve observability gaps through catalog-backed checks.
 
 ### Planned
 
-- [[mother-view-observability-workflow]]: link/resolve observability gaps.
 - [[mother-view-maturation]]: mature shapes, derivations, patterns, and observability-improvement artifacts.
 - [[mother-sveltekit-frame]]: first visible renderer frame.
 
@@ -179,7 +180,7 @@ Implementation slices carry their own tests and releases.
 - [x] `mvc3-shape-adaptation`
 - [x] `mvc4-initial-shape-creation`
 - [x] `mvc5-revision-and-replacement`
-- [ ] `mvc6-observability-workflow`
+- [x] `mvc6-observability-workflow`
 - [ ] `mvc7-maturation`
 - [ ] `mvc8-renderer-frame`
 
