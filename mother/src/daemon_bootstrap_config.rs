@@ -271,6 +271,39 @@ mod tests {
                     post_view_shape_revise: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
+                    get_view_derivations: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_derivation: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
+                    post_view_derivation_upsert: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_patterns: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_pattern: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
+                    post_view_pattern_upsert: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_maturation_events: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_maturation_event: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
+                    post_view_maturation_record: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_observability_improvements: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_observability_improvement: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
                     get_view_requests: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             200,
@@ -472,6 +505,39 @@ mod tests {
                     }),
                     post_view_shape_revise: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_derivations: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_derivation: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
+                    post_view_derivation_upsert: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_patterns: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_pattern: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
+                    post_view_pattern_upsert: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_maturation_events: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_maturation_event: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
+                    post_view_maturation_record: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_observability_improvements: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    get_view_observability_improvement: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
                     }),
                     get_view_requests: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(

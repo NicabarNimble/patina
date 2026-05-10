@@ -4,11 +4,12 @@ use rusqlite::{params, types::Type, Connection, OptionalExtension};
 use serde::{de::DeserializeOwned, Serialize};
 
 use super::{
-    Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind, MajorMode,
-    MinorMode, ObservabilityGap, ObservabilityGapStatus, PayloadContract, ShapeMatch,
-    ShapeMatchKind, ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeCreation,
-    ViewShapeMaturity, ViewShapeRevision, ViewShapeRevisionOrigin, ViewShapeRevisionState,
-    ViewShapeScope, Window, WindowConnectionState,
+    Buffer, BufferState, DisplayPattern, DisplayPatternKind, DisplayRequest, DisplayRequestOutcome,
+    Frame, FrameKind, MajorMode, MinorMode, ObservabilityGap, ObservabilityGapStatus,
+    ObservabilityImprovementArtifact, PayloadContract, ShapeMatch, ShapeMatchKind, ViewDerivation,
+    ViewMaturationEvent, ViewMaturationOrigin, ViewMaturationTargetKind, ViewRequirement,
+    ViewShape, ViewShapeAdaptation, ViewShapeCreation, ViewShapeMaturity, ViewShapeRevision,
+    ViewShapeRevisionOrigin, ViewShapeRevisionState, ViewShapeScope, Window, WindowConnectionState,
 };
 
 pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
@@ -99,6 +100,72 @@ pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
             CHECK (required IN (0, 1)),
             FOREIGN KEY (shape_id) REFERENCES mother_view_shapes(shape_id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS mother_view_derivations (
+            derivation_id TEXT PRIMARY KEY,
+            shape_id TEXT NOT NULL,
+            label TEXT NOT NULL,
+            expression_ref TEXT NOT NULL,
+            input_fact_paths_json TEXT NOT NULL,
+            maturity TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK (LENGTH(TRIM(label)) > 0),
+            CHECK (LENGTH(TRIM(expression_ref)) > 0),
+            CHECK (maturity IN ('exploratory', 'candidate', 'stable', 'promoted'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mother_view_derivations_shape
+        ON mother_view_derivations(shape_id, derivation_id);
+
+        CREATE TABLE IF NOT EXISTS mother_view_display_patterns (
+            pattern_id TEXT PRIMARY KEY,
+            shape_id TEXT NOT NULL,
+            pattern_kind TEXT NOT NULL,
+            maturity TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK (pattern_kind IN ('grouping', 'sorting', 'filtering', 'highlighting', 'alerting', 'sectioning', 'mode_behavior')),
+            CHECK (maturity IN ('exploratory', 'candidate', 'stable', 'promoted'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mother_view_display_patterns_shape
+        ON mother_view_display_patterns(shape_id, pattern_id);
+
+        CREATE TABLE IF NOT EXISTS mother_view_maturation_events (
+            maturation_id TEXT PRIMARY KEY,
+            target_kind TEXT NOT NULL,
+            shape_id TEXT,
+            derivation_id TEXT,
+            pattern_id TEXT,
+            origin TEXT NOT NULL,
+            from_maturity TEXT NOT NULL,
+            to_maturity TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            CHECK (target_kind IN ('shape', 'derivation', 'pattern')),
+            CHECK (origin IN ('user_requested', 'mother_suggested', 'agent_inferred')),
+            CHECK (from_maturity IN ('exploratory', 'candidate', 'stable')),
+            CHECK (to_maturity IN ('candidate', 'stable', 'promoted'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mother_view_maturation_events_created
+        ON mother_view_maturation_events(created_at DESC, maturation_id ASC);
+
+        CREATE TABLE IF NOT EXISTS mother_view_observability_improvements (
+            artifact_id TEXT PRIMARY KEY,
+            source_gap_id TEXT,
+            source_maturation_id TEXT,
+            desired_fact_path TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            work_item_created INTEGER NOT NULL,
+            CHECK (LENGTH(TRIM(desired_fact_path)) > 0),
+            CHECK (LENGTH(TRIM(reason)) > 0),
+            CHECK (work_item_created IN (0, 1))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mother_view_observability_improvements_created
+        ON mother_view_observability_improvements(created_at DESC, artifact_id ASC);
 
         CREATE TABLE IF NOT EXISTS mother_view_buffers (
             buffer_id TEXT PRIMARY KEY,
@@ -586,6 +653,250 @@ pub(crate) fn deactivate_shape(conn: &Connection, shape_id: &str) -> Result<bool
     Ok(updated > 0)
 }
 
+pub(crate) fn upsert_derivation(conn: &Connection, derivation: &ViewDerivation) -> Result<()> {
+    // obligation: spec.mother-view-maturation.mvmat2-artifact-library
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        r#"
+        INSERT INTO mother_view_derivations (
+            derivation_id, shape_id, label, expression_ref, input_fact_paths_json,
+            maturity, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        ON CONFLICT(derivation_id) DO UPDATE SET
+            shape_id = excluded.shape_id,
+            label = excluded.label,
+            expression_ref = excluded.expression_ref,
+            input_fact_paths_json = excluded.input_fact_paths_json,
+            maturity = excluded.maturity,
+            updated_at = excluded.updated_at
+        "#,
+        params![
+            &derivation.derivation_id,
+            &derivation.shape_id,
+            &derivation.label,
+            &derivation.expression_ref,
+            serde_json::to_string(&derivation.input_fact_paths)?,
+            enum_to_db(&derivation.maturity)?,
+            &now,
+            &now,
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn get_derivation(
+    conn: &Connection,
+    derivation_id: &str,
+) -> Result<Option<ViewDerivation>> {
+    conn.query_row(
+        r#"
+        SELECT derivation_id, shape_id, label, expression_ref, input_fact_paths_json, maturity
+        FROM mother_view_derivations
+        WHERE derivation_id = ?1
+        "#,
+        params![derivation_id],
+        map_derivation_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub(crate) fn list_derivations(conn: &Connection) -> Result<Vec<ViewDerivation>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT derivation_id, shape_id, label, expression_ref, input_fact_paths_json, maturity
+        FROM mother_view_derivations
+        ORDER BY derivation_id ASC
+        "#,
+    )?;
+    let rows = stmt
+        .query_map([], map_derivation_row)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub(crate) fn upsert_display_pattern(conn: &Connection, pattern: &DisplayPattern) -> Result<()> {
+    // obligation: spec.mother-view-maturation.mvmat2-artifact-library
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        r#"
+        INSERT INTO mother_view_display_patterns (
+            pattern_id, shape_id, pattern_kind, maturity, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        ON CONFLICT(pattern_id) DO UPDATE SET
+            shape_id = excluded.shape_id,
+            pattern_kind = excluded.pattern_kind,
+            maturity = excluded.maturity,
+            updated_at = excluded.updated_at
+        "#,
+        params![
+            &pattern.pattern_id,
+            &pattern.shape_id,
+            enum_to_db(&pattern.pattern_kind)?,
+            enum_to_db(&pattern.maturity)?,
+            &now,
+            &now,
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn get_display_pattern(
+    conn: &Connection,
+    pattern_id: &str,
+) -> Result<Option<DisplayPattern>> {
+    conn.query_row(
+        r#"
+        SELECT pattern_id, shape_id, pattern_kind, maturity
+        FROM mother_view_display_patterns
+        WHERE pattern_id = ?1
+        "#,
+        params![pattern_id],
+        map_display_pattern_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub(crate) fn list_display_patterns(conn: &Connection) -> Result<Vec<DisplayPattern>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT pattern_id, shape_id, pattern_kind, maturity
+        FROM mother_view_display_patterns
+        ORDER BY pattern_id ASC
+        "#,
+    )?;
+    let rows = stmt
+        .query_map([], map_display_pattern_row)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub(crate) fn save_maturation_event(conn: &Connection, event: &ViewMaturationEvent) -> Result<()> {
+    // obligation: spec.mother-view-maturation.mvmat3-shape-maturation
+    // obligation: spec.mother-view-maturation.mvmat4-derivation-pattern-maturation
+    conn.execute(
+        r#"
+        INSERT INTO mother_view_maturation_events (
+            maturation_id, target_kind, shape_id, derivation_id, pattern_id, origin,
+            from_maturity, to_maturity, created_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        ON CONFLICT(maturation_id) DO NOTHING
+        "#,
+        params![
+            &event.maturation_id,
+            enum_to_db(&event.target_kind)?,
+            event.shape_id.as_deref(),
+            event.derivation_id.as_deref(),
+            event.pattern_id.as_deref(),
+            enum_to_db(&event.origin)?,
+            enum_to_db(&event.from_maturity)?,
+            enum_to_db(&event.to_maturity)?,
+            event.created_at.to_rfc3339(),
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn get_maturation_event(
+    conn: &Connection,
+    maturation_id: &str,
+) -> Result<Option<ViewMaturationEvent>> {
+    conn.query_row(
+        r#"
+        SELECT maturation_id, target_kind, shape_id, derivation_id, pattern_id, origin,
+               from_maturity, to_maturity, created_at
+        FROM mother_view_maturation_events
+        WHERE maturation_id = ?1
+        "#,
+        params![maturation_id],
+        map_maturation_event_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub(crate) fn list_maturation_events(conn: &Connection) -> Result<Vec<ViewMaturationEvent>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT maturation_id, target_kind, shape_id, derivation_id, pattern_id, origin,
+               from_maturity, to_maturity, created_at
+        FROM mother_view_maturation_events
+        ORDER BY created_at DESC, maturation_id ASC
+        "#,
+    )?;
+    let rows = stmt
+        .query_map([], map_maturation_event_row)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub(crate) fn save_observability_improvement(
+    conn: &Connection,
+    artifact: &ObservabilityImprovementArtifact,
+) -> Result<()> {
+    // obligation: spec.mother-view-maturation.mvmat5-observability-improvement-artifact
+    conn.execute(
+        r#"
+        INSERT INTO mother_view_observability_improvements (
+            artifact_id, source_gap_id, source_maturation_id, desired_fact_path,
+            reason, created_at, work_item_created
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        ON CONFLICT(artifact_id) DO UPDATE SET
+            source_gap_id = excluded.source_gap_id,
+            source_maturation_id = excluded.source_maturation_id,
+            desired_fact_path = excluded.desired_fact_path,
+            reason = excluded.reason,
+            work_item_created = excluded.work_item_created
+        "#,
+        params![
+            &artifact.artifact_id,
+            artifact.source_gap_id.as_deref(),
+            artifact.source_maturation_id.as_deref(),
+            &artifact.desired_fact_path,
+            &artifact.reason,
+            artifact.created_at.to_rfc3339(),
+            bool_to_db(artifact.work_item_created),
+        ],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn get_observability_improvement(
+    conn: &Connection,
+    artifact_id: &str,
+) -> Result<Option<ObservabilityImprovementArtifact>> {
+    conn.query_row(
+        r#"
+        SELECT artifact_id, source_gap_id, source_maturation_id, desired_fact_path,
+               reason, created_at, work_item_created
+        FROM mother_view_observability_improvements
+        WHERE artifact_id = ?1
+        "#,
+        params![artifact_id],
+        map_observability_improvement_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub(crate) fn list_observability_improvements(
+    conn: &Connection,
+) -> Result<Vec<ObservabilityImprovementArtifact>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT artifact_id, source_gap_id, source_maturation_id, desired_fact_path,
+               reason, created_at, work_item_created
+        FROM mother_view_observability_improvements
+        ORDER BY created_at DESC, artifact_id ASC
+        "#,
+    )?;
+    let rows = stmt
+        .query_map([], map_observability_improvement_row)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 pub(crate) fn save_buffer(conn: &Connection, buffer: &Buffer) -> Result<()> {
     conn.execute(
         r#"
@@ -894,6 +1205,54 @@ fn map_shape_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ViewShape> {
         project_uid: row.get(12)?,
         replaced_by: row.get(13)?,
         requirements: vec![],
+    })
+}
+
+fn map_derivation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ViewDerivation> {
+    Ok(ViewDerivation {
+        derivation_id: row.get(0)?,
+        shape_id: row.get(1)?,
+        label: row.get(2)?,
+        expression_ref: row.get(3)?,
+        input_fact_paths: json_from_db::<Vec<String>>(row.get::<_, String>(4)?, 4)?,
+        maturity: enum_from_db::<ViewShapeMaturity>(row.get::<_, String>(5)?, 5)?,
+    })
+}
+
+fn map_display_pattern_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<DisplayPattern> {
+    Ok(DisplayPattern {
+        pattern_id: row.get(0)?,
+        shape_id: row.get(1)?,
+        pattern_kind: enum_from_db::<DisplayPatternKind>(row.get::<_, String>(2)?, 2)?,
+        maturity: enum_from_db::<ViewShapeMaturity>(row.get::<_, String>(3)?, 3)?,
+    })
+}
+
+fn map_maturation_event_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ViewMaturationEvent> {
+    Ok(ViewMaturationEvent {
+        maturation_id: row.get(0)?,
+        target_kind: enum_from_db::<ViewMaturationTargetKind>(row.get::<_, String>(1)?, 1)?,
+        shape_id: row.get(2)?,
+        derivation_id: row.get(3)?,
+        pattern_id: row.get(4)?,
+        origin: enum_from_db::<ViewMaturationOrigin>(row.get::<_, String>(5)?, 5)?,
+        from_maturity: enum_from_db::<ViewShapeMaturity>(row.get::<_, String>(6)?, 6)?,
+        to_maturity: enum_from_db::<ViewShapeMaturity>(row.get::<_, String>(7)?, 7)?,
+        created_at: time_from_db(row.get::<_, String>(8)?, 8)?,
+    })
+}
+
+fn map_observability_improvement_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<ObservabilityImprovementArtifact> {
+    Ok(ObservabilityImprovementArtifact {
+        artifact_id: row.get(0)?,
+        source_gap_id: row.get(1)?,
+        source_maturation_id: row.get(2)?,
+        desired_fact_path: row.get(3)?,
+        reason: row.get(4)?,
+        created_at: time_from_db(row.get::<_, String>(5)?, 5)?,
+        work_item_created: bool_from_db(row.get::<_, i64>(6)?, 6)?,
     })
 }
 

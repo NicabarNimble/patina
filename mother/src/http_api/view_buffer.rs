@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use super::*;
 use crate::view_buffer::{
-    ComposeViewRequest, ConnectWindowRequest, DisconnectWindowRequest, KillBufferRequest,
-    LinkObservabilityGapRequest, OpenBufferOutcome, OpenBufferRequest, OpenRequestShapeRequest,
-    ResolveObservabilityGapRequest, ReviseViewShapeRequest, ViewShape,
+    ComposeViewRequest, ConnectWindowRequest, DisconnectWindowRequest, DisplayPattern,
+    KillBufferRequest, LinkObservabilityGapRequest, MatureViewArtifactRequest, OpenBufferOutcome,
+    OpenBufferRequest, OpenRequestShapeRequest, ResolveObservabilityGapRequest,
+    ReviseViewShapeRequest, ViewDerivation, ViewShape,
 };
 
 #[derive(Serialize)]
@@ -27,6 +28,46 @@ struct ShapeRevisionsResponse<T> {
 #[derive(Serialize)]
 struct ShapeRevisionResponse<T> {
     revision: T,
+}
+
+#[derive(Serialize)]
+struct DerivationsResponse<T> {
+    derivations: T,
+}
+
+#[derive(Serialize)]
+struct DerivationResponse<T> {
+    derivation: T,
+}
+
+#[derive(Serialize)]
+struct PatternsResponse<T> {
+    patterns: T,
+}
+
+#[derive(Serialize)]
+struct PatternResponse<T> {
+    pattern: T,
+}
+
+#[derive(Serialize)]
+struct MaturationEventsResponse<T> {
+    events: T,
+}
+
+#[derive(Serialize)]
+struct MaturationEventResponse<T> {
+    event: T,
+}
+
+#[derive(Serialize)]
+struct ObservabilityImprovementsResponse<T> {
+    artifacts: T,
+}
+
+#[derive(Serialize)]
+struct ObservabilityImprovementResponse<T> {
+    artifact: T,
 }
 
 #[derive(Serialize)]
@@ -179,6 +220,193 @@ pub fn handle_revise_view_shape(
     match runtime.view_shape_revise(revise_request) {
         Ok(outcome) => HttpResponse::json(200, &outcome),
         Err(error) => json_error(400, &format!("revise view shape failed: {}", error)),
+    }
+}
+
+pub fn handle_list_view_derivations(runtime: &(impl ViewBufferApi + ?Sized)) -> HttpResponse {
+    // obligation: spec.mother-view-maturation.mvmat6-api
+    match runtime.view_derivations_list() {
+        Ok(derivations) => HttpResponse::json(200, &DerivationsResponse { derivations }),
+        Err(error) => json_error(500, &format!("list view derivations failed: {}", error)),
+    }
+}
+
+pub fn handle_get_view_derivation(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(derivation_id) = request.path.strip_prefix("/api/view-derivations/") else {
+        return json_error(400, "missing view derivation id");
+    };
+    if derivation_id.trim().is_empty() {
+        return json_error(400, "missing view derivation id");
+    }
+
+    match runtime.view_derivation_get(derivation_id) {
+        Ok(Some(derivation)) => HttpResponse::json(200, &DerivationResponse { derivation }),
+        Ok(None) => json_error(404, &format!("unknown view derivation '{}'", derivation_id)),
+        Err(error) => json_error(500, &format!("get view derivation failed: {}", error)),
+    }
+}
+
+pub fn handle_upsert_view_derivation(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(derivation) = parse_json::<ViewDerivation>(request) else {
+        return json_error(400, "Invalid JSON");
+    };
+    if derivation.derivation_id.trim().is_empty() {
+        return json_error(400, "missing view derivation id");
+    }
+    if derivation.shape_id.trim().is_empty() {
+        return json_error(400, "missing view shape id");
+    }
+    if derivation.label.trim().is_empty() {
+        return json_error(400, "missing view derivation label");
+    }
+    if derivation.expression_ref.trim().is_empty() {
+        return json_error(400, "missing view derivation expression ref");
+    }
+
+    match runtime.view_derivation_upsert(derivation) {
+        Ok(derivation) => HttpResponse::json(200, &DerivationResponse { derivation }),
+        Err(error) => json_error(400, &format!("upsert view derivation failed: {}", error)),
+    }
+}
+
+pub fn handle_list_view_patterns(runtime: &(impl ViewBufferApi + ?Sized)) -> HttpResponse {
+    // obligation: spec.mother-view-maturation.mvmat6-api
+    match runtime.view_patterns_list() {
+        Ok(patterns) => HttpResponse::json(200, &PatternsResponse { patterns }),
+        Err(error) => json_error(500, &format!("list view patterns failed: {}", error)),
+    }
+}
+
+pub fn handle_get_view_pattern(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(pattern_id) = request.path.strip_prefix("/api/view-patterns/") else {
+        return json_error(400, "missing display pattern id");
+    };
+    if pattern_id.trim().is_empty() {
+        return json_error(400, "missing display pattern id");
+    }
+
+    match runtime.view_pattern_get(pattern_id) {
+        Ok(Some(pattern)) => HttpResponse::json(200, &PatternResponse { pattern }),
+        Ok(None) => json_error(404, &format!("unknown display pattern '{}'", pattern_id)),
+        Err(error) => json_error(500, &format!("get view pattern failed: {}", error)),
+    }
+}
+
+pub fn handle_upsert_view_pattern(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(pattern) = parse_json::<DisplayPattern>(request) else {
+        return json_error(400, "Invalid JSON");
+    };
+    if pattern.pattern_id.trim().is_empty() {
+        return json_error(400, "missing display pattern id");
+    }
+    if pattern.shape_id.trim().is_empty() {
+        return json_error(400, "missing view shape id");
+    }
+
+    match runtime.view_pattern_upsert(pattern) {
+        Ok(pattern) => HttpResponse::json(200, &PatternResponse { pattern }),
+        Err(error) => json_error(400, &format!("upsert view pattern failed: {}", error)),
+    }
+}
+
+pub fn handle_list_view_maturation_events(runtime: &(impl ViewBufferApi + ?Sized)) -> HttpResponse {
+    // obligation: spec.mother-view-maturation.mvmat6-api
+    match runtime.view_maturation_events_list() {
+        Ok(events) => HttpResponse::json(200, &MaturationEventsResponse { events }),
+        Err(error) => json_error(
+            500,
+            &format!("list view maturation events failed: {}", error),
+        ),
+    }
+}
+
+pub fn handle_get_view_maturation_event(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(maturation_id) = request.path.strip_prefix("/api/view-maturation-events/") else {
+        return json_error(400, "missing view maturation id");
+    };
+    if maturation_id.trim().is_empty() {
+        return json_error(400, "missing view maturation id");
+    }
+
+    match runtime.view_maturation_event_get(maturation_id) {
+        Ok(Some(event)) => HttpResponse::json(200, &MaturationEventResponse { event }),
+        Ok(None) => json_error(404, &format!("unknown view maturation '{}'", maturation_id)),
+        Err(error) => json_error(500, &format!("get view maturation event failed: {}", error)),
+    }
+}
+
+pub fn handle_record_view_maturation(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    // obligation: spec.mother-view-maturation.mvmat6-api
+    let Some(maturation_request) = parse_json::<MatureViewArtifactRequest>(request) else {
+        return json_error(400, "Invalid JSON");
+    };
+
+    match runtime.view_maturation_record(maturation_request) {
+        Ok(outcome) => HttpResponse::json(200, &outcome),
+        Err(error) => json_error(400, &format!("record view maturation failed: {}", error)),
+    }
+}
+
+pub fn handle_list_view_observability_improvements(
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    // obligation: spec.mother-view-maturation.mvmat6-api
+    match runtime.view_observability_improvements_list() {
+        Ok(artifacts) => HttpResponse::json(200, &ObservabilityImprovementsResponse { artifacts }),
+        Err(error) => json_error(
+            500,
+            &format!("list view observability improvements failed: {}", error),
+        ),
+    }
+}
+
+pub fn handle_get_view_observability_improvement(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    let Some(artifact_id) = request
+        .path
+        .strip_prefix("/api/view-observability-improvements/")
+    else {
+        return json_error(400, "missing observability improvement artifact id");
+    };
+    if artifact_id.trim().is_empty() {
+        return json_error(400, "missing observability improvement artifact id");
+    }
+
+    match runtime.view_observability_improvement_get(artifact_id) {
+        Ok(Some(artifact)) => {
+            HttpResponse::json(200, &ObservabilityImprovementResponse { artifact })
+        }
+        Ok(None) => json_error(
+            404,
+            &format!(
+                "unknown observability improvement artifact '{}'",
+                artifact_id
+            ),
+        ),
+        Err(error) => json_error(
+            500,
+            &format!("get view observability improvement failed: {}", error),
+        ),
     }
 }
 

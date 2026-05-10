@@ -609,6 +609,84 @@ fn daemon_view_request_compose_persists_created_initial_shape() {
 }
 
 #[test]
+fn daemon_view_maturation_persists_event_and_improvement_artifact() {
+    // obligation: spec.mother-view-maturation.mvmat6-api
+    // obligation: spec.mother-view-maturation.mvmat7-tests-and-trace
+    with_temp_project(|project_root| {
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry: ChildRegistry::new(),
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let derivation = mother_crate::view_buffer::ViewDerivation {
+            derivation_id: "derivation_1".to_string(),
+            shape_id: mother_crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string(),
+            label: "Memory Pressure Summary".to_string(),
+            expression_ref: "allium://views/mother/status/memory-pressure".to_string(),
+            input_fact_paths: vec!["mother.status.memory_pressure".to_string()],
+            maturity: mother_crate::view_buffer::ViewShapeMaturity::Candidate,
+        };
+        <ServerState as mother_crate::http_api::ApiRuntime>::view_derivation_upsert(
+            &state,
+            derivation.clone(),
+        )
+        .expect("derivation should persist");
+
+        let outcome = <ServerState as mother_crate::http_api::ApiRuntime>::view_maturation_record(
+            &state,
+            mother_crate::view_buffer::MatureViewArtifactRequest {
+                target_kind: mother_crate::view_buffer::ViewMaturationTargetKind::Derivation,
+                shape_id: None,
+                derivation_id: Some(derivation.derivation_id.clone()),
+                pattern_id: None,
+                origin: mother_crate::view_buffer::ViewMaturationOrigin::UserRequested,
+                to_maturity: mother_crate::view_buffer::ViewShapeMaturity::Stable,
+                observability_improvement: Some(
+                    mother_crate::view_buffer::ProposedObservabilityImprovement {
+                        desired_fact_path: "mother.status.memory_pressure.summary".to_string(),
+                        reason: "stable derivation should become observable".to_string(),
+                    },
+                ),
+            },
+        )
+        .expect("maturation should persist");
+
+        assert_eq!(
+            runtime_store
+                .get_view_derivation(&derivation.derivation_id)
+                .unwrap()
+                .expect("derivation persists")
+                .maturity,
+            mother_crate::view_buffer::ViewShapeMaturity::Stable
+        );
+        assert!(runtime_store
+            .get_view_maturation_event(&outcome.event.maturation_id)
+            .unwrap()
+            .is_some());
+        let artifact = outcome
+            .observability_improvement
+            .expect("observability improvement returned");
+        assert_eq!(artifact.work_item_created, false);
+        assert_eq!(
+            runtime_store
+                .get_view_observability_improvement(&artifact.artifact_id)
+                .unwrap()
+                .and_then(|artifact| artifact.source_maturation_id),
+            Some(outcome.event.maturation_id)
+        );
+    });
+}
+
+#[test]
 fn rivet_dispatch_denied_when_profile_disabled() {
     with_temp_project(|project_root| {
         let runtime_store = patina::mother::MotherRuntimeStore::new(

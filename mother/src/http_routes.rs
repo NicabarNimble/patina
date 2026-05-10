@@ -33,6 +33,17 @@ pub struct RouteTable {
     pub get_view_shape_revisions: RouteHandler,
     pub get_view_shape_revision: RouteHandler,
     pub post_view_shape_revise: RouteHandler,
+    pub get_view_derivations: RouteHandler,
+    pub get_view_derivation: RouteHandler,
+    pub post_view_derivation_upsert: RouteHandler,
+    pub get_view_patterns: RouteHandler,
+    pub get_view_pattern: RouteHandler,
+    pub post_view_pattern_upsert: RouteHandler,
+    pub get_view_maturation_events: RouteHandler,
+    pub get_view_maturation_event: RouteHandler,
+    pub post_view_maturation_record: RouteHandler,
+    pub get_view_observability_improvements: RouteHandler,
+    pub get_view_observability_improvement: RouteHandler,
     pub get_view_requests: RouteHandler,
     pub get_view_request: RouteHandler,
     pub get_view_request_details: RouteHandler,
@@ -240,6 +251,83 @@ impl Router {
                     (self.routes.get_view_shape_revision)(request)
                 }
             }
+            ("GET", "/api/view-derivations") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_derivations)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-derivations/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_derivation)(request)
+                }
+            }
+            ("POST", "/api/view-derivations/upsert") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_derivation_upsert)(request)
+                }
+            }
+            ("GET", "/api/view-patterns") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_patterns)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-patterns/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_pattern)(request)
+                }
+            }
+            ("POST", "/api/view-patterns/upsert") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_pattern_upsert)(request)
+                }
+            }
+            ("GET", "/api/view-maturation-events") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_maturation_events)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-maturation-events/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_maturation_event)(request)
+                }
+            }
+            ("POST", "/api/view-maturation-events/record") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_maturation_record)(request)
+                }
+            }
+            ("GET", "/api/view-observability-improvements") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_observability_improvements)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-observability-improvements/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_observability_improvement)(request)
+                }
+            }
             ("GET", "/api/view-requests") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -413,6 +501,17 @@ mod tests {
             get_view_shape_revisions: Arc::new(|_| ok_json()),
             get_view_shape_revision: Arc::new(|_| ok_json()),
             post_view_shape_revise: Arc::new(|_| ok_json()),
+            get_view_derivations: Arc::new(|_| ok_json()),
+            get_view_derivation: Arc::new(|_| ok_json()),
+            post_view_derivation_upsert: Arc::new(|_| ok_json()),
+            get_view_patterns: Arc::new(|_| ok_json()),
+            get_view_pattern: Arc::new(|_| ok_json()),
+            post_view_pattern_upsert: Arc::new(|_| ok_json()),
+            get_view_maturation_events: Arc::new(|_| ok_json()),
+            get_view_maturation_event: Arc::new(|_| ok_json()),
+            post_view_maturation_record: Arc::new(|_| ok_json()),
+            get_view_observability_improvements: Arc::new(|_| ok_json()),
+            get_view_observability_improvement: Arc::new(|_| ok_json()),
             get_view_requests: Arc::new(|_| ok_json()),
             get_view_request: Arc::new(|_| ok_json()),
             get_view_request_details: Arc::new(|_| ok_json()),
@@ -477,6 +576,17 @@ mod tests {
             ("POST", "/api/view-shapes/revise"),
             ("GET", "/api/view-shape-revisions"),
             ("GET", "/api/view-shape-revisions/rev_1"),
+            ("GET", "/api/view-derivations"),
+            ("GET", "/api/view-derivations/derivation_1"),
+            ("POST", "/api/view-derivations/upsert"),
+            ("GET", "/api/view-patterns"),
+            ("GET", "/api/view-patterns/pattern_1"),
+            ("POST", "/api/view-patterns/upsert"),
+            ("GET", "/api/view-maturation-events"),
+            ("GET", "/api/view-maturation-events/maturation_1"),
+            ("POST", "/api/view-maturation-events/record"),
+            ("GET", "/api/view-observability-improvements"),
+            ("GET", "/api/view-observability-improvements/artifact_1"),
             ("GET", "/api/view-requests"),
             ("GET", "/api/view-requests/req_1"),
             ("GET", "/api/view-requests/details"),

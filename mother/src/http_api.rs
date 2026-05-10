@@ -121,6 +121,40 @@ pub trait ApiRuntime {
         &self,
         request: crate::view_buffer::ReviseViewShapeRequest,
     ) -> Result<crate::view_buffer::RevisedViewShapeOutcome>;
+    fn view_derivations_list(&self) -> Result<Vec<crate::view_buffer::ViewDerivation>>;
+    fn view_derivation_get(
+        &self,
+        derivation_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewDerivation>>;
+    fn view_derivation_upsert(
+        &self,
+        derivation: crate::view_buffer::ViewDerivation,
+    ) -> Result<crate::view_buffer::ViewDerivation>;
+    fn view_patterns_list(&self) -> Result<Vec<crate::view_buffer::DisplayPattern>>;
+    fn view_pattern_get(
+        &self,
+        pattern_id: &str,
+    ) -> Result<Option<crate::view_buffer::DisplayPattern>>;
+    fn view_pattern_upsert(
+        &self,
+        pattern: crate::view_buffer::DisplayPattern,
+    ) -> Result<crate::view_buffer::DisplayPattern>;
+    fn view_maturation_events_list(&self) -> Result<Vec<crate::view_buffer::ViewMaturationEvent>>;
+    fn view_maturation_event_get(
+        &self,
+        maturation_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewMaturationEvent>>;
+    fn view_maturation_record(
+        &self,
+        request: crate::view_buffer::MatureViewArtifactRequest,
+    ) -> Result<crate::view_buffer::MaturedViewArtifactOutcome>;
+    fn view_observability_improvements_list(
+        &self,
+    ) -> Result<Vec<crate::view_buffer::ObservabilityImprovementArtifact>>;
+    fn view_observability_improvement_get(
+        &self,
+        artifact_id: &str,
+    ) -> Result<Option<crate::view_buffer::ObservabilityImprovementArtifact>>;
     fn view_requests_list(&self) -> Result<Vec<crate::view_buffer::DisplayRequest>>;
     fn view_request_get(
         &self,
@@ -385,6 +419,40 @@ pub trait ViewBufferApi {
         &self,
         request: crate::view_buffer::ReviseViewShapeRequest,
     ) -> Result<crate::view_buffer::RevisedViewShapeOutcome>;
+    fn view_derivations_list(&self) -> Result<Vec<crate::view_buffer::ViewDerivation>>;
+    fn view_derivation_get(
+        &self,
+        derivation_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewDerivation>>;
+    fn view_derivation_upsert(
+        &self,
+        derivation: crate::view_buffer::ViewDerivation,
+    ) -> Result<crate::view_buffer::ViewDerivation>;
+    fn view_patterns_list(&self) -> Result<Vec<crate::view_buffer::DisplayPattern>>;
+    fn view_pattern_get(
+        &self,
+        pattern_id: &str,
+    ) -> Result<Option<crate::view_buffer::DisplayPattern>>;
+    fn view_pattern_upsert(
+        &self,
+        pattern: crate::view_buffer::DisplayPattern,
+    ) -> Result<crate::view_buffer::DisplayPattern>;
+    fn view_maturation_events_list(&self) -> Result<Vec<crate::view_buffer::ViewMaturationEvent>>;
+    fn view_maturation_event_get(
+        &self,
+        maturation_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewMaturationEvent>>;
+    fn view_maturation_record(
+        &self,
+        request: crate::view_buffer::MatureViewArtifactRequest,
+    ) -> Result<crate::view_buffer::MaturedViewArtifactOutcome>;
+    fn view_observability_improvements_list(
+        &self,
+    ) -> Result<Vec<crate::view_buffer::ObservabilityImprovementArtifact>>;
+    fn view_observability_improvement_get(
+        &self,
+        artifact_id: &str,
+    ) -> Result<Option<crate::view_buffer::ObservabilityImprovementArtifact>>;
     fn view_requests_list(&self) -> Result<Vec<crate::view_buffer::DisplayRequest>>;
     fn view_request_get(
         &self,
@@ -472,6 +540,73 @@ impl<T: ApiRuntime + ?Sized> ViewBufferApi for T {
         request: crate::view_buffer::ReviseViewShapeRequest,
     ) -> Result<crate::view_buffer::RevisedViewShapeOutcome> {
         ApiRuntime::view_shape_revise(self, request)
+    }
+
+    fn view_derivations_list(&self) -> Result<Vec<crate::view_buffer::ViewDerivation>> {
+        ApiRuntime::view_derivations_list(self)
+    }
+
+    fn view_derivation_get(
+        &self,
+        derivation_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewDerivation>> {
+        ApiRuntime::view_derivation_get(self, derivation_id)
+    }
+
+    fn view_derivation_upsert(
+        &self,
+        derivation: crate::view_buffer::ViewDerivation,
+    ) -> Result<crate::view_buffer::ViewDerivation> {
+        ApiRuntime::view_derivation_upsert(self, derivation)
+    }
+
+    fn view_patterns_list(&self) -> Result<Vec<crate::view_buffer::DisplayPattern>> {
+        ApiRuntime::view_patterns_list(self)
+    }
+
+    fn view_pattern_get(
+        &self,
+        pattern_id: &str,
+    ) -> Result<Option<crate::view_buffer::DisplayPattern>> {
+        ApiRuntime::view_pattern_get(self, pattern_id)
+    }
+
+    fn view_pattern_upsert(
+        &self,
+        pattern: crate::view_buffer::DisplayPattern,
+    ) -> Result<crate::view_buffer::DisplayPattern> {
+        ApiRuntime::view_pattern_upsert(self, pattern)
+    }
+
+    fn view_maturation_events_list(&self) -> Result<Vec<crate::view_buffer::ViewMaturationEvent>> {
+        ApiRuntime::view_maturation_events_list(self)
+    }
+
+    fn view_maturation_event_get(
+        &self,
+        maturation_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewMaturationEvent>> {
+        ApiRuntime::view_maturation_event_get(self, maturation_id)
+    }
+
+    fn view_maturation_record(
+        &self,
+        request: crate::view_buffer::MatureViewArtifactRequest,
+    ) -> Result<crate::view_buffer::MaturedViewArtifactOutcome> {
+        ApiRuntime::view_maturation_record(self, request)
+    }
+
+    fn view_observability_improvements_list(
+        &self,
+    ) -> Result<Vec<crate::view_buffer::ObservabilityImprovementArtifact>> {
+        ApiRuntime::view_observability_improvements_list(self)
+    }
+
+    fn view_observability_improvement_get(
+        &self,
+        artifact_id: &str,
+    ) -> Result<Option<crate::view_buffer::ObservabilityImprovementArtifact>> {
+        ApiRuntime::view_observability_improvement_get(self, artifact_id)
     }
 
     fn view_requests_list(&self) -> Result<Vec<crate::view_buffer::DisplayRequest>> {
@@ -724,6 +859,17 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let view_shape_revisions_list_runtime = Arc::clone(&runtime);
     let view_shape_revision_get_runtime = Arc::clone(&runtime);
     let view_shape_revise_runtime = Arc::clone(&runtime);
+    let view_derivations_list_runtime = Arc::clone(&runtime);
+    let view_derivation_get_runtime = Arc::clone(&runtime);
+    let view_derivation_upsert_runtime = Arc::clone(&runtime);
+    let view_patterns_list_runtime = Arc::clone(&runtime);
+    let view_pattern_get_runtime = Arc::clone(&runtime);
+    let view_pattern_upsert_runtime = Arc::clone(&runtime);
+    let view_maturation_events_list_runtime = Arc::clone(&runtime);
+    let view_maturation_event_get_runtime = Arc::clone(&runtime);
+    let view_maturation_record_runtime = Arc::clone(&runtime);
+    let view_observability_improvements_list_runtime = Arc::clone(&runtime);
+    let view_observability_improvement_get_runtime = Arc::clone(&runtime);
     let view_requests_list_runtime = Arc::clone(&runtime);
     let view_request_get_runtime = Arc::clone(&runtime);
     let view_request_details_list_runtime = Arc::clone(&runtime);
@@ -813,6 +959,47 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         }),
         post_view_shape_revise: Arc::new(move |request| {
             view_buffer::handle_revise_view_shape(request, &*view_shape_revise_runtime)
+        }),
+        get_view_derivations: Arc::new(move |_request| {
+            view_buffer::handle_list_view_derivations(&*view_derivations_list_runtime)
+        }),
+        get_view_derivation: Arc::new(move |request| {
+            view_buffer::handle_get_view_derivation(request, &*view_derivation_get_runtime)
+        }),
+        post_view_derivation_upsert: Arc::new(move |request| {
+            view_buffer::handle_upsert_view_derivation(request, &*view_derivation_upsert_runtime)
+        }),
+        get_view_patterns: Arc::new(move |_request| {
+            view_buffer::handle_list_view_patterns(&*view_patterns_list_runtime)
+        }),
+        get_view_pattern: Arc::new(move |request| {
+            view_buffer::handle_get_view_pattern(request, &*view_pattern_get_runtime)
+        }),
+        post_view_pattern_upsert: Arc::new(move |request| {
+            view_buffer::handle_upsert_view_pattern(request, &*view_pattern_upsert_runtime)
+        }),
+        get_view_maturation_events: Arc::new(move |_request| {
+            view_buffer::handle_list_view_maturation_events(&*view_maturation_events_list_runtime)
+        }),
+        get_view_maturation_event: Arc::new(move |request| {
+            view_buffer::handle_get_view_maturation_event(
+                request,
+                &*view_maturation_event_get_runtime,
+            )
+        }),
+        post_view_maturation_record: Arc::new(move |request| {
+            view_buffer::handle_record_view_maturation(request, &*view_maturation_record_runtime)
+        }),
+        get_view_observability_improvements: Arc::new(move |_request| {
+            view_buffer::handle_list_view_observability_improvements(
+                &*view_observability_improvements_list_runtime,
+            )
+        }),
+        get_view_observability_improvement: Arc::new(move |request| {
+            view_buffer::handle_get_view_observability_improvement(
+                request,
+                &*view_observability_improvement_get_runtime,
+            )
         }),
         get_view_requests: Arc::new(move |_request| {
             view_buffer::handle_list_view_requests(&*view_requests_list_runtime)

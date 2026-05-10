@@ -5,8 +5,10 @@ use std::path::{Path, PathBuf};
 
 use crate::{
     view_buffer::{
-        self, Buffer, DisplayRequest, DisplayRequestOutcome, Frame, ObservabilityGap, ShapeMatch,
-        ViewShape, ViewShapeAdaptation, ViewShapeCreation, ViewShapeRevision, Window,
+        self, Buffer, DisplayPattern, DisplayRequest, DisplayRequestOutcome, Frame,
+        ObservabilityGap, ObservabilityImprovementArtifact, ShapeMatch, ViewDerivation,
+        ViewMaturationEvent, ViewShape, ViewShapeAdaptation, ViewShapeCreation, ViewShapeRevision,
+        Window,
     },
     TaskIntent, TaskIntentKind,
 };
@@ -1928,6 +1930,77 @@ impl MotherRuntimeStore {
         view_buffer::store::deactivate_shape(&conn, shape_id)
     }
 
+    pub fn upsert_view_derivation(&self, derivation: &ViewDerivation) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::upsert_derivation(&conn, derivation)
+    }
+
+    pub fn get_view_derivation(&self, derivation_id: &str) -> Result<Option<ViewDerivation>> {
+        let conn = self.open()?;
+        view_buffer::store::get_derivation(&conn, derivation_id)
+    }
+
+    pub fn list_view_derivations(&self) -> Result<Vec<ViewDerivation>> {
+        let conn = self.open()?;
+        view_buffer::store::list_derivations(&conn)
+    }
+
+    pub fn upsert_view_display_pattern(&self, pattern: &DisplayPattern) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::upsert_display_pattern(&conn, pattern)
+    }
+
+    pub fn get_view_display_pattern(&self, pattern_id: &str) -> Result<Option<DisplayPattern>> {
+        let conn = self.open()?;
+        view_buffer::store::get_display_pattern(&conn, pattern_id)
+    }
+
+    pub fn list_view_display_patterns(&self) -> Result<Vec<DisplayPattern>> {
+        let conn = self.open()?;
+        view_buffer::store::list_display_patterns(&conn)
+    }
+
+    pub fn save_view_maturation_event(&self, event: &ViewMaturationEvent) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_maturation_event(&conn, event)
+    }
+
+    pub fn get_view_maturation_event(
+        &self,
+        maturation_id: &str,
+    ) -> Result<Option<ViewMaturationEvent>> {
+        let conn = self.open()?;
+        view_buffer::store::get_maturation_event(&conn, maturation_id)
+    }
+
+    pub fn list_view_maturation_events(&self) -> Result<Vec<ViewMaturationEvent>> {
+        let conn = self.open()?;
+        view_buffer::store::list_maturation_events(&conn)
+    }
+
+    pub fn save_view_observability_improvement(
+        &self,
+        artifact: &ObservabilityImprovementArtifact,
+    ) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_observability_improvement(&conn, artifact)
+    }
+
+    pub fn get_view_observability_improvement(
+        &self,
+        artifact_id: &str,
+    ) -> Result<Option<ObservabilityImprovementArtifact>> {
+        let conn = self.open()?;
+        view_buffer::store::get_observability_improvement(&conn, artifact_id)
+    }
+
+    pub fn list_view_observability_improvements(
+        &self,
+    ) -> Result<Vec<ObservabilityImprovementArtifact>> {
+        let conn = self.open()?;
+        view_buffer::store::list_observability_improvements(&conn)
+    }
+
     pub fn save_view_buffer(&self, buffer: &Buffer) -> Result<()> {
         let conn = self.open()?;
         view_buffer::store::save_buffer(&conn, buffer)
@@ -2189,6 +2262,98 @@ mod tests {
                 .first()
                 .and_then(|buffer| buffer.replacement_buffer_id.as_deref()),
             Some("buf_2")
+        );
+    }
+
+    #[test]
+    fn view_maturation_artifacts_and_events_are_persistent() {
+        // obligation: spec.mother-view-maturation.mvmat2-artifact-library
+        // obligation: spec.mother-view-maturation.mvmat5-observability-improvement-artifact
+        use crate::view_buffer::{
+            DisplayPattern, DisplayPatternKind, ObservabilityImprovementArtifact, ViewDerivation,
+            ViewMaturationEvent, ViewMaturationOrigin, ViewMaturationTargetKind, ViewShapeMaturity,
+        };
+
+        let store = temp_store();
+        let derivation = ViewDerivation {
+            derivation_id: "derivation_1".to_string(),
+            shape_id: crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string(),
+            label: "Memory Pressure Summary".to_string(),
+            expression_ref: "allium://views/mother/status/memory-pressure".to_string(),
+            input_fact_paths: vec!["mother.status.memory_pressure".to_string()],
+            maturity: ViewShapeMaturity::Candidate,
+        };
+        let pattern = DisplayPattern {
+            pattern_id: "pattern_1".to_string(),
+            shape_id: crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string(),
+            pattern_kind: DisplayPatternKind::Grouping,
+            maturity: ViewShapeMaturity::Exploratory,
+        };
+        let event = ViewMaturationEvent {
+            maturation_id: "maturation_1".to_string(),
+            target_kind: ViewMaturationTargetKind::Derivation,
+            shape_id: Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+            derivation_id: Some(derivation.derivation_id.clone()),
+            pattern_id: None,
+            origin: ViewMaturationOrigin::UserRequested,
+            from_maturity: ViewShapeMaturity::Candidate,
+            to_maturity: ViewShapeMaturity::Stable,
+            created_at: Utc::now(),
+        };
+        let artifact = ObservabilityImprovementArtifact {
+            artifact_id: "maturation_1::observability-improvement".to_string(),
+            source_gap_id: None,
+            source_maturation_id: Some(event.maturation_id.clone()),
+            desired_fact_path: "mother.status.memory_pressure.summary".to_string(),
+            reason: "stable derivation should become observable".to_string(),
+            created_at: Utc::now(),
+            work_item_created: false,
+        };
+
+        store.upsert_view_derivation(&derivation).unwrap();
+        store.upsert_view_display_pattern(&pattern).unwrap();
+        store.save_view_maturation_event(&event).unwrap();
+        store
+            .save_view_observability_improvement(&artifact)
+            .unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(
+            reopened
+                .get_view_derivation(&derivation.derivation_id)
+                .unwrap(),
+            Some(derivation.clone())
+        );
+        assert_eq!(reopened.list_view_derivations().unwrap(), vec![derivation]);
+        assert_eq!(
+            reopened
+                .get_view_display_pattern(&pattern.pattern_id)
+                .unwrap(),
+            Some(pattern.clone())
+        );
+        assert_eq!(
+            reopened.list_view_display_patterns().unwrap(),
+            vec![pattern]
+        );
+        assert_eq!(
+            reopened
+                .get_view_maturation_event(&event.maturation_id)
+                .unwrap(),
+            Some(event.clone())
+        );
+        assert_eq!(reopened.list_view_maturation_events().unwrap(), vec![event]);
+        assert_eq!(
+            reopened
+                .get_view_observability_improvement(&artifact.artifact_id)
+                .unwrap(),
+            Some(artifact.clone())
+        );
+        assert_eq!(
+            reopened.list_view_observability_improvements().unwrap(),
+            vec![artifact]
         );
     }
 

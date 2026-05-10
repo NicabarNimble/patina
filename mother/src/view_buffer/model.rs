@@ -72,6 +72,45 @@ pub enum ViewShapeMaturity {
     Promoted,
 }
 
+impl ViewShapeMaturity {
+    pub fn next(&self) -> Option<Self> {
+        match self {
+            Self::Exploratory => Some(Self::Candidate),
+            Self::Candidate => Some(Self::Stable),
+            Self::Stable => Some(Self::Promoted),
+            Self::Promoted => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewMaturationTargetKind {
+    Shape,
+    Derivation,
+    Pattern,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewMaturationOrigin {
+    UserRequested,
+    MotherSuggested,
+    AgentInferred,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DisplayPatternKind {
+    Grouping,
+    Sorting,
+    Filtering,
+    Highlighting,
+    Alerting,
+    Sectioning,
+    ModeBehavior,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CataloguedSourceKind {
@@ -210,6 +249,84 @@ impl ViewShape {
             .iter()
             .any(|requirement| requirement.required && requirement.fact_path == fact_path)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ViewDerivation {
+    pub derivation_id: String,
+    pub shape_id: String,
+    pub label: String,
+    pub expression_ref: String,
+    pub input_fact_paths: Vec<String>,
+    pub maturity: ViewShapeMaturity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisplayPattern {
+    pub pattern_id: String,
+    pub shape_id: String,
+    pub pattern_kind: DisplayPatternKind,
+    pub maturity: ViewShapeMaturity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ViewMaturationEvent {
+    pub maturation_id: String,
+    pub target_kind: ViewMaturationTargetKind,
+    pub shape_id: Option<String>,
+    pub derivation_id: Option<String>,
+    pub pattern_id: Option<String>,
+    pub origin: ViewMaturationOrigin,
+    pub from_maturity: ViewShapeMaturity,
+    pub to_maturity: ViewShapeMaturity,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservabilityImprovementArtifact {
+    pub artifact_id: String,
+    pub source_gap_id: Option<String>,
+    pub source_maturation_id: Option<String>,
+    pub desired_fact_path: String,
+    pub reason: String,
+    pub created_at: DateTime<Utc>,
+    pub work_item_created: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProposedObservabilityImprovement {
+    pub desired_fact_path: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MatureViewArtifactRequest {
+    pub target_kind: ViewMaturationTargetKind,
+    #[serde(default)]
+    pub shape_id: Option<String>,
+    #[serde(default)]
+    pub derivation_id: Option<String>,
+    #[serde(default)]
+    pub pattern_id: Option<String>,
+    pub origin: ViewMaturationOrigin,
+    pub to_maturity: ViewShapeMaturity,
+    #[serde(default)]
+    pub observability_improvement: Option<ProposedObservabilityImprovement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MaturedViewArtifactOutcome {
+    pub event: ViewMaturationEvent,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shape: Option<ViewShape>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derivation: Option<ViewDerivation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<DisplayPattern>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observability_improvement: Option<ObservabilityImprovementArtifact>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -695,6 +812,51 @@ mod tests {
         assert_eq!(gap.linked_work_item_id.as_deref(), Some("work/MOTHER-123"));
         assert_eq!(gap.status, ObservabilityGapStatus::Resolved);
         assert!(gap.resolved_at.is_some());
+    }
+
+    #[test]
+    fn view_maturation_model_records_forward_artifact_promotion() {
+        // obligation: spec.mother-view-maturation.mvmat1-maturation-model
+        // obligation: rule-success.PromoteMatureViewArtifact
+        assert_eq!(
+            ViewShapeMaturity::Exploratory.next(),
+            Some(ViewShapeMaturity::Candidate)
+        );
+        assert_eq!(ViewShapeMaturity::Promoted.next(), None);
+
+        let created_at = Utc::now();
+        let event = ViewMaturationEvent {
+            maturation_id: "maturation_1".to_string(),
+            target_kind: ViewMaturationTargetKind::Derivation,
+            shape_id: Some("mother.status.default".to_string()),
+            derivation_id: Some("derivation_1".to_string()),
+            pattern_id: None,
+            origin: ViewMaturationOrigin::UserRequested,
+            from_maturity: ViewShapeMaturity::Candidate,
+            to_maturity: ViewShapeMaturity::Stable,
+            created_at,
+        };
+        let improvement = ObservabilityImprovementArtifact {
+            artifact_id: "maturation_1::observability-improvement".to_string(),
+            source_gap_id: None,
+            source_maturation_id: Some(event.maturation_id.clone()),
+            desired_fact_path: "mother.status.memory_pressure".to_string(),
+            reason: "stable derivation should become catalogued".to_string(),
+            created_at,
+            work_item_created: false,
+        };
+
+        assert_eq!(event.target_kind, ViewMaturationTargetKind::Derivation);
+        assert_eq!(event.to_maturity, ViewShapeMaturity::Stable);
+        assert_eq!(improvement.work_item_created, false);
+        assert_eq!(
+            improvement.source_maturation_id.as_deref(),
+            Some("maturation_1")
+        );
+        assert_eq!(
+            serde_json::to_value(&event.origin).unwrap(),
+            serde_json::json!("user_requested")
+        );
     }
 
     #[test]

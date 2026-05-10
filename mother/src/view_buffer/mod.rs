@@ -12,13 +12,15 @@ pub(crate) mod store;
 
 pub use catalog::{DataCatalog, MotherStatusFacts, MOTHER_STATUS_SHAPE_ID};
 pub use model::{
-    Buffer, BufferState, CataloguedFact, CataloguedSource, CataloguedSourceKind, DisplayRequest,
-    DisplayRequestOutcome, FactKind, Frame, FrameKind, MajorMode, MinorMode, ObservabilityGap,
-    ObservabilityGapStatus, ObservationState, PayloadContract, ShapeMatch, ShapeMatchKind,
-    SourceAvailability, ViewRequestAction, ViewRequestActionKind, ViewRequestDetail,
-    ViewRequirement, ViewShape, ViewShapeAdaptation, ViewShapeCreation, ViewShapeMaturity,
-    ViewShapeRevision, ViewShapeRevisionOrigin, ViewShapeRevisionState, ViewShapeScope, Window,
-    WindowConnectionState,
+    Buffer, BufferState, CataloguedFact, CataloguedSource, CataloguedSourceKind, DisplayPattern,
+    DisplayPatternKind, DisplayRequest, DisplayRequestOutcome, FactKind, Frame, FrameKind,
+    MajorMode, MatureViewArtifactRequest, MaturedViewArtifactOutcome, MinorMode, ObservabilityGap,
+    ObservabilityGapStatus, ObservabilityImprovementArtifact, ObservationState, PayloadContract,
+    ProposedObservabilityImprovement, ShapeMatch, ShapeMatchKind, SourceAvailability,
+    ViewDerivation, ViewMaturationEvent, ViewMaturationOrigin, ViewMaturationTargetKind,
+    ViewRequestAction, ViewRequestActionKind, ViewRequestDetail, ViewRequirement, ViewShape,
+    ViewShapeAdaptation, ViewShapeCreation, ViewShapeMaturity, ViewShapeRevision,
+    ViewShapeRevisionOrigin, ViewShapeRevisionState, ViewShapeScope, Window, WindowConnectionState,
 };
 pub use payload::{FramedJsonPayload, PayloadFrame};
 pub use service::{

@@ -6,9 +6,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::{
-    Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind,
-    FramedJsonPayload, MajorMode, MinorMode, ObservabilityGap, ObservabilityGapStatus,
-    PayloadContract, ShapeMatch, ShapeMatchKind, ViewRequestDetail, ViewRequirement, ViewShape,
+    Buffer, BufferState, DisplayPattern, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind,
+    FramedJsonPayload, MajorMode, MatureViewArtifactRequest, MaturedViewArtifactOutcome, MinorMode,
+    ObservabilityGap, ObservabilityGapStatus, ObservabilityImprovementArtifact, PayloadContract,
+    ProposedObservabilityImprovement, ShapeMatch, ShapeMatchKind, ViewDerivation,
+    ViewMaturationEvent, ViewMaturationTargetKind, ViewRequestDetail, ViewRequirement, ViewShape,
     ViewShapeAdaptation, ViewShapeCreation, ViewShapeMaturity, ViewShapeRevision,
     ViewShapeRevisionOrigin, ViewShapeRevisionState, ViewShapeScope, Window, WindowConnectionState,
 };
@@ -168,6 +170,10 @@ pub struct ViewBufferService {
     frames: BTreeMap<String, Frame>,
     windows: BTreeMap<String, Window>,
     gaps: BTreeMap<String, ObservabilityGap>,
+    derivations: BTreeMap<String, ViewDerivation>,
+    patterns: BTreeMap<String, DisplayPattern>,
+    maturation_events: BTreeMap<String, ViewMaturationEvent>,
+    observability_improvements: BTreeMap<String, ObservabilityImprovementArtifact>,
 }
 
 impl ViewBufferService {
@@ -196,6 +202,17 @@ impl ViewBufferService {
         buffers: impl IntoIterator<Item = Buffer>,
         gaps: impl IntoIterator<Item = ObservabilityGap>,
     ) -> Self {
+        Self::with_catalog_artifacts(catalog, shapes, buffers, gaps, Vec::new(), Vec::new())
+    }
+
+    pub fn with_catalog_artifacts(
+        catalog: DataCatalog,
+        shapes: impl IntoIterator<Item = ViewShape>,
+        buffers: impl IntoIterator<Item = Buffer>,
+        gaps: impl IntoIterator<Item = ObservabilityGap>,
+        derivations: impl IntoIterator<Item = ViewDerivation>,
+        patterns: impl IntoIterator<Item = DisplayPattern>,
+    ) -> Self {
         Self {
             catalog,
             shapes: shapes
@@ -212,6 +229,16 @@ impl ViewBufferService {
                 .into_iter()
                 .map(|gap| (gap.gap_id.clone(), gap))
                 .collect(),
+            derivations: derivations
+                .into_iter()
+                .map(|derivation| (derivation.derivation_id.clone(), derivation))
+                .collect(),
+            patterns: patterns
+                .into_iter()
+                .map(|pattern| (pattern.pattern_id.clone(), pattern))
+                .collect(),
+            maturation_events: BTreeMap::new(),
+            observability_improvements: BTreeMap::new(),
         }
     }
 
@@ -233,6 +260,22 @@ impl ViewBufferService {
 
     pub fn list_shapes(&self) -> Vec<ViewShape> {
         self.shapes.values().cloned().collect()
+    }
+
+    pub fn list_derivations(&self) -> Vec<ViewDerivation> {
+        self.derivations.values().cloned().collect()
+    }
+
+    pub fn list_display_patterns(&self) -> Vec<DisplayPattern> {
+        self.patterns.values().cloned().collect()
+    }
+
+    pub fn list_maturation_events(&self) -> Vec<ViewMaturationEvent> {
+        self.maturation_events.values().cloned().collect()
+    }
+
+    pub fn list_observability_improvements(&self) -> Vec<ObservabilityImprovementArtifact> {
+        self.observability_improvements.values().cloned().collect()
     }
 
     pub fn compose_request(&mut self, request: ComposeViewRequest) -> Result<ComposedViewRequest> {
@@ -537,6 +580,184 @@ impl ViewBufferService {
             return Err(format!("inactive view shape '{}'", shape_id));
         }
         Ok(())
+    }
+
+    pub fn mature_view_artifact(
+        &mut self,
+        request: MatureViewArtifactRequest,
+    ) -> Result<MaturedViewArtifactOutcome> {
+        // obligation: spec.mother-view-maturation.mvmat3-shape-maturation
+        // obligation: spec.mother-view-maturation.mvmat4-derivation-pattern-maturation
+        // obligation: rule-success.PromoteMatureViewArtifact
+        let now = Utc::now();
+        match request.target_kind {
+            ViewMaturationTargetKind::Shape => {
+                if request.observability_improvement.is_some() {
+                    return Err(anyhow!(
+                        "observability improvement can only be created from derivation maturation"
+                    ));
+                }
+                let shape_id = required_id(request.shape_id.as_deref(), "view shape id")?;
+                let shape = self
+                    .shapes
+                    .get_mut(shape_id)
+                    .ok_or_else(|| anyhow!("unknown view shape '{}'", shape_id))?;
+                if !shape.active {
+                    return Err(anyhow!("inactive view shape '{}'", shape_id));
+                }
+                let from_maturity = shape.maturity.clone();
+                validate_next_maturity(&from_maturity, &request.to_maturity)?;
+                shape.maturity = request.to_maturity.clone();
+                let event = ViewMaturationEvent {
+                    maturation_id: next_maturation_id(),
+                    target_kind: ViewMaturationTargetKind::Shape,
+                    shape_id: Some(shape.shape_id.clone()),
+                    derivation_id: None,
+                    pattern_id: None,
+                    origin: request.origin,
+                    from_maturity,
+                    to_maturity: request.to_maturity,
+                    created_at: now,
+                };
+                self.maturation_events
+                    .insert(event.maturation_id.clone(), event.clone());
+                Ok(MaturedViewArtifactOutcome {
+                    event,
+                    shape: Some(shape.clone()),
+                    derivation: None,
+                    pattern: None,
+                    observability_improvement: None,
+                })
+            }
+            ViewMaturationTargetKind::Derivation => {
+                let derivation_id =
+                    required_id(request.derivation_id.as_deref(), "view derivation id")?;
+                let derivation = self
+                    .derivations
+                    .get_mut(derivation_id)
+                    .ok_or_else(|| anyhow!("unknown view derivation '{}'", derivation_id))?;
+                if !self.shapes.contains_key(&derivation.shape_id) {
+                    return Err(anyhow!(
+                        "view derivation '{}' references unknown shape '{}'",
+                        derivation.derivation_id,
+                        derivation.shape_id
+                    ));
+                }
+                let from_maturity = derivation.maturity.clone();
+                validate_next_maturity(&from_maturity, &request.to_maturity)?;
+                derivation.maturity = request.to_maturity.clone();
+                let event = ViewMaturationEvent {
+                    maturation_id: next_maturation_id(),
+                    target_kind: ViewMaturationTargetKind::Derivation,
+                    shape_id: Some(derivation.shape_id.clone()),
+                    derivation_id: Some(derivation.derivation_id.clone()),
+                    pattern_id: None,
+                    origin: request.origin,
+                    from_maturity,
+                    to_maturity: request.to_maturity,
+                    created_at: now,
+                };
+                let improvement = Self::observability_improvement_for_derivation(
+                    &event,
+                    request.observability_improvement.as_ref(),
+                    now,
+                )?;
+                self.maturation_events
+                    .insert(event.maturation_id.clone(), event.clone());
+                if let Some(improvement) = &improvement {
+                    self.observability_improvements
+                        .insert(improvement.artifact_id.clone(), improvement.clone());
+                }
+                Ok(MaturedViewArtifactOutcome {
+                    event,
+                    shape: None,
+                    derivation: Some(derivation.clone()),
+                    pattern: None,
+                    observability_improvement: improvement,
+                })
+            }
+            ViewMaturationTargetKind::Pattern => {
+                if request.observability_improvement.is_some() {
+                    return Err(anyhow!(
+                        "observability improvement can only be created from derivation maturation"
+                    ));
+                }
+                let pattern_id = required_id(request.pattern_id.as_deref(), "display pattern id")?;
+                let pattern = self
+                    .patterns
+                    .get_mut(pattern_id)
+                    .ok_or_else(|| anyhow!("unknown display pattern '{}'", pattern_id))?;
+                if !self.shapes.contains_key(&pattern.shape_id) {
+                    return Err(anyhow!(
+                        "display pattern '{}' references unknown shape '{}'",
+                        pattern.pattern_id,
+                        pattern.shape_id
+                    ));
+                }
+                let from_maturity = pattern.maturity.clone();
+                validate_next_maturity(&from_maturity, &request.to_maturity)?;
+                pattern.maturity = request.to_maturity.clone();
+                let event = ViewMaturationEvent {
+                    maturation_id: next_maturation_id(),
+                    target_kind: ViewMaturationTargetKind::Pattern,
+                    shape_id: Some(pattern.shape_id.clone()),
+                    derivation_id: None,
+                    pattern_id: Some(pattern.pattern_id.clone()),
+                    origin: request.origin,
+                    from_maturity,
+                    to_maturity: request.to_maturity,
+                    created_at: now,
+                };
+                self.maturation_events
+                    .insert(event.maturation_id.clone(), event.clone());
+                Ok(MaturedViewArtifactOutcome {
+                    event,
+                    shape: None,
+                    derivation: None,
+                    pattern: Some(pattern.clone()),
+                    observability_improvement: None,
+                })
+            }
+        }
+    }
+
+    fn observability_improvement_for_derivation(
+        event: &ViewMaturationEvent,
+        proposal: Option<&ProposedObservabilityImprovement>,
+        created_at: DateTime<Utc>,
+    ) -> Result<Option<ObservabilityImprovementArtifact>> {
+        // obligation: spec.mother-view-maturation.mvmat5-observability-improvement-artifact
+        // obligation: rule-success.CreateObservabilityImprovementFromMatureDerivation
+        let Some(proposal) = proposal else {
+            return Ok(None);
+        };
+        if !matches!(
+            event.to_maturity,
+            ViewShapeMaturity::Stable | ViewShapeMaturity::Promoted
+        ) {
+            return Err(anyhow!(
+                "observability improvement requires derivation maturation to stable or promoted"
+            ));
+        }
+        if proposal.desired_fact_path.trim().is_empty() {
+            return Err(anyhow!(
+                "observability improvement desired fact path must not be empty"
+            ));
+        }
+        if proposal.reason.trim().is_empty() {
+            return Err(anyhow!(
+                "observability improvement reason must not be empty"
+            ));
+        }
+        Ok(Some(ObservabilityImprovementArtifact {
+            artifact_id: format!("{}::observability-improvement", event.maturation_id),
+            source_gap_id: None,
+            source_maturation_id: Some(event.maturation_id.clone()),
+            desired_fact_path: proposal.desired_fact_path.trim().to_string(),
+            reason: proposal.reason.trim().to_string(),
+            created_at,
+            work_item_created: false,
+        }))
     }
 
     pub fn link_observability_gap(
@@ -1052,6 +1273,34 @@ fn required(fact_path: &str, purpose: &str) -> ViewRequirement {
         required: true,
         purpose: purpose.to_string(),
     }
+}
+
+fn required_id<'a>(value: Option<&'a str>, label: &str) -> Result<&'a str> {
+    let value = value.ok_or_else(|| anyhow!("{} must not be empty", label))?;
+    if value.trim().is_empty() {
+        return Err(anyhow!("{} must not be empty", label));
+    }
+    Ok(value)
+}
+
+fn validate_next_maturity(
+    from_maturity: &ViewShapeMaturity,
+    to_maturity: &ViewShapeMaturity,
+) -> Result<()> {
+    match from_maturity.next() {
+        Some(next) if &next == to_maturity => Ok(()),
+        Some(next) => Err(anyhow!(
+            "view artifact maturity must move from {:?} to next state {:?}, got {:?}",
+            from_maturity,
+            next,
+            to_maturity
+        )),
+        None => Err(anyhow!("promoted view artifact cannot mature further")),
+    }
+}
+
+fn next_maturation_id() -> String {
+    format!("maturation_{}", uuid::Uuid::new_v4().simple())
 }
 
 fn sanitize_id(value: &str) -> String {
@@ -1871,6 +2120,184 @@ mod tests {
 
         assert!(error.to_string().contains("inactive view shape"));
         assert_eq!(service.list_buffers().len(), 0);
+    }
+
+    #[test]
+    fn view_maturation_promotes_shape_derivation_and_pattern() {
+        // obligation: spec.mother-view-maturation.mvmat3-shape-maturation
+        // obligation: spec.mother-view-maturation.mvmat4-derivation-pattern-maturation
+        // obligation: rule-success.PromoteMatureViewArtifact
+        let shape = mother_status_shape();
+        let derivation = ViewDerivation {
+            derivation_id: "derivation_1".to_string(),
+            shape_id: shape.shape_id.clone(),
+            label: "Memory pressure summary".to_string(),
+            expression_ref: "allium://views/mother/status/memory-pressure".to_string(),
+            input_fact_paths: vec!["mother.status.memory_pressure".to_string()],
+            maturity: ViewShapeMaturity::Exploratory,
+        };
+        let pattern = DisplayPattern {
+            pattern_id: "pattern_1".to_string(),
+            shape_id: shape.shape_id.clone(),
+            pattern_kind: crate::view_buffer::DisplayPatternKind::Grouping,
+            maturity: ViewShapeMaturity::Exploratory,
+        };
+        let mut service = ViewBufferService::with_catalog_artifacts(
+            status_catalog(),
+            vec![shape],
+            Vec::new(),
+            Vec::new(),
+            vec![derivation],
+            vec![pattern],
+        );
+
+        let shape_outcome = service
+            .mature_view_artifact(MatureViewArtifactRequest {
+                target_kind: ViewMaturationTargetKind::Shape,
+                shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                derivation_id: None,
+                pattern_id: None,
+                origin: crate::view_buffer::ViewMaturationOrigin::UserRequested,
+                to_maturity: ViewShapeMaturity::Promoted,
+                observability_improvement: None,
+            })
+            .expect("stable shape should promote");
+        assert_eq!(
+            shape_outcome
+                .shape
+                .as_ref()
+                .expect("shape returned")
+                .maturity,
+            ViewShapeMaturity::Promoted
+        );
+
+        let derivation_outcome = service
+            .mature_view_artifact(MatureViewArtifactRequest {
+                target_kind: ViewMaturationTargetKind::Derivation,
+                shape_id: None,
+                derivation_id: Some("derivation_1".to_string()),
+                pattern_id: None,
+                origin: crate::view_buffer::ViewMaturationOrigin::AgentInferred,
+                to_maturity: ViewShapeMaturity::Candidate,
+                observability_improvement: None,
+            })
+            .expect("derivation should mature");
+        assert_eq!(
+            derivation_outcome
+                .derivation
+                .as_ref()
+                .expect("derivation returned")
+                .maturity,
+            ViewShapeMaturity::Candidate
+        );
+
+        let pattern_outcome = service
+            .mature_view_artifact(MatureViewArtifactRequest {
+                target_kind: ViewMaturationTargetKind::Pattern,
+                shape_id: None,
+                derivation_id: None,
+                pattern_id: Some("pattern_1".to_string()),
+                origin: crate::view_buffer::ViewMaturationOrigin::MotherSuggested,
+                to_maturity: ViewShapeMaturity::Candidate,
+                observability_improvement: None,
+            })
+            .expect("pattern should mature");
+        assert_eq!(
+            pattern_outcome
+                .pattern
+                .as_ref()
+                .expect("pattern returned")
+                .maturity,
+            ViewShapeMaturity::Candidate
+        );
+        assert_eq!(service.list_maturation_events().len(), 3);
+    }
+
+    #[test]
+    fn view_maturation_creates_observability_improvement_from_stable_derivation() {
+        // obligation: spec.mother-view-maturation.mvmat5-observability-improvement-artifact
+        // obligation: rule-success.CreateObservabilityImprovementFromMatureDerivation
+        let shape = mother_status_shape();
+        let derivation = ViewDerivation {
+            derivation_id: "derivation_1".to_string(),
+            shape_id: shape.shape_id.clone(),
+            label: "Memory pressure summary".to_string(),
+            expression_ref: "allium://views/mother/status/memory-pressure".to_string(),
+            input_fact_paths: vec!["mother.status.memory_pressure".to_string()],
+            maturity: ViewShapeMaturity::Candidate,
+        };
+        let mut service = ViewBufferService::with_catalog_artifacts(
+            status_catalog(),
+            vec![shape],
+            Vec::new(),
+            Vec::new(),
+            vec![derivation],
+            Vec::new(),
+        );
+
+        let outcome = service
+            .mature_view_artifact(MatureViewArtifactRequest {
+                target_kind: ViewMaturationTargetKind::Derivation,
+                shape_id: None,
+                derivation_id: Some("derivation_1".to_string()),
+                pattern_id: None,
+                origin: crate::view_buffer::ViewMaturationOrigin::UserRequested,
+                to_maturity: ViewShapeMaturity::Stable,
+                observability_improvement: Some(ProposedObservabilityImprovement {
+                    desired_fact_path: "mother.status.memory_pressure.summary".to_string(),
+                    reason: "stable derivation should become a catalogued fact".to_string(),
+                }),
+            })
+            .expect("stable derivation should create improvement artifact");
+
+        let improvement = outcome
+            .observability_improvement
+            .expect("improvement should be returned");
+        assert_eq!(improvement.work_item_created, false);
+        assert_eq!(
+            improvement.source_maturation_id.as_deref(),
+            Some(outcome.event.maturation_id.as_str())
+        );
+        assert_eq!(service.list_observability_improvements(), vec![improvement]);
+    }
+
+    #[test]
+    fn view_maturation_fails_closed_for_unknown_targets_and_invalid_improvements() {
+        // obligation: spec.mother-view-maturation.mvmat4-derivation-pattern-maturation
+        // obligation: spec.mother-view-maturation.mvmat7-tests-and-trace
+        let mut service = ViewBufferService::with_catalog(status_catalog());
+
+        let unknown = service
+            .mature_view_artifact(MatureViewArtifactRequest {
+                target_kind: ViewMaturationTargetKind::Derivation,
+                shape_id: None,
+                derivation_id: Some("missing".to_string()),
+                pattern_id: None,
+                origin: crate::view_buffer::ViewMaturationOrigin::UserRequested,
+                to_maturity: ViewShapeMaturity::Candidate,
+                observability_improvement: None,
+            })
+            .unwrap_err();
+        assert!(unknown.to_string().contains("unknown view derivation"));
+
+        let invalid = service
+            .mature_view_artifact(MatureViewArtifactRequest {
+                target_kind: ViewMaturationTargetKind::Shape,
+                shape_id: Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+                derivation_id: None,
+                pattern_id: None,
+                origin: crate::view_buffer::ViewMaturationOrigin::UserRequested,
+                to_maturity: ViewShapeMaturity::Promoted,
+                observability_improvement: Some(ProposedObservabilityImprovement {
+                    desired_fact_path: "derived.fact".to_string(),
+                    reason: "not allowed".to_string(),
+                }),
+            })
+            .unwrap_err();
+        assert!(invalid
+            .to_string()
+            .contains("only be created from derivation"));
+        assert_eq!(service.list_maturation_events().len(), 0);
     }
 
     #[test]

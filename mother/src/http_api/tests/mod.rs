@@ -16,6 +16,52 @@ fn stub_observability_gap() -> crate::view_buffer::ObservabilityGap {
     }
 }
 
+fn stub_derivation() -> crate::view_buffer::ViewDerivation {
+    crate::view_buffer::ViewDerivation {
+        derivation_id: "derivation_1".to_string(),
+        shape_id: crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string(),
+        label: "Memory Pressure Summary".to_string(),
+        expression_ref: "allium://views/mother/status/memory-pressure".to_string(),
+        input_fact_paths: vec!["mother.status.memory_pressure".to_string()],
+        maturity: crate::view_buffer::ViewShapeMaturity::Candidate,
+    }
+}
+
+fn stub_pattern() -> crate::view_buffer::DisplayPattern {
+    crate::view_buffer::DisplayPattern {
+        pattern_id: "pattern_1".to_string(),
+        shape_id: crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string(),
+        pattern_kind: crate::view_buffer::DisplayPatternKind::Grouping,
+        maturity: crate::view_buffer::ViewShapeMaturity::Exploratory,
+    }
+}
+
+fn stub_maturation_event() -> crate::view_buffer::ViewMaturationEvent {
+    crate::view_buffer::ViewMaturationEvent {
+        maturation_id: "maturation_1".to_string(),
+        target_kind: crate::view_buffer::ViewMaturationTargetKind::Derivation,
+        shape_id: Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+        derivation_id: Some("derivation_1".to_string()),
+        pattern_id: None,
+        origin: crate::view_buffer::ViewMaturationOrigin::UserRequested,
+        from_maturity: crate::view_buffer::ViewShapeMaturity::Candidate,
+        to_maturity: crate::view_buffer::ViewShapeMaturity::Stable,
+        created_at: chrono::Utc::now(),
+    }
+}
+
+fn stub_observability_improvement() -> crate::view_buffer::ObservabilityImprovementArtifact {
+    crate::view_buffer::ObservabilityImprovementArtifact {
+        artifact_id: "maturation_1::observability-improvement".to_string(),
+        source_gap_id: None,
+        source_maturation_id: Some("maturation_1".to_string()),
+        desired_fact_path: "mother.status.memory_pressure.summary".to_string(),
+        reason: "stable derivation should become observable".to_string(),
+        created_at: chrono::Utc::now(),
+        work_item_created: false,
+    }
+}
+
 impl ApiRuntime for StubRuntime {
     fn version(&self) -> String {
         "0.0.0-test".to_string()
@@ -312,6 +358,85 @@ impl ApiRuntime for StubRuntime {
             });
         let mut service = crate::view_buffer::ViewBufferService::with_catalog(catalog);
         service.revise_view_shape(request)
+    }
+
+    fn view_derivations_list(&self) -> Result<Vec<crate::view_buffer::ViewDerivation>> {
+        Ok(vec![stub_derivation()])
+    }
+
+    fn view_derivation_get(
+        &self,
+        derivation_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewDerivation>> {
+        let derivation = stub_derivation();
+        Ok((derivation.derivation_id == derivation_id).then_some(derivation))
+    }
+
+    fn view_derivation_upsert(
+        &self,
+        derivation: crate::view_buffer::ViewDerivation,
+    ) -> Result<crate::view_buffer::ViewDerivation> {
+        Ok(derivation)
+    }
+
+    fn view_patterns_list(&self) -> Result<Vec<crate::view_buffer::DisplayPattern>> {
+        Ok(vec![stub_pattern()])
+    }
+
+    fn view_pattern_get(
+        &self,
+        pattern_id: &str,
+    ) -> Result<Option<crate::view_buffer::DisplayPattern>> {
+        let pattern = stub_pattern();
+        Ok((pattern.pattern_id == pattern_id).then_some(pattern))
+    }
+
+    fn view_pattern_upsert(
+        &self,
+        pattern: crate::view_buffer::DisplayPattern,
+    ) -> Result<crate::view_buffer::DisplayPattern> {
+        Ok(pattern)
+    }
+
+    fn view_maturation_events_list(&self) -> Result<Vec<crate::view_buffer::ViewMaturationEvent>> {
+        Ok(vec![stub_maturation_event()])
+    }
+
+    fn view_maturation_event_get(
+        &self,
+        maturation_id: &str,
+    ) -> Result<Option<crate::view_buffer::ViewMaturationEvent>> {
+        let event = stub_maturation_event();
+        Ok((event.maturation_id == maturation_id).then_some(event))
+    }
+
+    fn view_maturation_record(
+        &self,
+        request: crate::view_buffer::MatureViewArtifactRequest,
+    ) -> Result<crate::view_buffer::MaturedViewArtifactOutcome> {
+        let mut service = crate::view_buffer::ViewBufferService::with_catalog_artifacts(
+            crate::view_buffer::DataCatalog::default(),
+            vec![crate::view_buffer::mother_status_shape()],
+            Vec::new(),
+            Vec::new(),
+            vec![stub_derivation()],
+            vec![stub_pattern()],
+        );
+        service.mature_view_artifact(request)
+    }
+
+    fn view_observability_improvements_list(
+        &self,
+    ) -> Result<Vec<crate::view_buffer::ObservabilityImprovementArtifact>> {
+        Ok(vec![stub_observability_improvement()])
+    }
+
+    fn view_observability_improvement_get(
+        &self,
+        artifact_id: &str,
+    ) -> Result<Option<crate::view_buffer::ObservabilityImprovementArtifact>> {
+        let artifact = stub_observability_improvement();
+        Ok((artifact.artifact_id == artifact_id).then_some(artifact))
     }
 
     fn view_requests_list(&self) -> Result<Vec<crate::view_buffer::DisplayRequest>> {
@@ -953,6 +1078,120 @@ fn view_shape_revision_list_handler_returns_revisions() {
         .get("revisions")
         .and_then(|revisions| revisions.as_array())
         .is_some());
+}
+
+#[test]
+fn view_maturation_handlers_expose_artifacts_and_record_events() {
+    // obligation: spec.mother-view-maturation.mvmat6-api
+    let derivations = view_buffer::handle_list_view_derivations(&StubRuntime);
+    assert_eq!(derivations.status, 200);
+    let derivations_payload: serde_json::Value = serde_json::from_slice(&derivations.body).unwrap();
+    assert_eq!(
+        derivations_payload
+            .get("derivations")
+            .and_then(|items| items.as_array())
+            .map(Vec::len),
+        Some(1)
+    );
+
+    let derivation_request = HttpRequest {
+        method: "GET".to_string(),
+        path: "/api/view-derivations/derivation_1".to_string(),
+        headers: vec![],
+        body: vec![],
+    };
+    assert_eq!(
+        view_buffer::handle_get_view_derivation(&derivation_request, &StubRuntime).status,
+        200
+    );
+
+    let pattern_upsert = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-patterns/upsert".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&stub_pattern()).unwrap(),
+    };
+    assert_eq!(
+        view_buffer::handle_upsert_view_pattern(&pattern_upsert, &StubRuntime).status,
+        200
+    );
+
+    let record_request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-maturation-events/record".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::MatureViewArtifactRequest {
+            target_kind: crate::view_buffer::ViewMaturationTargetKind::Derivation,
+            shape_id: None,
+            derivation_id: Some("derivation_1".to_string()),
+            pattern_id: None,
+            origin: crate::view_buffer::ViewMaturationOrigin::UserRequested,
+            to_maturity: crate::view_buffer::ViewShapeMaturity::Stable,
+            observability_improvement: Some(crate::view_buffer::ProposedObservabilityImprovement {
+                desired_fact_path: "mother.status.memory_pressure.summary".to_string(),
+                reason: "stable derivation should become observable".to_string(),
+            }),
+        })
+        .unwrap(),
+    };
+    let record_response = view_buffer::handle_record_view_maturation(&record_request, &StubRuntime);
+    assert_eq!(record_response.status, 200);
+    let record_payload: serde_json::Value = serde_json::from_slice(&record_response.body).unwrap();
+    assert_eq!(
+        record_payload
+            .get("event")
+            .and_then(|event| event.get("target_kind"))
+            .and_then(|value| value.as_str()),
+        Some("derivation")
+    );
+    assert_eq!(
+        record_payload
+            .get("observability_improvement")
+            .and_then(|artifact| artifact.get("work_item_created"))
+            .and_then(|value| value.as_bool()),
+        Some(false)
+    );
+
+    let artifacts = view_buffer::handle_list_view_observability_improvements(&StubRuntime);
+    assert_eq!(artifacts.status, 200);
+    let artifact_request = HttpRequest {
+        method: "GET".to_string(),
+        path: "/api/view-observability-improvements/maturation_1::observability-improvement"
+            .to_string(),
+        headers: vec![],
+        body: vec![],
+    };
+    assert_eq!(
+        view_buffer::handle_get_view_observability_improvement(&artifact_request, &StubRuntime)
+            .status,
+        200
+    );
+}
+
+#[test]
+fn view_maturation_handler_rejects_invalid_requests() {
+    // obligation: spec.mother-view-maturation.mvmat7-tests-and-trace
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-maturation-events/record".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::MatureViewArtifactRequest {
+            target_kind: crate::view_buffer::ViewMaturationTargetKind::Pattern,
+            shape_id: None,
+            derivation_id: None,
+            pattern_id: Some("pattern_1".to_string()),
+            origin: crate::view_buffer::ViewMaturationOrigin::UserRequested,
+            to_maturity: crate::view_buffer::ViewShapeMaturity::Stable,
+            observability_improvement: Some(crate::view_buffer::ProposedObservabilityImprovement {
+                desired_fact_path: "derived.fact".to_string(),
+                reason: "not allowed".to_string(),
+            }),
+        })
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_record_view_maturation(&request, &StubRuntime);
+    assert_eq!(response.status, 400);
 }
 
 #[test]

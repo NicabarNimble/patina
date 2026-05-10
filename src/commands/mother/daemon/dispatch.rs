@@ -789,6 +789,137 @@ impl ApiRuntime for ServerState {
         Ok(outcome)
     }
 
+    fn view_derivations_list(
+        &self,
+    ) -> anyhow::Result<Vec<mother_crate::view_buffer::ViewDerivation>> {
+        self.runtime_store.list_view_derivations()
+    }
+
+    fn view_derivation_get(
+        &self,
+        derivation_id: &str,
+    ) -> anyhow::Result<Option<mother_crate::view_buffer::ViewDerivation>> {
+        self.runtime_store.get_view_derivation(derivation_id)
+    }
+
+    fn view_derivation_upsert(
+        &self,
+        derivation: mother_crate::view_buffer::ViewDerivation,
+    ) -> anyhow::Result<mother_crate::view_buffer::ViewDerivation> {
+        // obligation: spec.mother-view-maturation.mvmat2-artifact-library
+        self.ensure_builtin_view_shapes()?;
+        if self
+            .runtime_store
+            .get_view_shape(&derivation.shape_id)?
+            .is_none()
+        {
+            anyhow::bail!("unknown view shape '{}'", derivation.shape_id);
+        }
+        self.runtime_store.upsert_view_derivation(&derivation)?;
+        Ok(derivation)
+    }
+
+    fn view_patterns_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::DisplayPattern>> {
+        self.runtime_store.list_view_display_patterns()
+    }
+
+    fn view_pattern_get(
+        &self,
+        pattern_id: &str,
+    ) -> anyhow::Result<Option<mother_crate::view_buffer::DisplayPattern>> {
+        self.runtime_store.get_view_display_pattern(pattern_id)
+    }
+
+    fn view_pattern_upsert(
+        &self,
+        pattern: mother_crate::view_buffer::DisplayPattern,
+    ) -> anyhow::Result<mother_crate::view_buffer::DisplayPattern> {
+        // obligation: spec.mother-view-maturation.mvmat2-artifact-library
+        self.ensure_builtin_view_shapes()?;
+        if self
+            .runtime_store
+            .get_view_shape(&pattern.shape_id)?
+            .is_none()
+        {
+            anyhow::bail!("unknown view shape '{}'", pattern.shape_id);
+        }
+        self.runtime_store.upsert_view_display_pattern(&pattern)?;
+        Ok(pattern)
+    }
+
+    fn view_maturation_events_list(
+        &self,
+    ) -> anyhow::Result<Vec<mother_crate::view_buffer::ViewMaturationEvent>> {
+        self.runtime_store.list_view_maturation_events()
+    }
+
+    fn view_maturation_event_get(
+        &self,
+        maturation_id: &str,
+    ) -> anyhow::Result<Option<mother_crate::view_buffer::ViewMaturationEvent>> {
+        self.runtime_store.get_view_maturation_event(maturation_id)
+    }
+
+    fn view_maturation_record(
+        &self,
+        request: mother_crate::view_buffer::MatureViewArtifactRequest,
+    ) -> anyhow::Result<mother_crate::view_buffer::MaturedViewArtifactOutcome> {
+        // obligation: spec.mother-view-maturation.mvmat3-shape-maturation
+        // obligation: spec.mother-view-maturation.mvmat4-derivation-pattern-maturation
+        // obligation: spec.mother-view-maturation.mvmat5-observability-improvement-artifact
+        self.ensure_builtin_view_shapes()?;
+        let shapes = self.runtime_store.list_view_shapes()?;
+        let derivations = self.runtime_store.list_view_derivations()?;
+        let patterns = self.runtime_store.list_view_display_patterns()?;
+        let mut service = mother_crate::view_buffer::ViewBufferService::with_catalog_artifacts(
+            mother_crate::view_buffer::DataCatalog::default(),
+            shapes,
+            Vec::new(),
+            Vec::new(),
+            derivations,
+            patterns,
+        );
+        let outcome = service.mature_view_artifact(request)?;
+        match &outcome.event.target_kind {
+            mother_crate::view_buffer::ViewMaturationTargetKind::Shape => {
+                if let Some(shape) = &outcome.shape {
+                    self.runtime_store.upsert_view_shape(shape)?;
+                }
+            }
+            mother_crate::view_buffer::ViewMaturationTargetKind::Derivation => {
+                if let Some(derivation) = &outcome.derivation {
+                    self.runtime_store.upsert_view_derivation(derivation)?;
+                }
+            }
+            mother_crate::view_buffer::ViewMaturationTargetKind::Pattern => {
+                if let Some(pattern) = &outcome.pattern {
+                    self.runtime_store.upsert_view_display_pattern(pattern)?;
+                }
+            }
+        }
+        self.runtime_store
+            .save_view_maturation_event(&outcome.event)?;
+        if let Some(artifact) = &outcome.observability_improvement {
+            self.runtime_store
+                .save_view_observability_improvement(artifact)?;
+        }
+        Ok(outcome)
+    }
+
+    fn view_observability_improvements_list(
+        &self,
+    ) -> anyhow::Result<Vec<mother_crate::view_buffer::ObservabilityImprovementArtifact>> {
+        self.runtime_store.list_view_observability_improvements()
+    }
+
+    fn view_observability_improvement_get(
+        &self,
+        artifact_id: &str,
+    ) -> anyhow::Result<Option<mother_crate::view_buffer::ObservabilityImprovementArtifact>> {
+        self.runtime_store
+            .get_view_observability_improvement(artifact_id)
+    }
+
     fn view_requests_list(&self) -> anyhow::Result<Vec<mother_crate::view_buffer::DisplayRequest>> {
         self.runtime_store.list_view_display_requests()
     }
