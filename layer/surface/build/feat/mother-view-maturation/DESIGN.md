@@ -23,7 +23,9 @@ Implement `mvc7-maturation` from [[mother-view-composer]] and the Allium rules:
 
 ## Commits
 
-1. `spec: define mother view maturation slice` — describe the Allium-aligned maturation slice and exit criteria.
+1. [[commit-516ba249]] `spec: define mother view maturation slice` — describe the Allium-aligned maturation slice and exit criteria.
+2. [[commit-5d003448]] `spec: promote mother-view-maturation to ready` — mark the slice ready for implementation.
+3. [[commit-ca903bde]] `feat: mature mother view artifacts` — add maturation model, persistence, service, daemon, HTTP APIs, and tests.
 
 ## Direct Code Targets
 

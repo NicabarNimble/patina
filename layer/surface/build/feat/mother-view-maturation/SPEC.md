@@ -18,28 +18,28 @@ beliefs:
 exit_criteria:
 - id: mvmat1-maturation-model
   text: Mother exposes structured model types for view maturation events, target kinds, origins, derivations, display patterns, and observability-improvement artifacts using Allium maturity vocabulary.
-  checked: false
+  checked: true
 - id: mvmat2-artifact-library
   text: Mother can persist and list derivation and display-pattern artifacts linked to view shapes so non-shape view artifacts have durable maturity state.
-  checked: false
+  checked: true
 - id: mvmat3-shape-maturation
   text: A structured maturation request can promote an active view shape forward through maturity states and record a maturation event without rewriting shape history.
-  checked: false
+  checked: true
 - id: mvmat4-derivation-pattern-maturation
   text: A structured maturation request can promote existing derivation and display-pattern artifacts forward through maturity states while failing closed for unknown targets or invalid transitions.
-  checked: false
+  checked: true
 - id: mvmat5-observability-improvement-artifact
   text: Promoting a derivation to stable or promoted can create a persisted observability-improvement artifact with desired fact path, reason, source maturation, and no work item side effect.
-  checked: false
+  checked: true
 - id: mvmat6-api
   text: HTTP and daemon APIs list/upsert derivations and display patterns, list maturation events and observability improvements, and record maturation requests.
-  checked: false
+  checked: true
 - id: mvmat7-tests-and-trace
   text: Model, service, persistence, daemon, and HTTP tests cover successful shape/derivation/pattern maturation, observability improvement creation, and fail-closed guardrails.
-  checked: false
+  checked: true
 - id: mvmat8-validation
   text: '`cargo check -q`, targeted Mother tests, `cargo test -q -p mother`, `patina spec check mother-view-maturation --json`, and `allium check layer/allium/mother/mother-view-composer-target.allium` pass.'
-  checked: false
+  checked: true
 ---
 # feat: Mother View Maturation
 
@@ -132,14 +132,14 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 
 ## Exit Criteria
 
-- [ ] `mvmat1-maturation-model`
-- [ ] `mvmat2-artifact-library`
-- [ ] `mvmat3-shape-maturation`
-- [ ] `mvmat4-derivation-pattern-maturation`
-- [ ] `mvmat5-observability-improvement-artifact`
-- [ ] `mvmat6-api`
-- [ ] `mvmat7-tests-and-trace`
-- [ ] `mvmat8-validation`
+- [x] `mvmat1-maturation-model`
+- [x] `mvmat2-artifact-library`
+- [x] `mvmat3-shape-maturation`
+- [x] `mvmat4-derivation-pattern-maturation`
+- [x] `mvmat5-observability-improvement-artifact`
+- [x] `mvmat6-api`
+- [x] `mvmat7-tests-and-trace`
+- [x] `mvmat8-validation`
 
 ## Build Readiness
 
