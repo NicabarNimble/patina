@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-sveltekit-frame
-status: ready
+status: active
 created: 2026-05-09
 target: mother-view-composer
 release_bump: patch
