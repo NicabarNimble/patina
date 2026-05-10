@@ -45,7 +45,7 @@ exit_criteria:
   checked: true
 - id: mvc8-renderer-frame
   text: At least one renderer frame, starting with SvelteKit, connects to Mother-owned buffers without owning buffer or shape state.
-  checked: false
+  checked: true
 ---
 # feat: Mother View Composer
 
@@ -74,7 +74,7 @@ Mother View Composer / Mother View System
 ├── v0.70.4: [[mother-view-buffer-revision]]
 ├── v0.70.5: [[mother-view-observability-workflow]]
 ├── v0.70.6: [[mother-view-maturation]]
-└── future: [[mother-sveltekit-frame]]
+└── v0.70.7: [[mother-sveltekit-frame]]
 ```
 
 ## Status
@@ -92,10 +92,11 @@ Completed backend slices:
 - [[mother-view-buffer-revision]] — `v0.70.4`
 - [[mother-view-observability-workflow]] — `v0.70.5`
 - [[mother-view-maturation]] — `v0.70.6`
+- [[mother-sveltekit-frame]] — `v0.70.7`
 
 Current honest system label:
 
-> Mother View Composer backend substrate and structured request path are implemented; the full visible view system is not product-complete until a renderer frame exists.
+> Mother View Composer v1 is product-complete: structured requests can become Mother-owned buffers and the SvelteKit frame can render/connect to those buffers without owning buffer or shape state.
 
 ## Allium authority
 
@@ -159,8 +160,6 @@ The parent/umbrella completion may use a minor or major bump when the whole Moth
 - [[mother-view-observability-workflow]]: link and resolve observability gaps through catalog-backed checks.
 - [[mother-view-maturation]]: mature shapes, derivations, patterns, and observability-improvement artifacts.
 
-### Planned
-
 - [[mother-sveltekit-frame]]: first visible renderer frame.
 
 ## Verification
@@ -183,7 +182,7 @@ Implementation slices carry their own tests and releases.
 - [x] `mvc5-revision-and-replacement`
 - [x] `mvc6-observability-workflow`
 - [x] `mvc7-maturation`
-- [ ] `mvc8-renderer-frame`
+- [x] `mvc8-renderer-frame`
 
 ## Build Readiness
 
