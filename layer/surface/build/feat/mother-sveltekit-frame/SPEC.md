@@ -32,6 +32,7 @@ exit_criteria:
 - id: mskf6-verification
   text: SvelteKit check/build, Rust tests for added Mother API surface, `patina spec check`, and Allium check pass.
   checked: true
+validated_against_commit: '75011474'
 ---
 # feat: Mother SvelteKit Frame
 
