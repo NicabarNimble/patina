@@ -506,6 +506,7 @@ pub struct ObservabilityGap {
     pub missing_source_id: Option<String>,
     pub reason: String,
     pub status: ObservabilityGapStatus,
+    pub linked_work_item_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
 }
@@ -526,6 +527,7 @@ impl ObservabilityGap {
             missing_source_id,
             reason,
             status: ObservabilityGapStatus::Open,
+            linked_work_item_id: None,
             created_at,
             resolved_at: None,
         }
@@ -671,6 +673,28 @@ mod tests {
                 "request_outcome": "unable"
             })
         );
+    }
+
+    #[test]
+    fn view_observability_workflow_gap_detail_tracks_link_and_resolution() {
+        // obligation: spec.mother-view-observability-workflow.mvow1-gap-detail-model
+        // obligation: rule-success.LinkObservabilityGapToWorkItem
+        let mut gap = ObservabilityGap::open(
+            "gap_1".to_string(),
+            Some("mother.status.default".to_string()),
+            "mother.status.version".to_string(),
+            Some("mother.status".to_string()),
+            "missing version".to_string(),
+            Utc::now(),
+        );
+        gap.status = ObservabilityGapStatus::LinkedToWorkItem;
+        gap.linked_work_item_id = Some("work/MOTHER-123".to_string());
+        gap.status = ObservabilityGapStatus::Resolved;
+        gap.resolved_at = Some(Utc::now());
+
+        assert_eq!(gap.linked_work_item_id.as_deref(), Some("work/MOTHER-123"));
+        assert_eq!(gap.status, ObservabilityGapStatus::Resolved);
+        assert!(gap.resolved_at.is_some());
     }
 
     #[test]

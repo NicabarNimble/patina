@@ -158,6 +158,18 @@ pub trait ApiRuntime {
     ) -> Result<crate::view_buffer::Buffer>;
     fn view_buffer_windows_list(&self) -> Result<Vec<crate::view_buffer::Window>>;
     fn view_buffer_gaps_list(&self) -> Result<Vec<crate::view_buffer::ObservabilityGap>>;
+    fn view_buffer_gap_get(
+        &self,
+        gap_id: &str,
+    ) -> Result<Option<crate::view_buffer::ObservabilityGap>>;
+    fn view_buffer_gap_link_work_item(
+        &self,
+        request: crate::view_buffer::LinkObservabilityGapRequest,
+    ) -> Result<crate::view_buffer::ObservabilityGap>;
+    fn view_buffer_gap_resolve(
+        &self,
+        request: crate::view_buffer::ResolveObservabilityGapRequest,
+    ) -> Result<crate::view_buffer::ObservabilityGap>;
 }
 
 pub trait HealthApi {
@@ -410,6 +422,18 @@ pub trait ViewBufferApi {
     ) -> Result<crate::view_buffer::Buffer>;
     fn view_buffer_windows_list(&self) -> Result<Vec<crate::view_buffer::Window>>;
     fn view_buffer_gaps_list(&self) -> Result<Vec<crate::view_buffer::ObservabilityGap>>;
+    fn view_buffer_gap_get(
+        &self,
+        gap_id: &str,
+    ) -> Result<Option<crate::view_buffer::ObservabilityGap>>;
+    fn view_buffer_gap_link_work_item(
+        &self,
+        request: crate::view_buffer::LinkObservabilityGapRequest,
+    ) -> Result<crate::view_buffer::ObservabilityGap>;
+    fn view_buffer_gap_resolve(
+        &self,
+        request: crate::view_buffer::ResolveObservabilityGapRequest,
+    ) -> Result<crate::view_buffer::ObservabilityGap>;
 }
 
 impl<T: ApiRuntime + ?Sized> ViewBufferApi for T {
@@ -524,6 +548,27 @@ impl<T: ApiRuntime + ?Sized> ViewBufferApi for T {
 
     fn view_buffer_gaps_list(&self) -> Result<Vec<crate::view_buffer::ObservabilityGap>> {
         ApiRuntime::view_buffer_gaps_list(self)
+    }
+
+    fn view_buffer_gap_get(
+        &self,
+        gap_id: &str,
+    ) -> Result<Option<crate::view_buffer::ObservabilityGap>> {
+        ApiRuntime::view_buffer_gap_get(self, gap_id)
+    }
+
+    fn view_buffer_gap_link_work_item(
+        &self,
+        request: crate::view_buffer::LinkObservabilityGapRequest,
+    ) -> Result<crate::view_buffer::ObservabilityGap> {
+        ApiRuntime::view_buffer_gap_link_work_item(self, request)
+    }
+
+    fn view_buffer_gap_resolve(
+        &self,
+        request: crate::view_buffer::ResolveObservabilityGapRequest,
+    ) -> Result<crate::view_buffer::ObservabilityGap> {
+        ApiRuntime::view_buffer_gap_resolve(self, request)
     }
 }
 
@@ -692,6 +737,9 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
     let view_buffer_kill_runtime = Arc::clone(&runtime);
     let view_buffer_windows_runtime = Arc::clone(&runtime);
     let view_buffer_gaps_runtime = Arc::clone(&runtime);
+    let view_buffer_gap_get_runtime = Arc::clone(&runtime);
+    let view_buffer_gap_link_runtime = Arc::clone(&runtime);
+    let view_buffer_gap_resolve_runtime = Arc::clone(&runtime);
     let child_runtime = Arc::clone(&runtime);
 
     RouteTable {
@@ -807,6 +855,18 @@ pub fn build_route_table(runtime: Arc<dyn ApiRuntime + Send + Sync>) -> RouteTab
         }),
         get_view_buffer_gaps: Arc::new(move |_request| {
             view_buffer::handle_list_view_buffer_gaps(&*view_buffer_gaps_runtime)
+        }),
+        get_view_buffer_gap: Arc::new(move |request| {
+            view_buffer::handle_get_view_buffer_gap(request, &*view_buffer_gap_get_runtime)
+        }),
+        post_view_buffer_gap_link_work_item: Arc::new(move |request| {
+            view_buffer::handle_link_view_buffer_gap_work_item(
+                request,
+                &*view_buffer_gap_link_runtime,
+            )
+        }),
+        post_view_buffer_gap_resolve: Arc::new(move |request| {
+            view_buffer::handle_resolve_view_buffer_gap(request, &*view_buffer_gap_resolve_runtime)
         }),
         child_request: Arc::new(move |request| {
             child::handle_child_request(request, &*child_runtime)

@@ -1045,6 +1045,64 @@ impl ApiRuntime for ServerState {
         self.runtime_store.list_view_observability_gaps()
     }
 
+    fn view_buffer_gap_get(
+        &self,
+        gap_id: &str,
+    ) -> anyhow::Result<Option<mother_crate::view_buffer::ObservabilityGap>> {
+        self.runtime_store.get_view_observability_gap(gap_id)
+    }
+
+    fn view_buffer_gap_link_work_item(
+        &self,
+        request: mother_crate::view_buffer::LinkObservabilityGapRequest,
+    ) -> anyhow::Result<mother_crate::view_buffer::ObservabilityGap> {
+        // obligation: spec.mother-view-observability-workflow.mvow4-persistence
+        let gaps = self.runtime_store.list_view_observability_gaps()?;
+        let mut service =
+            mother_crate::view_buffer::ViewBufferService::with_catalog_shapes_buffers_and_gaps(
+                mother_crate::view_buffer::DataCatalog::default(),
+                Vec::new(),
+                Vec::new(),
+                gaps,
+            );
+        let gap = service.link_observability_gap(request)?;
+        self.runtime_store.save_view_observability_gap(&gap)?;
+        Ok(gap)
+    }
+
+    fn view_buffer_gap_resolve(
+        &self,
+        request: mother_crate::view_buffer::ResolveObservabilityGapRequest,
+    ) -> anyhow::Result<mother_crate::view_buffer::ObservabilityGap> {
+        // obligation: spec.mother-view-observability-workflow.mvow3-resolve-from-catalog
+        // obligation: spec.mother-view-observability-workflow.mvow4-persistence
+        let details = self.health_details()?;
+        let catalog = mother_crate::view_buffer::DataCatalog::mother_status(
+            mother_crate::view_buffer::MotherStatusFacts {
+                version: self.version(),
+                uptime_secs: self.uptime_secs(),
+                control_plane_ready: details.control_plane_ready,
+                registered_projects: details.registered_projects,
+                children_ready_count: details.children_ready_count,
+                children_total: details.children_total,
+                startup_profile: details.startup_profile,
+                memory_pressure: details.memory.pressure,
+                observed_at: Utc::now(),
+            },
+        );
+        let gaps = self.runtime_store.list_view_observability_gaps()?;
+        let mut service =
+            mother_crate::view_buffer::ViewBufferService::with_catalog_shapes_buffers_and_gaps(
+                catalog,
+                Vec::new(),
+                Vec::new(),
+                gaps,
+            );
+        let gap = service.resolve_observability_gap(request)?;
+        self.runtime_store.save_view_observability_gap(&gap)?;
+        Ok(gap)
+    }
+
     fn federation_status(&self) -> anyhow::Result<serde_json::Value> {
         let runtime = self
             .federation_runtime

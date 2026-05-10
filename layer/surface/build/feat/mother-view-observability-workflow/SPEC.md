@@ -22,25 +22,25 @@ exit_criteria:
   checked: true
 - id: mvow1-gap-detail-model
   text: Mother exposes observability gap detail with gap status, missing fact/source, optional linked work item, and terminal resolved timestamp.
-  checked: false
+  checked: true
 - id: mvow2-link-work-item
   text: Open observability gaps can be linked to a non-empty work item id and transition to linked_to_work_item without inventing data.
-  checked: false
+  checked: true
 - id: mvow3-resolve-from-catalog
   text: Open or linked gaps resolve only when the missing fact is catalogued, observed, and sourced from an available source.
-  checked: false
+  checked: true
 - id: mvow4-persistence
   text: Gap status, linked work item ids, and resolved timestamps persist through the Mother store/daemon path.
-  checked: false
+  checked: true
 - id: mvow5-api
   text: HTTP callers can list/get gaps, link gaps to work items, and resolve gaps without owning observability state.
-  checked: false
+  checked: true
 - id: mvow6-fail-closed-guardrails
   text: Unknown gaps, terminal gaps, blank work item ids, mismatched fact paths, missing catalog facts, and unavailable sources fail closed without status mutation.
-  checked: false
+  checked: true
 - id: mvow7-tests-and-trace
   text: Deterministic tests cover linking, resolving, persistence, API response shape, fail-closed behavior, and Allium/spec obligation comments.
-  checked: false
+  checked: true
 ---
 # feat: Mother View Observability Workflow
 
@@ -168,13 +168,13 @@ allium check layer/allium/mother/mother-view-composer-target.allium
 ## Exit Criteria
 
 - [x] `mvow0-allium-code-alignment`
-- [ ] `mvow1-gap-detail-model`
-- [ ] `mvow2-link-work-item`
-- [ ] `mvow3-resolve-from-catalog`
-- [ ] `mvow4-persistence`
-- [ ] `mvow5-api`
-- [ ] `mvow6-fail-closed-guardrails`
-- [ ] `mvow7-tests-and-trace`
+- [x] `mvow1-gap-detail-model`
+- [x] `mvow2-link-work-item`
+- [x] `mvow3-resolve-from-catalog`
+- [x] `mvow4-persistence`
+- [x] `mvow5-api`
+- [x] `mvow6-fail-closed-guardrails`
+- [x] `mvow7-tests-and-trace`
 
 ## Build Readiness
 

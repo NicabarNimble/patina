@@ -322,6 +322,15 @@ mod tests {
                             &serde_json::json!({"gaps": []}),
                         )
                     }),
+                    get_view_buffer_gap: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
+                    post_view_buffer_gap_link_work_item: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_view_buffer_gap_resolve: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
                     child_request: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(
                             404,
@@ -514,6 +523,15 @@ mod tests {
                             200,
                             &serde_json::json!({"gaps": []}),
                         )
+                    }),
+                    get_view_buffer_gap: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(404, &serde_json::json!({}))
+                    }),
+                    post_view_buffer_gap_link_work_item: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
+                    }),
+                    post_view_buffer_gap_resolve: Arc::new(|_| {
+                        crate::http_daemon::HttpResponse::json(200, &serde_json::json!({}))
                     }),
                     child_request: Arc::new(|_| {
                         crate::http_daemon::HttpResponse::json(

@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use super::*;
 use crate::view_buffer::{
     ComposeViewRequest, ConnectWindowRequest, DisconnectWindowRequest, KillBufferRequest,
-    OpenBufferOutcome, OpenBufferRequest, OpenRequestShapeRequest, ReviseViewShapeRequest,
-    ViewShape,
+    LinkObservabilityGapRequest, OpenBufferOutcome, OpenBufferRequest, OpenRequestShapeRequest,
+    ResolveObservabilityGapRequest, ReviseViewShapeRequest, ViewShape,
 };
 
 #[derive(Serialize)]
@@ -365,6 +365,64 @@ pub fn handle_list_view_buffer_gaps(runtime: &(impl ViewBufferApi + ?Sized)) -> 
     match runtime.view_buffer_gaps_list() {
         Ok(gaps) => HttpResponse::json(200, &GapsResponse { gaps }),
         Err(error) => json_error(500, &format!("list view buffer gaps failed: {}", error)),
+    }
+}
+
+pub fn handle_get_view_buffer_gap(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    // obligation: spec.mother-view-observability-workflow.mvow5-api
+    let Some(gap_id) = request.path.strip_prefix("/api/view-buffers/gaps/") else {
+        return json_error(400, "missing view observability gap id");
+    };
+    if gap_id.trim().is_empty() {
+        return json_error(400, "missing view observability gap id");
+    }
+
+    match runtime.view_buffer_gap_get(gap_id) {
+        Ok(Some(gap)) => HttpResponse::json(200, &serde_json::json!({"gap": gap})),
+        Ok(None) => json_error(404, &format!("unknown view observability gap '{}'", gap_id)),
+        Err(error) => json_error(500, &format!("get view buffer gap failed: {}", error)),
+    }
+}
+
+pub fn handle_link_view_buffer_gap_work_item(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    // obligation: spec.mother-view-observability-workflow.mvow5-api
+    let Some(link_request) = parse_json::<LinkObservabilityGapRequest>(request) else {
+        return json_error(400, "Invalid JSON");
+    };
+    if link_request.gap_id.trim().is_empty() {
+        return json_error(400, "missing view observability gap id");
+    }
+    if link_request.work_item_id.trim().is_empty() {
+        return json_error(400, "missing work item id");
+    }
+
+    match runtime.view_buffer_gap_link_work_item(link_request) {
+        Ok(gap) => HttpResponse::json(200, &serde_json::json!({"gap": gap})),
+        Err(error) => json_error(400, &format!("link view buffer gap failed: {}", error)),
+    }
+}
+
+pub fn handle_resolve_view_buffer_gap(
+    request: &HttpRequest,
+    runtime: &(impl ViewBufferApi + ?Sized),
+) -> HttpResponse {
+    // obligation: spec.mother-view-observability-workflow.mvow5-api
+    let Some(resolve_request) = parse_json::<ResolveObservabilityGapRequest>(request) else {
+        return json_error(400, "Invalid JSON");
+    };
+    if resolve_request.gap_id.trim().is_empty() {
+        return json_error(400, "missing view observability gap id");
+    }
+
+    match runtime.view_buffer_gap_resolve(resolve_request) {
+        Ok(gap) => HttpResponse::json(200, &serde_json::json!({"gap": gap})),
+        Err(error) => json_error(400, &format!("resolve view buffer gap failed: {}", error)),
     }
 }
 

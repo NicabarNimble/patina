@@ -1963,6 +1963,11 @@ impl MotherRuntimeStore {
         view_buffer::store::save_gap(&conn, gap)
     }
 
+    pub fn get_view_observability_gap(&self, gap_id: &str) -> Result<Option<ObservabilityGap>> {
+        let conn = self.open()?;
+        view_buffer::store::get_gap(&conn, gap_id)
+    }
+
     pub fn list_view_observability_gaps(&self) -> Result<Vec<ObservabilityGap>> {
         let conn = self.open()?;
         view_buffer::store::list_gaps(&conn)
@@ -2422,6 +2427,45 @@ mod tests {
     }
 
     #[test]
+    fn view_observability_workflow_gap_links_and_resolution_persist() {
+        // obligation: spec.mother-view-observability-workflow.mvow4-persistence
+        use crate::view_buffer::{ObservabilityGap, ObservabilityGapStatus};
+
+        let store = temp_store();
+        let mut gap = ObservabilityGap::open(
+            "gap_1".to_string(),
+            Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+            "mother.status.version".to_string(),
+            Some("mother.status".to_string()),
+            "missing version".to_string(),
+            Utc::now(),
+        );
+        gap.status = ObservabilityGapStatus::LinkedToWorkItem;
+        gap.linked_work_item_id = Some("work/MOTHER-123".to_string());
+        store.save_view_observability_gap(&gap).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(
+            reopened.get_view_observability_gap(&gap.gap_id).unwrap(),
+            Some(gap.clone())
+        );
+
+        gap.status = ObservabilityGapStatus::Resolved;
+        gap.resolved_at = Some(Utc::now());
+        reopened.save_view_observability_gap(&gap).unwrap();
+        assert_eq!(
+            reopened
+                .get_view_observability_gap(&gap.gap_id)
+                .unwrap()
+                .and_then(|gap| gap.linked_work_item_id),
+            Some("work/MOTHER-123".to_string())
+        );
+    }
+
+    #[test]
     fn view_buffer_records_are_persistent() {
         // obligation: entity-state.Buffer + entity-state.Frame + entity-state.Window
         // obligation: entity-state.ObservabilityGap
@@ -2459,6 +2503,7 @@ mod tests {
             missing_source_id: Some("mother.status".to_string()),
             reason: "test gap".to_string(),
             status: ObservabilityGapStatus::Open,
+            linked_work_item_id: None,
             created_at: now,
             resolved_at: None,
         };

@@ -171,6 +171,7 @@ pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
             missing_source_id TEXT,
             reason TEXT NOT NULL,
             status TEXT NOT NULL,
+            linked_work_item_id TEXT,
             created_at TEXT NOT NULL,
             resolved_at TEXT,
             CHECK (status IN ('open', 'linked-to-work-item', 'resolved'))
@@ -181,6 +182,12 @@ pub(crate) fn init_schema(conn: &Connection) -> Result<()> {
         "#,
     )?;
     ensure_column(conn, "mother_view_buffers", "replacement_buffer_id", "TEXT")?;
+    ensure_column(
+        conn,
+        "mother_view_observability_gaps",
+        "linked_work_item_id",
+        "TEXT",
+    )?;
     Ok(())
 }
 
@@ -732,14 +739,15 @@ pub(crate) fn save_gap(conn: &Connection, gap: &ObservabilityGap) -> Result<()> 
         r#"
         INSERT INTO mother_view_observability_gaps (
             gap_id, shape_id, missing_fact_path, missing_source_id, reason, status,
-            created_at, resolved_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            linked_work_item_id, created_at, resolved_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
         ON CONFLICT(gap_id) DO UPDATE SET
             shape_id = excluded.shape_id,
             missing_fact_path = excluded.missing_fact_path,
             missing_source_id = excluded.missing_source_id,
             reason = excluded.reason,
             status = excluded.status,
+            linked_work_item_id = excluded.linked_work_item_id,
             created_at = excluded.created_at,
             resolved_at = excluded.resolved_at
         "#,
@@ -750,6 +758,7 @@ pub(crate) fn save_gap(conn: &Connection, gap: &ObservabilityGap) -> Result<()> 
             gap.missing_source_id.as_deref(),
             &gap.reason,
             enum_to_db(&gap.status)?,
+            gap.linked_work_item_id.as_deref(),
             gap.created_at.to_rfc3339(),
             opt_time_to_db(&gap.resolved_at),
         ],
@@ -757,11 +766,38 @@ pub(crate) fn save_gap(conn: &Connection, gap: &ObservabilityGap) -> Result<()> 
     Ok(())
 }
 
+pub(crate) fn get_gap(conn: &Connection, gap_id: &str) -> Result<Option<ObservabilityGap>> {
+    conn.query_row(
+        r#"
+        SELECT gap_id, shape_id, missing_fact_path, missing_source_id, reason, status,
+               linked_work_item_id, created_at, resolved_at
+        FROM mother_view_observability_gaps
+        WHERE gap_id = ?1
+        "#,
+        params![gap_id],
+        |row| {
+            Ok(ObservabilityGap {
+                gap_id: row.get(0)?,
+                shape_id: row.get(1)?,
+                missing_fact_path: row.get(2)?,
+                missing_source_id: row.get(3)?,
+                reason: row.get(4)?,
+                status: enum_from_db::<ObservabilityGapStatus>(row.get::<_, String>(5)?, 5)?,
+                linked_work_item_id: row.get(6)?,
+                created_at: time_from_db(row.get::<_, String>(7)?, 7)?,
+                resolved_at: opt_time_from_db(row.get::<_, Option<String>>(8)?, 8)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
 pub(crate) fn list_gaps(conn: &Connection) -> Result<Vec<ObservabilityGap>> {
     let mut stmt = conn.prepare(
         r#"
         SELECT gap_id, shape_id, missing_fact_path, missing_source_id, reason, status,
-               created_at, resolved_at
+               linked_work_item_id, created_at, resolved_at
         FROM mother_view_observability_gaps
         ORDER BY created_at DESC, gap_id ASC
         "#,
@@ -775,8 +811,9 @@ pub(crate) fn list_gaps(conn: &Connection) -> Result<Vec<ObservabilityGap>> {
                 missing_source_id: row.get(3)?,
                 reason: row.get(4)?,
                 status: enum_from_db::<ObservabilityGapStatus>(row.get::<_, String>(5)?, 5)?,
-                created_at: time_from_db(row.get::<_, String>(6)?, 6)?,
-                resolved_at: opt_time_from_db(row.get::<_, Option<String>>(7)?, 7)?,
+                linked_work_item_id: row.get(6)?,
+                created_at: time_from_db(row.get::<_, String>(7)?, 7)?,
+                resolved_at: opt_time_from_db(row.get::<_, Option<String>>(8)?, 8)?,
             })
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;

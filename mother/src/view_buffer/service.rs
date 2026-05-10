@@ -7,10 +7,10 @@ use serde_json::json;
 
 use super::{
     Buffer, BufferState, DisplayRequest, DisplayRequestOutcome, Frame, FrameKind,
-    FramedJsonPayload, MajorMode, MinorMode, ObservabilityGap, PayloadContract, ShapeMatch,
-    ShapeMatchKind, ViewRequestDetail, ViewRequirement, ViewShape, ViewShapeAdaptation,
-    ViewShapeCreation, ViewShapeMaturity, ViewShapeRevision, ViewShapeRevisionOrigin,
-    ViewShapeRevisionState, ViewShapeScope, Window, WindowConnectionState,
+    FramedJsonPayload, MajorMode, MinorMode, ObservabilityGap, ObservabilityGapStatus,
+    PayloadContract, ShapeMatch, ShapeMatchKind, ViewRequestDetail, ViewRequirement, ViewShape,
+    ViewShapeAdaptation, ViewShapeCreation, ViewShapeMaturity, ViewShapeRevision,
+    ViewShapeRevisionOrigin, ViewShapeRevisionState, ViewShapeScope, Window, WindowConnectionState,
 };
 use crate::view_buffer::catalog::{DataCatalog, MOTHER_STATUS_SHAPE_ID, MOTHER_STATUS_SOURCE_ID};
 
@@ -136,6 +136,19 @@ pub struct ReviseViewShapeRequest {
     pub requirements: Option<Vec<ViewRequirement>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LinkObservabilityGapRequest {
+    pub gap_id: String,
+    pub work_item_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolveObservabilityGapRequest {
+    pub gap_id: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RevisedViewShapeOutcome {
     pub revision: ViewShapeRevision,
@@ -174,6 +187,15 @@ impl ViewBufferService {
         shapes: impl IntoIterator<Item = ViewShape>,
         buffers: impl IntoIterator<Item = Buffer>,
     ) -> Self {
+        Self::with_catalog_shapes_buffers_and_gaps(catalog, shapes, buffers, Vec::new())
+    }
+
+    pub fn with_catalog_shapes_buffers_and_gaps(
+        catalog: DataCatalog,
+        shapes: impl IntoIterator<Item = ViewShape>,
+        buffers: impl IntoIterator<Item = Buffer>,
+        gaps: impl IntoIterator<Item = ObservabilityGap>,
+    ) -> Self {
         Self {
             catalog,
             shapes: shapes
@@ -186,7 +208,10 @@ impl ViewBufferService {
                 .collect(),
             frames: BTreeMap::new(),
             windows: BTreeMap::new(),
-            gaps: BTreeMap::new(),
+            gaps: gaps
+                .into_iter()
+                .map(|gap| (gap.gap_id.clone(), gap))
+                .collect(),
         }
     }
 
@@ -512,6 +537,77 @@ impl ViewBufferService {
             return Err(format!("inactive view shape '{}'", shape_id));
         }
         Ok(())
+    }
+
+    pub fn link_observability_gap(
+        &mut self,
+        request: LinkObservabilityGapRequest,
+    ) -> Result<ObservabilityGap> {
+        // obligation: spec.mother-view-observability-workflow.mvow2-link-work-item
+        // obligation: rule-success.LinkObservabilityGapToWorkItem
+        if request.gap_id.trim().is_empty() {
+            return Err(anyhow!("observability gap id must not be empty"));
+        }
+        if request.work_item_id.trim().is_empty() {
+            return Err(anyhow!("observability gap work item id must not be empty"));
+        }
+        let gap = self
+            .gaps
+            .get_mut(&request.gap_id)
+            .ok_or_else(|| anyhow!("unknown observability gap '{}'", request.gap_id))?;
+        if gap.status != ObservabilityGapStatus::Open {
+            return Err(anyhow!(
+                "observability gap '{}' is not open",
+                request.gap_id
+            ));
+        }
+        gap.status = ObservabilityGapStatus::LinkedToWorkItem;
+        gap.linked_work_item_id = Some(request.work_item_id.trim().to_string());
+        Ok(gap.clone())
+    }
+
+    pub fn resolve_observability_gap(
+        &mut self,
+        request: ResolveObservabilityGapRequest,
+    ) -> Result<ObservabilityGap> {
+        // obligation: spec.mother-view-observability-workflow.mvow3-resolve-from-catalog
+        // obligation: spec.mother-view-observability-workflow.mvow6-fail-closed-guardrails
+        // obligation: rule-success.ResolveObservabilityGapWhenFactBecomesObserved
+        if request.gap_id.trim().is_empty() {
+            return Err(anyhow!("observability gap id must not be empty"));
+        }
+        let gap = self
+            .gaps
+            .get_mut(&request.gap_id)
+            .ok_or_else(|| anyhow!("unknown observability gap '{}'", request.gap_id))?;
+        if gap.status == ObservabilityGapStatus::Resolved {
+            return Err(anyhow!(
+                "observability gap '{}' is already resolved",
+                request.gap_id
+            ));
+        }
+        let requirement = ViewRequirement {
+            fact_path: gap.missing_fact_path.clone(),
+            required: true,
+            purpose: gap.reason.clone(),
+        };
+        if self.catalog.fact(&gap.missing_fact_path).is_none() {
+            return Err(anyhow!(
+                "observability gap '{}' missing fact '{}' is not catalogued",
+                gap.gap_id,
+                gap.missing_fact_path
+            ));
+        }
+        if !self.catalog.observed_required_fact(&requirement) {
+            return Err(anyhow!(
+                "observability gap '{}' missing fact '{}' is not observed from an available source",
+                gap.gap_id,
+                gap.missing_fact_path
+            ));
+        }
+        gap.status = ObservabilityGapStatus::Resolved;
+        gap.resolved_at = Some(Utc::now());
+        Ok(gap.clone())
     }
 
     pub fn revise_view_shape(
@@ -1775,6 +1871,119 @@ mod tests {
 
         assert!(error.to_string().contains("inactive view shape"));
         assert_eq!(service.list_buffers().len(), 0);
+    }
+
+    #[test]
+    fn view_observability_workflow_links_and_resolves_gap() {
+        // obligation: spec.mother-view-observability-workflow.mvow2-link-work-item
+        // obligation: spec.mother-view-observability-workflow.mvow3-resolve-from-catalog
+        // obligation: rule-success.LinkObservabilityGapToWorkItem
+        // obligation: rule-success.ResolveObservabilityGapWhenFactBecomesObserved
+        let gap = ObservabilityGap::open(
+            "gap_1".to_string(),
+            Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+            "mother.status.version".to_string(),
+            Some(MOTHER_STATUS_SOURCE_ID.to_string()),
+            "missing version".to_string(),
+            Utc::now(),
+        );
+        let mut service = ViewBufferService::with_catalog_shapes_buffers_and_gaps(
+            status_catalog(),
+            Vec::new(),
+            Vec::new(),
+            vec![gap],
+        );
+
+        let linked = service
+            .link_observability_gap(LinkObservabilityGapRequest {
+                gap_id: "gap_1".to_string(),
+                work_item_id: "work/MOTHER-123".to_string(),
+            })
+            .expect("open gap should link");
+        assert_eq!(linked.status, ObservabilityGapStatus::LinkedToWorkItem);
+        assert_eq!(
+            linked.linked_work_item_id.as_deref(),
+            Some("work/MOTHER-123")
+        );
+
+        let resolved = service
+            .resolve_observability_gap(ResolveObservabilityGapRequest {
+                gap_id: "gap_1".to_string(),
+            })
+            .expect("observed fact should resolve gap");
+        assert_eq!(resolved.status, ObservabilityGapStatus::Resolved);
+        assert!(resolved.resolved_at.is_some());
+    }
+
+    #[test]
+    fn view_observability_workflow_fails_closed_for_invalid_transitions() {
+        // obligation: spec.mother-view-observability-workflow.mvow6-fail-closed-guardrails
+        let mut gap = ObservabilityGap::open(
+            "gap_1".to_string(),
+            Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+            "missing.fact".to_string(),
+            None,
+            "missing fact".to_string(),
+            Utc::now(),
+        );
+        gap.status = ObservabilityGapStatus::Resolved;
+        let mut service = ViewBufferService::with_catalog_shapes_buffers_and_gaps(
+            status_catalog(),
+            Vec::new(),
+            Vec::new(),
+            vec![gap],
+        );
+
+        let link_error = service
+            .link_observability_gap(LinkObservabilityGapRequest {
+                gap_id: "gap_1".to_string(),
+                work_item_id: "work/MOTHER-123".to_string(),
+            })
+            .unwrap_err();
+        assert!(link_error.to_string().contains("not open"));
+
+        let resolve_error = service
+            .resolve_observability_gap(ResolveObservabilityGapRequest {
+                gap_id: "gap_1".to_string(),
+            })
+            .unwrap_err();
+        assert!(resolve_error.to_string().contains("already resolved"));
+
+        let blank_error = service
+            .link_observability_gap(LinkObservabilityGapRequest {
+                gap_id: "gap_1".to_string(),
+                work_item_id: " ".to_string(),
+            })
+            .unwrap_err();
+        assert!(blank_error.to_string().contains("must not be empty"));
+    }
+
+    #[test]
+    fn view_observability_workflow_refuses_unobserved_fact_resolution() {
+        // obligation: spec.mother-view-observability-workflow.mvow6-fail-closed-guardrails
+        let gap = ObservabilityGap::open(
+            "gap_1".to_string(),
+            Some(MOTHER_STATUS_SHAPE_ID.to_string()),
+            "mother.status.children_total".to_string(),
+            Some(MOTHER_STATUS_SOURCE_ID.to_string()),
+            "missing children total".to_string(),
+            Utc::now(),
+        );
+        let catalog = status_catalog().without_fact("mother.status.children_total");
+        let mut service = ViewBufferService::with_catalog_shapes_buffers_and_gaps(
+            catalog,
+            Vec::new(),
+            Vec::new(),
+            vec![gap],
+        );
+
+        let error = service
+            .resolve_observability_gap(ResolveObservabilityGapRequest {
+                gap_id: "gap_1".to_string(),
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("not catalogued"));
+        assert_eq!(service.list_gaps()[0].status, ObservabilityGapStatus::Open);
     }
 
     #[test]

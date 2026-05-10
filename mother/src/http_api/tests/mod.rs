@@ -2,6 +2,20 @@ use super::*;
 
 struct StubRuntime;
 
+fn stub_observability_gap() -> crate::view_buffer::ObservabilityGap {
+    crate::view_buffer::ObservabilityGap {
+        gap_id: "gap_1".to_string(),
+        shape_id: Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+        missing_fact_path: "mother.status.version".to_string(),
+        missing_source_id: Some("mother.status".to_string()),
+        reason: "test gap".to_string(),
+        status: crate::view_buffer::ObservabilityGapStatus::Open,
+        linked_work_item_id: None,
+        created_at: chrono::Utc::now(),
+        resolved_at: None,
+    }
+}
+
 impl ApiRuntime for StubRuntime {
     fn version(&self) -> String {
         "0.0.0-test".to_string()
@@ -471,7 +485,54 @@ impl ApiRuntime for StubRuntime {
     }
 
     fn view_buffer_gaps_list(&self) -> Result<Vec<crate::view_buffer::ObservabilityGap>> {
-        Ok(vec![])
+        Ok(vec![stub_observability_gap()])
+    }
+
+    fn view_buffer_gap_get(
+        &self,
+        gap_id: &str,
+    ) -> Result<Option<crate::view_buffer::ObservabilityGap>> {
+        Ok((gap_id == "gap_1").then(stub_observability_gap))
+    }
+
+    fn view_buffer_gap_link_work_item(
+        &self,
+        request: crate::view_buffer::LinkObservabilityGapRequest,
+    ) -> Result<crate::view_buffer::ObservabilityGap> {
+        let mut service =
+            crate::view_buffer::ViewBufferService::with_catalog_shapes_buffers_and_gaps(
+                crate::view_buffer::DataCatalog::default(),
+                Vec::new(),
+                Vec::new(),
+                vec![stub_observability_gap()],
+            );
+        service.link_observability_gap(request)
+    }
+
+    fn view_buffer_gap_resolve(
+        &self,
+        request: crate::view_buffer::ResolveObservabilityGapRequest,
+    ) -> Result<crate::view_buffer::ObservabilityGap> {
+        let catalog =
+            crate::view_buffer::DataCatalog::mother_status(crate::view_buffer::MotherStatusFacts {
+                version: ApiRuntime::version(self),
+                uptime_secs: ApiRuntime::uptime_secs(self),
+                control_plane_ready: true,
+                registered_projects: 2,
+                children_ready_count: 1,
+                children_total: 2,
+                startup_profile: "full".to_string(),
+                memory_pressure: "ok".to_string(),
+                observed_at: chrono::Utc::now(),
+            });
+        let mut service =
+            crate::view_buffer::ViewBufferService::with_catalog_shapes_buffers_and_gaps(
+                catalog,
+                Vec::new(),
+                Vec::new(),
+                vec![stub_observability_gap()],
+            );
+        service.resolve_observability_gap(request)
     }
 
     fn builtin_secrets_dispatch(&self, _payload: serde_json::Value) -> HttpResponse {
@@ -962,6 +1023,81 @@ fn view_shape_get_and_deactivate_handlers_are_deterministic() {
         view_buffer::handle_deactivate_view_shape(&deactivate, &StubRuntime).status,
         200
     );
+}
+
+#[test]
+fn view_observability_workflow_handlers_link_and_resolve_gap() {
+    // obligation: spec.mother-view-observability-workflow.mvow5-api
+    let get_request = HttpRequest {
+        method: "GET".to_string(),
+        path: "/api/view-buffers/gaps/gap_1".to_string(),
+        headers: vec![],
+        body: vec![],
+    };
+    let get_response = view_buffer::handle_get_view_buffer_gap(&get_request, &StubRuntime);
+    assert_eq!(get_response.status, 200);
+
+    let link_request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-buffers/gaps/link-work-item".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::LinkObservabilityGapRequest {
+            gap_id: "gap_1".to_string(),
+            work_item_id: "work/MOTHER-123".to_string(),
+        })
+        .unwrap(),
+    };
+    let link_response =
+        view_buffer::handle_link_view_buffer_gap_work_item(&link_request, &StubRuntime);
+    assert_eq!(link_response.status, 200);
+    let link_payload: serde_json::Value = serde_json::from_slice(&link_response.body).unwrap();
+    assert_eq!(
+        link_payload
+            .get("gap")
+            .and_then(|gap| gap.get("status"))
+            .and_then(|status| status.as_str()),
+        Some("linked-to-work-item")
+    );
+
+    let resolve_request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-buffers/gaps/resolve".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&crate::view_buffer::ResolveObservabilityGapRequest {
+            gap_id: "gap_1".to_string(),
+        })
+        .unwrap(),
+    };
+    let resolve_response =
+        view_buffer::handle_resolve_view_buffer_gap(&resolve_request, &StubRuntime);
+    assert_eq!(resolve_response.status, 200);
+    let resolve_payload: serde_json::Value =
+        serde_json::from_slice(&resolve_response.body).unwrap();
+    assert_eq!(
+        resolve_payload
+            .get("gap")
+            .and_then(|gap| gap.get("status"))
+            .and_then(|status| status.as_str()),
+        Some("resolved")
+    );
+}
+
+#[test]
+fn view_observability_workflow_handlers_reject_invalid_link() {
+    // obligation: spec.mother-view-observability-workflow.mvow6-fail-closed-guardrails
+    let request = HttpRequest {
+        method: "POST".to_string(),
+        path: "/api/view-buffers/gaps/link-work-item".to_string(),
+        headers: vec![],
+        body: serde_json::to_vec(&serde_json::json!({
+            "gap_id": "gap_1",
+            "work_item_id": " "
+        }))
+        .unwrap(),
+    };
+
+    let response = view_buffer::handle_link_view_buffer_gap_work_item(&request, &StubRuntime);
+    assert_eq!(response.status, 400);
 }
 
 #[test]

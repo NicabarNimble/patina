@@ -46,6 +46,9 @@ pub struct RouteTable {
     pub post_view_buffer_kill: RouteHandler,
     pub get_view_buffer_windows: RouteHandler,
     pub get_view_buffer_gaps: RouteHandler,
+    pub get_view_buffer_gap: RouteHandler,
+    pub post_view_buffer_gap_link_work_item: RouteHandler,
+    pub post_view_buffer_gap_resolve: RouteHandler,
     pub child_request: RouteHandler,
 }
 
@@ -330,6 +333,27 @@ impl Router {
                     (self.routes.get_view_buffer_gaps)(request)
                 }
             }
+            ("GET", path) if path.starts_with("/api/view-buffers/gaps/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_buffer_gap)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/gaps/link-work-item") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_gap_link_work_item)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/gaps/resolve") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_gap_resolve)(request)
+                }
+            }
             _ if request.path.starts_with("/child/") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
@@ -402,6 +426,9 @@ mod tests {
             post_view_buffer_kill: Arc::new(|_| ok_json()),
             get_view_buffer_windows: Arc::new(|_| ok_json()),
             get_view_buffer_gaps: Arc::new(|_| ok_json()),
+            get_view_buffer_gap: Arc::new(|_| ok_json()),
+            post_view_buffer_gap_link_work_item: Arc::new(|_| ok_json()),
+            post_view_buffer_gap_resolve: Arc::new(|_| ok_json()),
             child_request: Arc::new(|_| ok_json()),
         }
     }
@@ -463,6 +490,9 @@ mod tests {
             ("POST", "/api/view-buffers/kill"),
             ("GET", "/api/view-buffers/windows"),
             ("GET", "/api/view-buffers/gaps"),
+            ("GET", "/api/view-buffers/gaps/gap_1"),
+            ("POST", "/api/view-buffers/gaps/link-work-item"),
+            ("POST", "/api/view-buffers/gaps/resolve"),
         ] {
             let authorized = router.route(&request(method, path, Some("Bearer token-123")));
             assert_eq!(authorized.status, 200, "{method} {path} should route");
