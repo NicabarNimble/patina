@@ -1925,6 +1925,112 @@ fn normalize_work_items(items: &[String]) -> Vec<(String, String, bool)> {
         .collect()
 }
 
+fn work_progress(work: &SlateWorkFile) -> (usize, usize, Vec<String>, Vec<String>) {
+    let criteria = normalize_work_items(&work.proof_plan);
+    let total = criteria.len();
+    let checked = criteria.iter().filter(|(_, _, checked)| *checked).count();
+    let completed = criteria
+        .iter()
+        .filter(|(_, _, checked)| *checked)
+        .map(|(_, text, _)| text.clone())
+        .collect();
+    let open = criteria
+        .iter()
+        .filter(|(_, _, checked)| !*checked)
+        .map(|(_, text, _)| text.clone())
+        .collect();
+    (checked, total, completed, open)
+}
+
+fn closure_gates(work: &SlateWorkFile) -> Vec<String> {
+    let allium_ok = !work.allium_anchors.is_empty()
+        || (work.kind == "refactor"
+            && work
+                .user_alignment
+                .to_ascii_lowercase()
+                .contains("no behavior"));
+    vec![
+        format!("Allium intent aligned: {}", allium_ok),
+        format!("Proof plan present: {}", !work.proof_plan.is_empty()),
+        format!(
+            "Closure evidence present: {}",
+            !work.closure_evidence.is_empty()
+        ),
+        format!(
+            "Belief harvest decision present: {}",
+            work.belief_harvest_decision.is_some()
+        ),
+    ]
+}
+
+fn validate_complete_gate(work: &SlateWorkFile) -> Result<(), String> {
+    let (checked, total, _, _) = work_progress(work);
+    if total == 0 || checked != total {
+        return Err(format!(
+            "Slate work '{}' cannot complete: proof plan is not fully checked",
+            work.id
+        ));
+    }
+    if work.closure_evidence.is_empty() {
+        return Err(format!(
+            "Slate work '{}' cannot complete: missing closure evidence",
+            work.id
+        ));
+    }
+    if work.belief_harvest_decision.is_none() {
+        return Err(format!(
+            "Slate work '{}' cannot complete: missing belief harvest decision",
+            work.id
+        ));
+    }
+    Ok(())
+}
+
+fn work_prompt_result(
+    record: SlateWorkRecord,
+) -> exports::patina::slate::control::WorkPromptResult {
+    let closure_gates = closure_gates(&record.work);
+    exports::patina::slate::control::WorkPromptResult {
+        work_id: record.work.id,
+        status: record.work.status,
+        title: record.work.title,
+        human_request: record.work.human_request,
+        read_first: vec![
+            "layer/allium/".to_string(),
+            "layer/surface/epistemic/beliefs/".to_string(),
+            "layer/core/".to_string(),
+            record.path.clone(),
+        ],
+        allium_anchors: record.work.allium_anchors,
+        implementation_plan: record.work.implementation_plan,
+        proof_plan: record.work.proof_plan,
+        belief_refs: record.work.belief_refs,
+        closure_gates,
+        path: record.path,
+    }
+}
+
+fn work_handoff_result(
+    record: SlateWorkRecord,
+) -> Result<exports::patina::slate::control::WorkHandoffResult, String> {
+    let (checked, total, completed_items, open_items) = work_progress(&record.work);
+    Ok(exports::patina::slate::control::WorkHandoffResult {
+        work_id: record.work.id,
+        status: record.work.status,
+        title: record.work.title,
+        progress: exports::patina::slate::control::ProgressSummary {
+            checked: u32::try_from(checked).map_err(|_| "checked exceeds u32".to_string())?,
+            total: u32::try_from(total).map_err(|_| "total exceeds u32".to_string())?,
+        },
+        completed_items,
+        open_items,
+        next_steps: record.work.implementation_plan,
+        closure_evidence: record.work.closure_evidence,
+        belief_harvest_decision: record.work.belief_harvest_decision,
+        path: record.path,
+    })
+}
+
 impl exports::patina::slate::control::Guest for SlateManager {
     fn list_work(
         req: exports::patina::slate::control::WorkListRequest,
@@ -2346,6 +2452,93 @@ impl exports::patina::slate::control::Guest for SlateManager {
                 serde_json::json!({"child_id": saved.work.id}),
             )?;
             Ok(slate_work_record(saved))
+        })
+    }
+
+    fn prompt_work(
+        req: exports::patina::slate::control::WorkIdRequest,
+    ) -> Result<exports::patina::slate::control::WorkPromptResult, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let records = load_slate_work(&project_root)?;
+            Ok(work_prompt_result(
+                find_slate_work(&records, &req.id)?.clone(),
+            ))
+        })
+    }
+
+    fn handoff_work(
+        req: exports::patina::slate::control::WorkIdRequest,
+    ) -> Result<exports::patina::slate::control::WorkHandoffResult, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let records = load_slate_work(&project_root)?;
+            work_handoff_result(find_slate_work(&records, &req.id)?.clone())
+        })
+    }
+
+    fn packet_work(
+        req: exports::patina::slate::control::WorkIdRequest,
+    ) -> Result<exports::patina::slate::control::WorkPacketResult, String> {
+        let prompt = Self::prompt_work(exports::patina::slate::control::WorkIdRequest {
+            project: req.project.clone(),
+            id: req.id.clone(),
+        })?;
+        let handoff = Self::handoff_work(req)?;
+        Ok(exports::patina::slate::control::WorkPacketResult { prompt, handoff })
+    }
+
+    fn complete_work(
+        req: exports::patina::slate::control::WorkStatusRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            update_slate_work(
+                &project_root,
+                &req.id,
+                "completed",
+                serde_json::json!({"force": req.force}),
+                |work| {
+                    if !req.force {
+                        validate_complete_gate(work)?;
+                    }
+                    work.status = "complete".to_string();
+                    work.closed_at = Some(timestamp());
+                    Ok(())
+                },
+            )
+            .map(slate_work_record)
+        })
+    }
+
+    fn archive_work(
+        req: exports::patina::slate::control::WorkStatusRequest,
+    ) -> Result<exports::patina::slate::control::WorkArchiveResult, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let saved = update_slate_work(
+                &project_root,
+                &req.id,
+                "archived",
+                serde_json::json!({"force": req.force}),
+                |work| {
+                    if !matches!(work.status.as_str(), "complete" | "abandoned") && !req.force {
+                        return Err(format!(
+                            "cannot archive Slate work '{}' from status '{}'",
+                            work.id, work.status
+                        ));
+                    }
+                    work.status = "archived".to_string();
+                    work.closed_at = Some(timestamp());
+                    Ok(())
+                },
+            )?;
+            Ok(exports::patina::slate::control::WorkArchiveResult {
+                work_id: saved.work.id,
+                new_status: saved.work.status,
+                path: saved.path,
+                archived: true,
+            })
         })
     }
 
@@ -2908,6 +3101,47 @@ mod slate_native_tests {
         };
         let err = validate_ready_gate(&work).expect_err("missing allium should block");
         assert!(err.contains("Allium"));
+    }
+
+    #[test]
+    fn native_slate_packet_and_completion_gates_use_work_artifacts() {
+        let temp = temp_project();
+        let mut work = SlateWorkFile {
+            id: "demo".to_string(),
+            title: "Demo".to_string(),
+            kind: "build".to_string(),
+            status: "active".to_string(),
+            human_request: "Build it".to_string(),
+            allium_anchors: vec!["layer/allium/demo.allium".to_string()],
+            user_alignment: "User confirmed".to_string(),
+            implementation_plan: vec!["edit src/lib.rs".to_string()],
+            proof_plan: vec!["[x] cargo test".to_string()],
+            belief_refs: vec!["[[dependable-rust]]".to_string()],
+            closure_evidence: vec!["cargo test passed".to_string()],
+            belief_harvest_decision: Some("no belief change".to_string()),
+            ..Default::default()
+        };
+        let record = create_slate_work_file(temp.path(), &mut work).expect("create work");
+        let prompt = work_prompt_result(record.clone());
+        assert_eq!(prompt.work_id, "demo");
+        assert!(prompt.read_first.iter().any(|item| item == "layer/allium/"));
+        let handoff = work_handoff_result(record.clone()).expect("handoff");
+        assert_eq!(handoff.progress.checked, 1);
+        validate_complete_gate(&record.work).expect("complete gate");
+
+        let incomplete = SlateWorkFile {
+            id: "bad".to_string(),
+            title: "Bad".to_string(),
+            kind: "build".to_string(),
+            status: "active".to_string(),
+            human_request: "Build it".to_string(),
+            allium_anchors: vec!["layer/allium/demo.allium".to_string()],
+            user_alignment: "User confirmed".to_string(),
+            proof_plan: vec!["[x] cargo test".to_string()],
+            ..Default::default()
+        };
+        let err = validate_complete_gate(&incomplete).expect_err("missing closure should block");
+        assert!(err.contains("closure evidence"));
     }
 }
 

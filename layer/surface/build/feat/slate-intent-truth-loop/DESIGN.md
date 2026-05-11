@@ -140,6 +140,7 @@ Slate recommends and records; the existing belief files, `patina scrape`, and be
 7. `test: cover slate intent and belief gates` — superseded for spec-side gates; native Slate tests should cover the same behavior in Slate.
 8. `feat: add project-living slate store foundation` — restore `patina spec` files to their island, add native Slate work WIT operations, project-owned `layer/slate/work/<id>/work.toml` artifacts, and per-project Mother `slate.db` projection scaffolding.
 9. `feat: add native slate lifecycle operations` — extend native Slate WIT and child handling for ready/blocked/next/history/set/promote/check/pause/resume/block/abandon/rename/reopen/split work operations over `layer/slate/` artifacts, plus project event logging and projection fields.
+10. `feat: complete native slate workbench surface` — add native prompt/handoff/packet/complete/archive WIT operations, closure gates, packet tests, and complete `si9` without routing through `patina spec` paths or lifecycle.
 
 ## Direct Code Targets
 

@@ -55,7 +55,7 @@ exit_criteria:
   checked: true
 - id: si9-full-slate-native-capability-coverage
   text: Slate has native WIT/WASI and project-living work capabilities for create/list/show plus the remaining ready/blocked/next/promote/check/prompt/handoff/packet/set/pause/resume/block/split/complete/abandon/archive/history/rename/reopen lifecycle without depending on `patina spec` paths or lifecycle.
-  checked: false
+  checked: true
 ---
 # feat: Slate Intent Truth Loop
 

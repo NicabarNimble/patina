@@ -206,6 +206,45 @@ interface control {
         path: string,
     }
 
+    record work-prompt-result {
+        work-id: string,
+        status: string,
+        title: string,
+        human-request: string,
+        read-first: list<string>,
+        allium-anchors: list<string>,
+        implementation-plan: list<string>,
+        proof-plan: list<string>,
+        belief-refs: list<string>,
+        closure-gates: list<string>,
+        path: string,
+    }
+
+    record work-handoff-result {
+        work-id: string,
+        status: string,
+        title: string,
+        progress: progress-summary,
+        completed-items: list<string>,
+        open-items: list<string>,
+        next-steps: list<string>,
+        closure-evidence: list<string>,
+        belief-harvest-decision: option<string>,
+        path: string,
+    }
+
+    record work-packet-result {
+        prompt: work-prompt-result,
+        handoff: work-handoff-result,
+    }
+
+    record work-archive-result {
+        work-id: string,
+        new-status: string,
+        path: string,
+        archived: bool,
+    }
+
     record prompt-result {
         spec-id: string,
         status: string,
@@ -309,6 +348,11 @@ interface control {
     rename-work: func(req: rename-work-request) -> result<work-record, string>;
     reopen-work: func(req: work-status-request) -> result<work-record, string>;
     split-work: func(req: split-work-request) -> result<work-record, string>;
+    prompt-work: func(req: work-id-request) -> result<work-prompt-result, string>;
+    handoff-work: func(req: work-id-request) -> result<work-handoff-result, string>;
+    packet-work: func(req: work-id-request) -> result<work-packet-result, string>;
+    complete-work: func(req: work-status-request) -> result<work-record, string>;
+    archive-work: func(req: work-status-request) -> result<work-archive-result, string>;
 
     archive-spec: func(req: archive-request) -> result<archive-result, string>;
 
