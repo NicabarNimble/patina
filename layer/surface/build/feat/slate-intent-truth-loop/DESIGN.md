@@ -2,7 +2,7 @@
 
 ## Why This Design
 
-Slate is becoming the place where change work happens. The existing `patina spec` system already provides useful todo lifecycle mechanics, but the future Slate product should be grounded by Allium and beliefs rather than replacing them.
+Slate is becoming the place where change work happens. `patina spec` remains its own Markdown/git system; Slate must be its own project-living WIT/WASI work system grounded by Allium and beliefs rather than implemented as a `spec` projection.
 
 The central design rule is:
 
@@ -21,7 +21,7 @@ Implement Slate as a structured build/refactor/fix todo system with an intent/pr
 
 ### Capability coverage
 
-Slate should represent these current `spec` capabilities as workflow operations:
+Slate should provide native project-living workflow operations with comparable usefulness to these work-management capabilities:
 
 - discovery: create, list, ready, blocked, next, show, history,
 - planning packets: prompt, handoff, packet,
@@ -29,7 +29,7 @@ Slate should represent these current `spec` capabilities as workflow operations:
 - lifecycle movement: promote, pause, resume, block, abandon,
 - closure: check, complete, archive.
 
-Coverage is not blind old-output parity. Where Slate preserves old behavior, compatibility should hold. Where Slate intentionally changes the workflow to add Allium intent or belief anchoring, the divergence must be documented, tested, and exposed clearly.
+Coverage is not old-output parity and must not depend on `SPEC.md` paths. `spec` and Slate are islands; explicit import/export bridges may exist, but Slate's canonical operations target `layer/slate/` artifacts and Mother Slate projections.
 
 ### Slate work-item fields
 
@@ -122,33 +122,33 @@ Slate recommends and records; the existing belief files, `patina scrape`, and be
    - New beliefs should be harvested from proof, repeated pattern, failure mode, or architectural lesson.
    - Beliefs with missing/changing proof should be challenged, scoped, defeated, or archived through existing conventions.
 
-6. **`spec` compatibility remains, but blind parity is not the goal**
-   - Current `patina spec` and `slate-pando-migration` work remains useful as compatibility infrastructure.
-   - Most current `spec` actions should be represented in Slate as todo/workflow mechanics.
-   - Slate does not need 1:1 parity where the workflow is intentionally changing.
+6. **`spec` and Slate are islands**
+   - `patina spec` remains a standalone Markdown/git spec system.
+   - Slate owns native WIT/WASI operations, project-living artifacts, lifecycle semantics, and Mother projections.
+   - Explicit bridges can import/export between islands, but `SPEC.md`/`DESIGN.md` are not Slate storage.
    - Allium is additive intent grounding for Slate, not a replacement for Slate's todo lifecycle.
    - This design defines the product direction: Slate as workbench, not new spec language.
 
 ## Commits
 
 1. `spec: draft slate-intent-truth-loop` — created the system spec to lock the direction.
-2. `feat: add slate work item model` — add packet-level Slate work item extraction and capability matrix to builtin packets and the Slate child dispatch path.
-3. `feat: expose slate intent context over wit` — extend Slate WIT prompt/handoff surfaces with work item, Allium context, proof, capability matrix, and belief harvest fields.
-4. `feat: gate slate readiness on intent alignment` — update spec creation templates and promotion readiness lint so build/fix/refactor Slates must capture human request, Allium intent, user alignment, and proof before becoming ready.
-5. `feat: add slate allium tool orchestration` — expose Allium check/analyse/plan/model command plans and Allium skill workflow guidance in Slate packet/WIT context.
-6. `feat: require slate belief harvest on completion` — add completion gates requiring explicit belief harvest/challenge decisions before non-forced build/fix/refactor Slate closure.
-7. `test: cover slate intent and belief gates` — add unit coverage for missing Allium intent, refactor no-behavior-change path, and belief harvest completion gates while preserving existing Slate observe parity coverage.
+2. `feat: add slate work item model` — first bridge-state exploration of Slate work-item extraction and capability matrix.
+3. `feat: expose slate intent context over wit` — first bridge-state WIT prompt/handoff surface expansion.
+4. `feat: gate slate readiness on intent alignment` — superseded by the island decision; readiness belongs in Slate, not `patina spec`.
+5. `feat: add slate allium tool orchestration` — keep the Allium orchestration shape, but move it to native Slate records.
+6. `feat: require slate belief harvest on completion` — superseded by the island decision; completion harvest belongs in Slate, not `patina spec`.
+7. `test: cover slate intent and belief gates` — superseded for spec-side gates; native Slate tests should cover the same behavior in Slate.
+8. `feat: add project-living slate store foundation` — restore `patina spec` files to their island, add native Slate work WIT operations, project-owned `layer/slate/work/<id>/work.toml` artifacts, and per-project Mother `slate.db` projection scaffolding.
 
 ## Direct Code Targets
 
-- `children/slate-manager/src/lib.rs` — current Slate child command handling and packet generation logic.
-- `children/slate-manager/wit-contract/slate.wit` — typed Slate result surfaces for prompt/handoff/packet/work context.
-- `children/slate-manager/wit/deps/patina-slate.wit` — generated/consumed WIT dependency surface.
-- `src/commands/spec/mod.rs` — compatibility route from `patina spec` into Slate.
-- `src/spec.rs` — legacy spec command value execution and route backend behavior.
-- `src/commands/spec/internal/packets.rs` — current prompt/handoff/packet precedent.
-- `src/commands/spec/internal/queries.rs` — current list/check/show/history mechanics.
-- `src/commands/spec/internal/mutations.rs` — current lifecycle transitions and completion gates.
+- `children/slate-manager/src/lib.rs` — native Slate child WIT operations and remaining explicit bridge code.
+- `children/slate-manager/wit-contract/slate.wit` — native Slate work records and lifecycle surfaces.
+- `children/slate-manager/wit/deps/patina-slate.wit` — consumed WIT dependency surface.
+- `children/slate-manager/child.toml` — Slate child contract defaults to native work operations.
+- `src/slate.rs` — Mother per-project Slate projection store for project-living Slate artifacts.
+- `src/paths.rs` — per-project Mother `slate.db` path.
+- `layer/slate/` — project-owned durable Slate work artifacts.
 - `src/commands/scrape/beliefs/mod.rs` — existing belief indexing, health, contestation, and evidence metrics to consume, not replace.
 - `src/commands/scrape/beliefs/verification/` — existing belief verification mechanism to consume, not replace.
 
@@ -171,9 +171,9 @@ cargo test -q --lib belief
 
 ### Capability coverage checks
 
-- Every useful existing `patina spec` command has a Slate workflow equivalent or a documented intentional divergence.
-- Slate packet/readiness/closure surfaces expose Allium intent and belief anchoring where relevant.
-- Compatibility modes still preserve old behavior when no intentional Slate workflow change applies.
+- Every useful work-management capability has a Slate-native workflow equivalent or a documented intentional divergence.
+- Slate-native WIT/readiness/closure surfaces expose Allium intent and belief anchoring where relevant.
+- `patina spec` remains independent; any bridge is explicit and non-authoritative.
 
 ### Behavioral fixtures
 
@@ -208,9 +208,9 @@ Create or extend fixtures for:
 
 Ready when:
 
-- the first structured Slate work-item shape is accepted.
+- the first structured, project-living Slate work-item shape and Mother projection are accepted.
 
-Current `spec` lifecycle mechanics have been reviewed and mapped in this draft. This spec follows and reframes `[[slate-pando-migration]]`: preserve compatibility where behavior remains, but document intentional Slate workflow changes instead of forcing blind parity.
+Current `spec` lifecycle mechanics have been reviewed as precedent only. This spec now treats `[[slate-pando-migration]]` as compatibility exploration, not as Slate's substrate.
 
 ## Open Questions
 

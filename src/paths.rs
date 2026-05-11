@@ -382,6 +382,11 @@ pub mod mother {
         pub fn runtime_db(uid: &str) -> Result<PathBuf, String> {
             Ok(project_dir(uid)?.join("runtime.db"))
         }
+
+        /// Project Slate projection database: `~/.patina/mother/projects/{project_uid}/slate.db`
+        pub fn slate_db(uid: &str) -> Result<PathBuf, String> {
+            Ok(project_dir(uid)?.join("slate.db"))
+        }
     }
 
     /// Voice storage: `~/.patina/mother/voice/{voice_uid}/`

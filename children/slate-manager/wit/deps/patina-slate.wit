@@ -97,6 +97,49 @@ interface control {
         parity-policy: string,
     }
 
+    record work-list-request {
+        project: option<string>,
+        status: option<string>,
+        kind: option<string>,
+    }
+
+    record work-id-request {
+        project: option<string>,
+        id: string,
+    }
+
+    record create-work-request {
+        project: option<string>,
+        id: string,
+        title: string,
+        kind: string,
+        human-request: string,
+        allium-anchors: list<string>,
+        user-alignment: string,
+    }
+
+    record work-summary {
+        id: string,
+        title: string,
+        kind: string,
+        status: string,
+        path: string,
+    }
+
+    record work-record {
+        id: string,
+        title: string,
+        kind: string,
+        status: string,
+        human-request: string,
+        allium-anchors: list<string>,
+        user-alignment: string,
+        belief-refs: list<string>,
+        proof-plan: list<string>,
+        closure-evidence: list<string>,
+        path: string,
+    }
+
     record prompt-result {
         spec-id: string,
         status: string,
@@ -111,8 +154,6 @@ interface control {
         verification: list<string>,
         definition-of-done: list<string>,
         session-workflow: list<string>,
-        slate-work-item: slate-work-item,
-        slate-capabilities: list<slate-capability-row>,
     }
 
     record progress-summary {
@@ -132,8 +173,6 @@ interface control {
         verification: list<string>,
         spec-path: string,
         design-path: option<string>,
-        slate-work-item: slate-work-item,
-        slate-capabilities: list<slate-capability-row>,
     }
 
     record packet-result {
@@ -187,8 +226,12 @@ interface control {
     handoff-spec: func(req: spec-id-request) -> result<handoff-result, string>;
     packet-spec: func(req: spec-id-request) -> result<packet-result, string>;
     complete-spec: func(req: complete-request) -> result<complete-result, string>;
+    list-work: func(req: work-list-request) -> result<list<work-summary>, string>;
+    show-work: func(req: work-id-request) -> result<work-record, string>;
+    create-work: func(req: create-work-request) -> result<work-record, string>;
+
     archive-spec: func(req: archive-request) -> result<archive-result, string>;
 
-    // Transitional compatibility entrypoint; to be removed once call sites are fully typed.
+    // Explicit bridge entrypoints only. They are not Slate's canonical storage or lifecycle.
     dispatch: func(command-json: string) -> result<string, string>;
 }

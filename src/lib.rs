@@ -22,6 +22,7 @@ pub mod retrieval;
 pub mod scanner;
 pub mod secrets;
 pub mod session;
+pub mod slate;
 pub mod spec;
 pub mod version;
 pub mod workspace;

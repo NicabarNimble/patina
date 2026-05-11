@@ -12,7 +12,7 @@ use super::archive::{
     archive_spec_inner, find_spec, load_spec, release_and_archive, resolve_spec_dir, LoadedSpec,
 };
 use super::db_path;
-use super::queries::{check_spec_value, extract_section_items, get_all_specs, ListFilters};
+use super::queries::{check_spec_value, get_all_specs, ListFilters};
 use super::queue::tag_exists;
 
 const FRESHNESS_MAX_GLOBAL_COMMITS: u64 = 200;
@@ -509,145 +509,6 @@ pub enum MutationDetail {
     },
 }
 
-fn extract_section_paragraph(text: &str, heading: &str) -> Option<String> {
-    let mut in_section = false;
-    let mut lines = Vec::new();
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if trimmed == heading {
-            in_section = true;
-            continue;
-        }
-        if in_section && trimmed.starts_with("## ") {
-            break;
-        }
-        if in_section && !trimmed.is_empty() && !trimmed.starts_with('-') {
-            lines.push(trimmed.to_string());
-        }
-    }
-
-    if lines.is_empty() {
-        None
-    } else {
-        Some(lines.join(" "))
-    }
-}
-
-fn section_is_captured(text: &str, heading: &str) -> bool {
-    extract_section_paragraph(text, heading)
-        .map(|value| {
-            let lower = value.to_ascii_lowercase();
-            !lower.contains("not captured") && !lower.contains("todo") && !lower.trim().is_empty()
-        })
-        .unwrap_or(false)
-        || !extract_section_items(text, heading).is_empty()
-}
-
-fn has_blockquote(text: &str) -> bool {
-    text.lines().any(|line| line.trim_start().starts_with("> "))
-}
-
-fn validate_slate_belief_harvest_completion(loaded: &LoadedSpec) -> Result<()> {
-    let spec_type = loaded.frontmatter.r#type.as_str();
-    if !matches!(spec_type, "feat" | "fix" | "refactor") {
-        return Ok(());
-    }
-
-    if !section_is_captured(&loaded.body, "## Belief Harvest") {
-        anyhow::bail!(
-            "Cannot complete '{}': missing ## Belief Harvest. Record no belief change, evidence added to existing beliefs, proposed beliefs, scopes/attacks/defeats, and run `patina scrape` when belief files change.",
-            loaded.frontmatter.id
-        );
-    }
-
-    let harvest = extract_section_paragraph(&loaded.body, "## Belief Harvest")
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    let harvest_items = extract_section_items(&loaded.body, "## Belief Harvest");
-    let has_decision = harvest.contains("no belief")
-        || harvest.contains("no change")
-        || harvest.contains("evidence")
-        || harvest.contains("scope")
-        || harvest.contains("attack")
-        || harvest.contains("defeat")
-        || harvest.contains("archive")
-        || !harvest_items.is_empty();
-
-    if !has_decision {
-        anyhow::bail!(
-            "Cannot complete '{}': ## Belief Harvest must record an explicit accept/skip/challenge decision.",
-            loaded.frontmatter.id
-        );
-    }
-
-    Ok(())
-}
-
-fn validate_slate_intent_readiness(loaded: &LoadedSpec) -> Result<()> {
-    let spec_type = loaded.frontmatter.r#type.as_str();
-    if !matches!(spec_type, "feat" | "fix" | "refactor") {
-        return Ok(());
-    }
-
-    let mut missing = Vec::new();
-    if !section_is_captured(&loaded.body, "## Human Request") && !has_blockquote(&loaded.body) {
-        missing.push("## Human Request");
-    }
-    if !section_is_captured(&loaded.body, "## Allium Intent") {
-        missing.push("## Allium Intent");
-    }
-    if !section_is_captured(&loaded.body, "## User Alignment") {
-        missing.push("## User Alignment");
-    }
-    if !section_is_captured(&loaded.body, "## Proof Plan")
-        && extract_section_items(&loaded.body, "## Verification").is_empty()
-    {
-        missing.push("## Proof Plan or ## Verification");
-    }
-
-    if !missing.is_empty() {
-        anyhow::bail!(
-            "Spec '{}' is not ready for Slate: missing intent/proof sections: {}. Capture HITL-aligned Allium intent, or state why no Allium change is needed for refactor work.",
-            loaded.frontmatter.id,
-            missing.join(", ")
-        );
-    }
-
-    let allium_text =
-        extract_section_paragraph(&loaded.body, "## Allium Intent").unwrap_or_default();
-    let allium_lower = allium_text.to_ascii_lowercase();
-    if allium_lower.contains("ambiguous")
-        || allium_lower.contains("unclear")
-        || allium_lower.contains("disputed")
-    {
-        anyhow::bail!(
-            "Spec '{}' is not ready for Slate: Allium intent is marked ambiguous/disputed. Resolve HITL alignment before promotion.",
-            loaded.frontmatter.id
-        );
-    }
-
-    if spec_type == "refactor" {
-        let says_no_behavior_change = allium_lower.contains("no behavior")
-            || allium_lower.contains("no allium")
-            || allium_lower.contains("unchanged behavior");
-        let has_allium_anchor = loaded
-            .frontmatter
-            .related
-            .iter()
-            .chain(loaded.frontmatter.references.iter())
-            .any(|value| value.contains("layer/allium") || value.ends_with(".allium"));
-        if !says_no_behavior_change && !has_allium_anchor {
-            anyhow::bail!(
-                "Spec '{}' is not ready for Slate: refactor work must either anchor Allium intent or explicitly state that behavior remains unchanged.",
-                loaded.frontmatter.id
-            );
-        }
-    }
-
-    Ok(())
-}
-
 fn lint_ready_spec(loaded: &LoadedSpec) -> Result<()> {
     let required_headings = [
         "## Problem",
@@ -745,7 +606,6 @@ fn lint_ready_spec(loaded: &LoadedSpec) -> Result<()> {
     }
 
     validate_recipe_toy_names(&loaded.frontmatter.id, &loaded.body)?;
-    validate_slate_intent_readiness(loaded)?;
 
     Ok(())
 }
@@ -1044,12 +904,7 @@ pub fn complete_spec_value(
         None => anyhow::bail!("Spec '{}' has no status", id),
     }
 
-    // 2. Check Slate belief harvest gate (skipped with --force)
-    if !force {
-        validate_slate_belief_harvest_completion(&loaded)?;
-    }
-
-    // 3. Check exit criteria gate (skipped with --force)
+    // 2. Check exit criteria gate (skipped with --force)
     let check = check_spec_value(id)?;
     if !check.passed && !force {
         let unchecked_list: Vec<String> = check
@@ -1088,7 +943,7 @@ pub fn complete_spec_value(
         BumpType::from_spec_type(&loaded.frontmatter.r#type)
     };
 
-    // 4. Mutate + release + archive — with rollback on failure
+    // 2. Mutate + release + archive — with rollback on failure
     let result = with_content_rollback(&file_path, &backup, || {
         let out = mutate_spec(loaded, |fm| {
             fm.status = Some(SpecStatus::Complete);
@@ -1571,92 +1426,6 @@ pub fn reopen_spec_value(id: &str) -> Result<MutationResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn loaded_for_gate(spec_type: &str, body: &str) -> LoadedSpec {
-        LoadedSpec {
-            file_path: "layer/surface/build/feat/example/SPEC.md".to_string(),
-            status: Some(SpecStatus::Draft),
-            title: Some("Example".to_string()),
-            content: String::new(),
-            frontmatter: SpecFrontmatter {
-                id: "example".to_string(),
-                r#type: spec_type.to_string(),
-                status: Some(SpecStatus::Draft),
-                ..Default::default()
-            },
-            body: body.to_string(),
-        }
-    }
-
-    #[test]
-    fn slate_readiness_rejects_missing_allium_intent() {
-        let loaded = loaded_for_gate(
-            "feat",
-            r#"
-## Human Request
-Change behavior.
-
-## User Alignment
-User confirmed.
-
-## Verification
-- cargo test
-"#,
-        );
-        let err = validate_slate_intent_readiness(&loaded).unwrap_err();
-        assert!(err.to_string().contains("## Allium Intent"));
-    }
-
-    #[test]
-    fn slate_readiness_allows_refactor_no_behavior_change() {
-        let loaded = loaded_for_gate(
-            "refactor",
-            r#"
-## Human Request
-Refactor structure.
-
-## Allium Intent
-No behavior change; no Allium change needed.
-
-## User Alignment
-User confirmed intended behavior is unchanged.
-
-## Verification
-- cargo test
-"#,
-        );
-        validate_slate_intent_readiness(&loaded).unwrap();
-    }
-
-    #[test]
-    fn slate_completion_requires_belief_harvest_decision() {
-        let loaded = loaded_for_gate(
-            "fix",
-            r#"
-## Belief Harvest
-
-## Verification
-- cargo test
-"#,
-        );
-        let err = validate_slate_belief_harvest_completion(&loaded).unwrap_err();
-        assert!(err.to_string().contains("Belief Harvest"));
-    }
-
-    #[test]
-    fn slate_completion_allows_no_belief_change_decision() {
-        let loaded = loaded_for_gate(
-            "fix",
-            r#"
-## Belief Harvest
-No belief change; proof did not produce reusable doctrine.
-
-## Verification
-- cargo test
-"#,
-        );
-        validate_slate_belief_harvest_completion(&loaded).unwrap();
-    }
 
     #[test]
     fn release_bump_frontmatter_values_map_to_bump_types() {

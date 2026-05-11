@@ -10,8 +10,11 @@ patina_min = "0.64.0"
 mode = "wit-only"
 
 [child.contract]
-default = "patina:slate/control@0.1.0.list-specs"
+default = "patina:slate/control@0.1.0.list-work"
 allow = [
+  "patina:slate/control@0.1.0.list-work",
+  "patina:slate/control@0.1.0.show-work",
+  "patina:slate/control@0.1.0.create-work",
   "patina:slate/control@0.1.0.dispatch",
   "patina:slate/control@0.1.0.list-specs",
   "patina:slate/control@0.1.0.next-specs",

@@ -3370,6 +3370,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "toml 0.8.23",
  "wit-bindgen 0.41.0",
 ]
 

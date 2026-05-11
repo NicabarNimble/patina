@@ -12,8 +12,8 @@ related:
 - layer/core/
 - children/slate-manager/
 - children/slate-manager/wit-contract/slate.wit
-- src/commands/spec/
-- src/spec.rs
+- src/slate.rs
+- layer/slate/
 beliefs:
 - '[[spec-driven-design]]'
 - '[[safety-boundaries]]'
@@ -53,8 +53,8 @@ exit_criteria:
 - id: si8-proof-tests
   text: Tests cover build/refactor/fix Slate flows, Allium missing/stale intent blocking, belief harvest recommendations, and compatibility with existing `patina spec` routing modes.
   checked: true
-- id: si9-full-spec-capability-coverage
-  text: Slate represents the full useful `patina spec` capability surface (create/list/ready/blocked/next/promote/check/show/prompt/handoff/packet/set/pause/resume/block/split/complete/abandon/archive/history/rename/reopen) as Slate workflow capabilities, with documented intentional divergences where Slate improves the workflow.
+- id: si9-full-slate-native-capability-coverage
+  text: Slate has native WIT/WASI and project-living work capabilities for create/list/show plus the remaining ready/blocked/next/promote/check/prompt/handoff/packet/set/pause/resume/block/split/complete/abandon/archive/history/rename/reopen lifecycle without depending on `patina spec` paths or lifecycle.
   checked: false
 ---
 # feat: Slate Intent Truth Loop
@@ -76,7 +76,7 @@ Slate must keep both systems honest while using their existing mechanisms.
 
 ## Goal
 
-Implement Slate as the Patina change-work layer for build/refactor/fix tasks. This is a full-capability target, not a reduced MVP: Slate must represent the useful current `patina spec` command surface while adding Allium intent and belief anchoring.
+Implement Slate as the Patina change-work layer for build/refactor/fix tasks. This is a full-capability target, not a reduced MVP: Slate must be a native project-living WIT/WASI work system with its own storage, lifecycle, and Mother projection while adding Allium intent and belief anchoring.
 
 - Allium is the primary home for intended behavior/truth.
 - Slate uses Allium deeply during HITL task creation and readiness.
@@ -95,7 +95,7 @@ Draft. This spec follows and reframes `[[slate-pando-migration]]`: the migration
 - Do not change the Allium language, Allium CLI, or Allium skill semantics.
 - Do not replace Allium drift/weed/tend/propagate workflows with Patina-specific substitutes.
 - Do not replace the belief markdown schema, belief graph, `patina scrape`, or belief audit machinery.
-- Do not remove `patina spec` compatibility as part of this slice.
+- Do not make `patina spec` the substrate or storage system for Slate; any bridge must be explicit and optional.
 - Do not make Slate the source of behavioral truth.
 - Do not treat beliefs as pre-work guesses to be created before evidence exists.
 - Do not include Mother display/buffer/frame work in this scope.
@@ -104,7 +104,7 @@ Draft. This spec follows and reframes `[[slate-pando-migration]]`: the migration
 
 A Slate is a durable work item for a change. It has enough structure to guide an agent and enough proof hooks to close honestly.
 
-Slate must cover the current `spec` lifecycle capabilities as workflow capabilities:
+Slate must own native workflow capabilities equivalent in usefulness to the current work-management surface:
 
 - discovery: create, list, ready, blocked, next, show, history,
 - planning packets: prompt, handoff, packet,
@@ -112,7 +112,7 @@ Slate must cover the current `spec` lifecycle capabilities as workflow capabilit
 - lifecycle movement: promote, pause, resume, block, abandon,
 - closure: check, complete, archive.
 
-Coverage means the capability exists in Slate. It does not require blind output parity when the workflow intentionally changes to support Allium or belief anchoring.
+Coverage means the capability exists in Slate's own project-living WIT/WASI system. It does not mean Slate uses `SPEC.md`, `DESIGN.md`, or `patina spec` lifecycle as its source of truth.
 
 A Slate records:
 
@@ -147,7 +147,7 @@ Review existing `patina spec` and `children/slate-manager` methods:
 - pause/block/resume as work-state controls,
 - set/rename/reopen/history as management operations.
 
-Keep useful mechanics, but stop treating SPEC.md prose as the long-term source of behavioral truth. Future Slate should represent most existing `spec` lifecycle actions as todo/workflow operations, while adding Allium intent context as the behavioral truth layer. Compatibility matters where behavior is preserved; blind parity is not required where Slate intentionally changes the workflow.
+Keep useful mechanics as design reference only. Slate and `patina spec` are separate islands: `spec` remains a Markdown/git spec system; Slate becomes a project-living WIT/WASI work system with its own artifacts and Mother projection. Bridges may import/export explicitly, but neither system owns the other's lifecycle.
 
 ### 2. Add Allium-first intent context
 

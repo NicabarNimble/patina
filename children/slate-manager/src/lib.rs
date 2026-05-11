@@ -64,6 +64,38 @@ struct SpecRecord {
     design_body: Option<String>,
 }
 
+const SLATE_WORK_DIR: &str = "layer/slate/work";
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct SlateWorkFile {
+    id: String,
+    title: String,
+    kind: String,
+    #[serde(default = "default_slate_status")]
+    status: String,
+    human_request: String,
+    #[serde(default)]
+    allium_anchors: Vec<String>,
+    #[serde(default)]
+    user_alignment: String,
+    #[serde(default)]
+    belief_refs: Vec<String>,
+    #[serde(default)]
+    proof_plan: Vec<String>,
+    #[serde(default)]
+    closure_evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SlateWorkRecord {
+    work: SlateWorkFile,
+    path: String,
+}
+
+fn default_slate_status() -> String {
+    "draft".to_string()
+}
+
 #[derive(Debug, Clone, Copy)]
 enum ReleaseBump {
     Patch,
@@ -471,6 +503,104 @@ fn to_repo_relative(root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .to_string()
+}
+
+fn slate_work_dir(root: &Path) -> PathBuf {
+    root.join(SLATE_WORK_DIR)
+}
+
+fn slate_work_path(root: &Path, id: &str) -> PathBuf {
+    slate_work_dir(root).join(id).join("work.toml")
+}
+
+fn validate_slate_id(id: &str) -> Result<(), String> {
+    if id.is_empty()
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        return Err(format!("invalid Slate work id '{}': use kebab-case", id));
+    }
+    Ok(())
+}
+
+fn normalize_slate_kind(kind: &str) -> String {
+    match kind.trim().to_ascii_lowercase().as_str() {
+        "fix" => "fix".to_string(),
+        "refactor" => "refactor".to_string(),
+        _ => "build".to_string(),
+    }
+}
+
+fn load_slate_work(root: &Path) -> Result<Vec<SlateWorkRecord>, String> {
+    let dir = slate_work_dir(root);
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut records = Vec::new();
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<SlateWorkRecord>) -> Result<(), String> {
+        for entry in fs::read_dir(dir).map_err(|e| format!("read {}: {}", dir.display(), e))? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if path.is_dir() {
+                walk(root, &path, out)?;
+                continue;
+            }
+            if path.file_name().and_then(|name| name.to_str()) != Some("work.toml") {
+                continue;
+            }
+            let raw =
+                fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path.display(), e))?;
+            let work: SlateWorkFile =
+                toml::from_str(&raw).map_err(|e| format!("parse {}: {}", path.display(), e))?;
+            if work.id.is_empty() {
+                return Err(format!("Slate work file {} has empty id", path.display()));
+            }
+            out.push(SlateWorkRecord {
+                work,
+                path: to_repo_relative(root, &path),
+            });
+        }
+        Ok(())
+    }
+
+    walk(root, &dir, &mut records)?;
+    records.sort_by(|a, b| {
+        a.work
+            .status
+            .cmp(&b.work.status)
+            .then(a.work.kind.cmp(&b.work.kind))
+            .then(a.work.id.cmp(&b.work.id))
+    });
+    Ok(records)
+}
+
+fn find_slate_work<'a>(
+    records: &'a [SlateWorkRecord],
+    id: &str,
+) -> Result<&'a SlateWorkRecord, String> {
+    records
+        .iter()
+        .find(|record| record.work.id == id)
+        .ok_or_else(|| format!("Slate work '{}' not found", id))
+}
+
+fn create_slate_work_file(root: &Path, work: &SlateWorkFile) -> Result<SlateWorkRecord, String> {
+    validate_slate_id(&work.id)?;
+    let path = slate_work_path(root, &work.id);
+    if path.exists() {
+        return Err(format!("Slate work '{}' already exists", work.id));
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {}", parent.display(), e))?;
+    }
+    let content = toml::to_string_pretty(work).map_err(|e| e.to_string())?;
+    fs::write(&path, content).map_err(|e| format!("write {}: {}", path.display(), e))?;
+    Ok(SlateWorkRecord {
+        work: work.clone(),
+        path: to_repo_relative(root, &path),
+    })
 }
 
 fn archive_spec_record(root: &Path, spec: &SpecRecord, dry_run: bool) -> Result<(), String> {
@@ -1277,8 +1407,6 @@ fn dedup(values: Vec<String>) -> Vec<String> {
 
 fn build_prompt_packet(spec: &SpecRecord) -> serde_json::Value {
     let status = status_or(&spec.frontmatter, "unknown");
-    let design_text = spec.design_body.as_deref().unwrap_or_default();
-    let slate_work_item = build_slate_work_item(&spec.frontmatter, &spec.body, design_text);
     let title = extract_title(&spec.body)
         .or(spec.frontmatter.title.clone())
         .unwrap_or_else(|| spec.frontmatter.id.clone());
@@ -1324,16 +1452,12 @@ fn build_prompt_packet(spec: &SpecRecord) -> serde_json::Value {
             "Run /session-update periodically.",
             "Run /session-note for important insights.",
             "Run /session-end when complete."
-        ],
-        "slate_work_item": slate_work_item,
-        "slate_capabilities": slate_capability_matrix()
+        ]
     })
 }
 
 fn build_handoff_packet(spec: &SpecRecord) -> serde_json::Value {
     let status = status_or(&spec.frontmatter, "unknown");
-    let design_text = spec.design_body.as_deref().unwrap_or_default();
-    let slate_work_item = build_slate_work_item(&spec.frontmatter, &spec.body, design_text);
     let title = extract_title(&spec.body)
         .or(spec.frontmatter.title.clone())
         .unwrap_or_else(|| spec.frontmatter.id.clone());
@@ -1380,8 +1504,6 @@ fn build_handoff_packet(spec: &SpecRecord) -> serde_json::Value {
         "verification": extract_section_items(&spec.body, "## Verification"),
         "spec_path": spec.path,
         "design_path": spec.design_path,
-        "slate_work_item": slate_work_item,
-        "slate_capabilities": slate_capability_matrix(),
     })
 }
 
@@ -1433,13 +1555,6 @@ fn handle_complete(
         return Err(format!(
             "Cannot complete '{}' — status is '{}', expected 'active'",
             id, status
-        ));
-    }
-
-    if !force && !has_non_placeholder_section(&spec.body, "## Belief Harvest") {
-        return Err(format!(
-            "Cannot complete '{}': missing ## Belief Harvest. Record no belief change, evidence updates, or scope/attack/defeat/archive decisions before completion.",
-            id
         ));
     }
 
@@ -1619,103 +1734,90 @@ fn json_object<'a>(
         .ok_or_else(|| format!("missing object field {}", key))
 }
 
-fn parse_slate_allium_context(
-    value: &serde_json::Value,
-) -> Result<exports::patina::slate::control::SlateAlliumContext, String> {
-    let obj = value
-        .as_object()
-        .ok_or_else(|| "slate allium context must be object".to_string())?;
-    Ok(exports::patina::slate::control::SlateAlliumContext {
-        anchors: json_string_vec(obj, "anchors")?,
-        intent_summary: json_string(obj, "intent_summary")?,
-        intent_status: json_string(obj, "intent_status")?,
-        open_questions: json_string_vec(obj, "open_questions")?,
-        tool_commands: json_string_vec(obj, "tool_commands")?,
-        skill_workflows: json_string_vec(obj, "skill_workflows")?,
-    })
+fn slate_work_summary(record: SlateWorkRecord) -> exports::patina::slate::control::WorkSummary {
+    exports::patina::slate::control::WorkSummary {
+        id: record.work.id,
+        title: record.work.title,
+        kind: record.work.kind,
+        status: record.work.status,
+        path: record.path,
+    }
 }
 
-fn parse_slate_user_alignment(
-    value: &serde_json::Value,
-) -> Result<exports::patina::slate::control::SlateUserAlignment, String> {
-    let obj = value
-        .as_object()
-        .ok_or_else(|| "slate user alignment must be object".to_string())?;
-    Ok(exports::patina::slate::control::SlateUserAlignment {
-        aligned: json_bool(obj, "aligned")?,
-        statement: json_string(obj, "statement")?,
-        unresolved_questions: json_string_vec(obj, "unresolved_questions")?,
-    })
-}
-
-fn parse_slate_belief_harvest(
-    value: &serde_json::Value,
-) -> Result<exports::patina::slate::control::SlateBeliefHarvest, String> {
-    let obj = value
-        .as_object()
-        .ok_or_else(|| "slate belief harvest must be object".to_string())?;
-    Ok(exports::patina::slate::control::SlateBeliefHarvest {
-        existing_beliefs: json_string_vec(obj, "existing_beliefs")?,
-        evidence_to_add: json_string_vec(obj, "evidence_to_add")?,
-        proposed_new_beliefs: json_string_vec(obj, "proposed_new_beliefs")?,
-        proposed_scopes: json_string_vec(obj, "proposed_scopes")?,
-        proposed_attacks: json_string_vec(obj, "proposed_attacks")?,
-        proposed_defeats_or_archives: json_string_vec(obj, "proposed_defeats_or_archives")?,
-        decision_required: json_bool(obj, "decision_required")?,
-    })
-}
-
-fn parse_slate_work_item(
-    value: &serde_json::Value,
-) -> Result<exports::patina::slate::control::SlateWorkItem, String> {
-    let obj = value
-        .as_object()
-        .ok_or_else(|| "slate work item must be object".to_string())?;
-    Ok(exports::patina::slate::control::SlateWorkItem {
-        work_kind: json_string(obj, "work_kind")?,
-        human_request: json_string(obj, "human_request")?,
-        allium: parse_slate_allium_context(
-            obj.get("allium")
-                .ok_or_else(|| "missing slate allium".to_string())?,
-        )?,
-        user_alignment: parse_slate_user_alignment(
-            obj.get("user_alignment")
-                .ok_or_else(|| "missing slate user_alignment".to_string())?,
-        )?,
-        relevant_beliefs: json_string_vec(obj, "relevant_beliefs")?,
-        core_doctrine_refs: json_string_vec(obj, "core_doctrine_refs")?,
-        implementation_plan: json_string_vec(obj, "implementation_plan")?,
-        proof_plan: json_string_vec(obj, "proof_plan")?,
-        closure_evidence: json_string_vec(obj, "closure_evidence")?,
-        belief_harvest: parse_slate_belief_harvest(
-            obj.get("belief_harvest")
-                .ok_or_else(|| "missing slate belief_harvest".to_string())?,
-        )?,
-    })
-}
-
-fn parse_slate_capabilities(
-    value: &serde_json::Value,
-) -> Result<Vec<exports::patina::slate::control::SlateCapabilityRow>, String> {
-    value
-        .as_array()
-        .ok_or_else(|| "slate capabilities must be array".to_string())?
-        .iter()
-        .map(|item| {
-            let obj = item
-                .as_object()
-                .ok_or_else(|| "slate capability row must be object".to_string())?;
-            Ok(exports::patina::slate::control::SlateCapabilityRow {
-                spec_action: json_string(obj, "spec_action")?,
-                category: json_string(obj, "category")?,
-                slate_capability: json_string(obj, "slate_capability")?,
-                parity_policy: json_string(obj, "parity_policy")?,
-            })
-        })
-        .collect()
+fn slate_work_record(record: SlateWorkRecord) -> exports::patina::slate::control::WorkRecord {
+    exports::patina::slate::control::WorkRecord {
+        id: record.work.id,
+        title: record.work.title,
+        kind: record.work.kind,
+        status: record.work.status,
+        human_request: record.work.human_request,
+        allium_anchors: record.work.allium_anchors,
+        user_alignment: record.work.user_alignment,
+        belief_refs: record.work.belief_refs,
+        proof_plan: record.work.proof_plan,
+        closure_evidence: record.work.closure_evidence,
+        path: record.path,
+    }
 }
 
 impl exports::patina::slate::control::Guest for SlateManager {
+    fn list_work(
+        req: exports::patina::slate::control::WorkListRequest,
+    ) -> Result<Vec<exports::patina::slate::control::WorkSummary>, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let records = load_slate_work(&project_root)?;
+            Ok(records
+                .into_iter()
+                .filter(|record| {
+                    let status_ok = req
+                        .status
+                        .as_deref()
+                        .is_none_or(|expected| record.work.status == expected);
+                    let kind_ok = req
+                        .kind
+                        .as_deref()
+                        .is_none_or(|expected| record.work.kind == normalize_slate_kind(expected));
+                    status_ok && kind_ok
+                })
+                .map(slate_work_summary)
+                .collect())
+        })
+    }
+
+    fn show_work(
+        req: exports::patina::slate::control::WorkIdRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let records = load_slate_work(&project_root)?;
+            Ok(slate_work_record(
+                find_slate_work(&records, &req.id)?.clone(),
+            ))
+        })
+    }
+
+    fn create_work(
+        req: exports::patina::slate::control::CreateWorkRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let work = SlateWorkFile {
+                id: req.id,
+                title: req.title,
+                kind: normalize_slate_kind(&req.kind),
+                status: default_slate_status(),
+                human_request: req.human_request,
+                allium_anchors: req.allium_anchors,
+                user_alignment: req.user_alignment,
+                belief_refs: Vec::new(),
+                proof_plan: Vec::new(),
+                closure_evidence: Vec::new(),
+            };
+            create_slate_work_file(&project_root, &work).map(slate_work_record)
+        })
+    }
+
     fn list_specs(
         req: exports::patina::slate::control::ListRequest,
     ) -> Result<Vec<exports::patina::slate::control::SpecSummary>, String> {
@@ -2015,14 +2117,6 @@ impl exports::patina::slate::control::Guest for SlateManager {
                 verification: parse_vec("verification")?,
                 definition_of_done: parse_vec("definition_of_done")?,
                 session_workflow: parse_vec("session_workflow")?,
-                slate_work_item: parse_slate_work_item(
-                    obj.get("slate_work_item")
-                        .ok_or_else(|| "prompt missing slate_work_item".to_string())?,
-                )?,
-                slate_capabilities: parse_slate_capabilities(
-                    obj.get("slate_capabilities")
-                        .ok_or_else(|| "prompt missing slate_capabilities".to_string())?,
-                )?,
             })
         })
     }
@@ -2103,14 +2197,6 @@ impl exports::patina::slate::control::Guest for SlateManager {
                     .get("design_path")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
-                slate_work_item: parse_slate_work_item(
-                    obj.get("slate_work_item")
-                        .ok_or_else(|| "handoff missing slate_work_item".to_string())?,
-                )?,
-                slate_capabilities: parse_slate_capabilities(
-                    obj.get("slate_capabilities")
-                        .ok_or_else(|| "handoff missing slate_capabilities".to_string())?,
-                )?,
             })
         })
     }
