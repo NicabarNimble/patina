@@ -1,24 +1,10 @@
 ---
 type: feat
 id: slate-intent-truth-loop
-status: draft
+status: ready
 created: 2026-05-11
 sessions:
   origin: 20260508-144836-859149000
-beliefs:
-- "[[spec-driven-design]]"
-- "[[safety-boundaries]]"
-- "[[dependable-rust]]"
-- "[[control-plane-and-runtime-proof-are-separate-gates]]"
-- "[[allium-as-business-backlog]]"
-references:
-- layer/core/values/spec-driven-design.md
-- layer/core/values/safety-boundaries.md
-- layer/core/values/dependable-rust.md
-- layer/core/values/session-capture.md
-- layer/core/beliefs/spec-is-milestone.md
-- layer/core/beliefs/explicit-fail-closed-over-hidden-fallbacks.md
-- layer/core/beliefs/temporal-layering-causes-drift.md
 related:
 - slate-pando-migration
 - layer/allium/
@@ -28,30 +14,47 @@ related:
 - children/slate-manager/wit-contract/slate.wit
 - src/commands/spec/
 - src/spec.rs
+beliefs:
+- '[[spec-driven-design]]'
+- '[[safety-boundaries]]'
+- '[[dependable-rust]]'
+- '[[control-plane-and-runtime-proof-are-separate-gates]]'
+- '[[allium-as-business-backlog]]'
+references:
+- layer/core/values/spec-driven-design.md
+- layer/core/values/safety-boundaries.md
+- layer/core/values/dependable-rust.md
+- layer/core/values/session-capture.md
+- layer/core/beliefs/spec-is-milestone.md
+- layer/core/beliefs/explicit-fail-closed-over-hidden-fallbacks.md
+- layer/core/beliefs/temporal-layering-causes-drift.md
 exit_criteria:
 - id: si1-current-spec-actions-reviewed
-  text: "Current `patina spec`/Slate lifecycle methods are reviewed and mapped to future Slate responsibilities without assuming SPEC.md remains the authority for intended behavior."
+  text: Current `patina spec`/Slate lifecycle methods are reviewed and mapped to future Slate responsibilities without assuming SPEC.md remains the authority for intended behavior.
   checked: true
 - id: si2-slate-work-item-model
-  text: "Slate has an explicit work-item model for build/refactor/fix work that records human complaint, work kind, Allium anchors, user intent alignment, proof plan, relevant existing beliefs, and post-work evidence."
+  text: Slate has an explicit work-item model for build/refactor/fix work that records human complaint, work kind, Allium anchors, user intent alignment, proof plan, relevant existing beliefs, and post-work evidence.
   checked: false
 - id: si3-allium-first-intent-dialogue
-  text: "Slate creation/activation dialogue uses Allium first to discover, confirm, or update intended behavior before implementation work is treated as ready."
+  text: Slate creation/activation dialogue uses Allium first to discover, confirm, or update intended behavior before implementation work is treated as ready.
   checked: false
 - id: si4-user-alignment-gate
-  text: "Slate refuses or blocks work when Allium intent is missing, stale, or disputed until HITL alignment is captured as part of the Slate record."
+  text: Slate refuses or blocks work when Allium intent is missing, stale, or disputed until HITL alignment is captured as part of the Slate record.
   checked: false
 - id: si5-use-allium-drift-tools
-  text: "Slate uses existing Allium check/analyse/plan/model and Allium skill workflows for code/spec drift instead of imposing a competing drift method."
+  text: Slate uses existing Allium check/analyse/plan/model and Allium skill workflows for code/spec drift instead of imposing a competing drift method.
   checked: false
 - id: si6-belief-harvest-and-prune
-  text: "Slate closure includes a belief harvest/challenge pass that uses existing belief markdown/core doctrine conventions, evidence links, `patina scrape`, and belief audit signals; it does not replace the belief system."
+  text: Slate closure includes a belief harvest/challenge pass that uses existing belief markdown/core doctrine conventions, evidence links, `patina scrape`, and belief audit signals; it does not replace the belief system.
   checked: false
 - id: si7-packets-and-wit-surface
-  text: "Slate prompt/handoff/packet and WIT-facing result surfaces expose the Allium intent context, proof obligations, and belief harvest/challenge recommendations in structured form."
+  text: Slate prompt/handoff/packet and WIT-facing result surfaces expose the Allium intent context, proof obligations, and belief harvest/challenge recommendations in structured form.
   checked: false
 - id: si8-proof-tests
-  text: "Tests cover build/refactor/fix Slate flows, Allium missing/stale intent blocking, belief harvest recommendations, and compatibility with existing `patina spec` routing modes."
+  text: Tests cover build/refactor/fix Slate flows, Allium missing/stale intent blocking, belief harvest recommendations, and compatibility with existing `patina spec` routing modes.
+  checked: false
+- id: si9-full-spec-capability-coverage
+  text: Slate represents the full useful `patina spec` capability surface (create/list/ready/blocked/next/promote/check/show/prompt/handoff/packet/set/pause/resume/block/split/complete/abandon/archive/history/rename/reopen) as Slate workflow capabilities, with documented intentional divergences where Slate improves the workflow.
   checked: false
 ---
 # feat: Slate Intent Truth Loop
@@ -73,7 +76,7 @@ Slate must keep both systems honest while using their existing mechanisms.
 
 ## Goal
 
-Implement Slate as the Patina change-work layer for build/refactor/fix tasks:
+Implement Slate as the Patina change-work layer for build/refactor/fix tasks. This is a full-capability target, not a reduced MVP: Slate must represent the useful current `patina spec` command surface while adding Allium intent and belief anchoring.
 
 - Allium is the primary home for intended behavior/truth.
 - Slate uses Allium deeply during HITL task creation and readiness.
@@ -100,6 +103,16 @@ Draft. This spec follows and reframes `[[slate-pando-migration]]`: the migration
 ## Target Shape
 
 A Slate is a durable work item for a change. It has enough structure to guide an agent and enough proof hooks to close honestly.
+
+Slate must cover the current `spec` lifecycle capabilities as workflow capabilities:
+
+- discovery: create, list, ready, blocked, next, show, history,
+- planning packets: prompt, handoff, packet,
+- metadata/work shaping: set, rename, split, reopen,
+- lifecycle movement: promote, pause, resume, block, abandon,
+- closure: check, complete, archive.
+
+Coverage means the capability exists in Slate. It does not require blind output parity when the workflow intentionally changes to support Allium or belief anchoring.
 
 A Slate records:
 
@@ -216,8 +229,9 @@ A Slate is not complete merely because code changed. It is complete when:
 6. Add belief/core doctrine loading as constraints for active work.
 7. Add post-work belief harvest/challenge recommendations.
 8. Extend WIT and packet surfaces to expose the new structured context.
-9. Add tests for build/refactor/fix flows and failure/blocking cases.
-10. Reconcile this direction with `[[slate-pando-migration]]` so compatibility work remains migration infrastructure, while intentional Slate workflow changes are documented rather than forced into blind parity.
+9. Fill command/capability gaps so Slate covers the full useful `patina spec` lifecycle surface.
+10. Add tests for build/refactor/fix flows and failure/blocking cases.
+11. Reconcile this direction with `[[slate-pando-migration]]` so compatibility work remains migration infrastructure, while intentional Slate workflow changes are documented rather than forced into blind parity.
 
 ## Resolved Decisions
 
@@ -250,7 +264,7 @@ Behavior checks:
 
 ## Exit Criteria
 
-Frontmatter `si1..si8` are the source of truth.
+Frontmatter `si1..si9` are the source of truth.
 
 ## Build Readiness
 
