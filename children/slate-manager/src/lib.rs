@@ -1436,6 +1436,13 @@ fn handle_complete(
         ));
     }
 
+    if !force && !has_non_placeholder_section(&spec.body, "## Belief Harvest") {
+        return Err(format!(
+            "Cannot complete '{}': missing ## Belief Harvest. Record no belief change, evidence updates, or scope/attack/defeat/archive decisions before completion.",
+            id
+        ));
+    }
+
     let criteria = normalize_criteria(&spec.frontmatter);
     let unchecked: Vec<(String, String)> = criteria
         .iter()

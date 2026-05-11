@@ -548,6 +548,42 @@ fn has_blockquote(text: &str) -> bool {
     text.lines().any(|line| line.trim_start().starts_with("> "))
 }
 
+fn validate_slate_belief_harvest_completion(loaded: &LoadedSpec) -> Result<()> {
+    let spec_type = loaded.frontmatter.r#type.as_str();
+    if !matches!(spec_type, "feat" | "fix" | "refactor") {
+        return Ok(());
+    }
+
+    if !section_is_captured(&loaded.body, "## Belief Harvest") {
+        anyhow::bail!(
+            "Cannot complete '{}': missing ## Belief Harvest. Record no belief change, evidence added to existing beliefs, proposed beliefs, scopes/attacks/defeats, and run `patina scrape` when belief files change.",
+            loaded.frontmatter.id
+        );
+    }
+
+    let harvest = extract_section_paragraph(&loaded.body, "## Belief Harvest")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let harvest_items = extract_section_items(&loaded.body, "## Belief Harvest");
+    let has_decision = harvest.contains("no belief")
+        || harvest.contains("no change")
+        || harvest.contains("evidence")
+        || harvest.contains("scope")
+        || harvest.contains("attack")
+        || harvest.contains("defeat")
+        || harvest.contains("archive")
+        || !harvest_items.is_empty();
+
+    if !has_decision {
+        anyhow::bail!(
+            "Cannot complete '{}': ## Belief Harvest must record an explicit accept/skip/challenge decision.",
+            loaded.frontmatter.id
+        );
+    }
+
+    Ok(())
+}
+
 fn validate_slate_intent_readiness(loaded: &LoadedSpec) -> Result<()> {
     let spec_type = loaded.frontmatter.r#type.as_str();
     if !matches!(spec_type, "feat" | "fix" | "refactor") {
@@ -1008,7 +1044,12 @@ pub fn complete_spec_value(
         None => anyhow::bail!("Spec '{}' has no status", id),
     }
 
-    // 2. Check exit criteria gate (skipped with --force)
+    // 2. Check Slate belief harvest gate (skipped with --force)
+    if !force {
+        validate_slate_belief_harvest_completion(&loaded)?;
+    }
+
+    // 3. Check exit criteria gate (skipped with --force)
     let check = check_spec_value(id)?;
     if !check.passed && !force {
         let unchecked_list: Vec<String> = check
@@ -1047,7 +1088,7 @@ pub fn complete_spec_value(
         BumpType::from_spec_type(&loaded.frontmatter.r#type)
     };
 
-    // 2. Mutate + release + archive — with rollback on failure
+    // 4. Mutate + release + archive — with rollback on failure
     let result = with_content_rollback(&file_path, &backup, || {
         let out = mutate_spec(loaded, |fm| {
             fm.status = Some(SpecStatus::Complete);
