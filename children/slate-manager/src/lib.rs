@@ -26,6 +26,12 @@ struct SpecFrontmatterLite {
     title: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     blocked_by: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    related: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    beliefs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    references: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     paused_date: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -914,8 +920,333 @@ fn handle_show(
     }))
 }
 
+fn build_slate_work_item(
+    frontmatter: &SpecFrontmatterLite,
+    body: &str,
+    design_text: &str,
+) -> serde_json::Value {
+    let work_kind = extract_section_paragraph(body, "## Work Kind")
+        .map(|s| normalize_work_kind(&s))
+        .unwrap_or_else(|| infer_work_kind(frontmatter.r#type.as_deref().unwrap_or("feat")));
+    let human_request = extract_section_paragraph(body, "## Human Request")
+        .or_else(|| extract_blockquote(body))
+        .or_else(|| extract_section_paragraph(body, "## Problem"))
+        .unwrap_or_else(|| "No human request captured yet.".to_string());
+    let allium_intent = extract_section_paragraph(body, "## Allium Intent")
+        .unwrap_or_else(|| "No Allium intent summary captured yet.".to_string());
+    let allium_anchors = collect_allium_anchors(frontmatter, body);
+    let open_questions: Vec<String> = extract_section_items(body, "## Open Questions")
+        .into_iter()
+        .chain(extract_section_items(design_text, "## Open Questions"))
+        .collect();
+    let unresolved_questions = open_questions.clone();
+    let user_alignment_statement = extract_section_paragraph(body, "## User Alignment")
+        .unwrap_or_else(|| "No HITL alignment captured yet.".to_string());
+    let relevant_beliefs = collect_relevant_beliefs(frontmatter, body);
+    let core_doctrine_refs = collect_core_doctrine_refs(frontmatter, body);
+
+    serde_json::json!({
+        "work_kind": work_kind,
+        "human_request": human_request,
+        "allium": {
+            "anchors": allium_anchors,
+            "intent_summary": allium_intent,
+            "intent_status": infer_allium_intent_status(&work_kind, &collect_allium_anchors(frontmatter, body), body),
+            "open_questions": open_questions,
+        },
+        "user_alignment": {
+            "aligned": has_non_placeholder_section(body, "## User Alignment"),
+            "statement": user_alignment_statement,
+            "unresolved_questions": unresolved_questions,
+        },
+        "relevant_beliefs": relevant_beliefs,
+        "core_doctrine_refs": core_doctrine_refs,
+        "implementation_plan": preferred_items(body, &["## Implementation Plan", "## Implementation Order"]),
+        "proof_plan": preferred_items(body, &["## Proof Plan", "## Verification"]),
+        "closure_evidence": preferred_items(body, &["## Closure Evidence", "## Evidence"]),
+        "belief_harvest": build_belief_harvest(&collect_relevant_beliefs(frontmatter, body), body),
+    })
+}
+
+fn build_belief_harvest(existing_beliefs: &[String], body: &str) -> serde_json::Value {
+    serde_json::json!({
+        "existing_beliefs": existing_beliefs,
+        "evidence_to_add": preferred_items(body, &["## Belief Evidence", "## Closure Evidence"]),
+        "proposed_new_beliefs": extract_section_items(body, "## Proposed Beliefs"),
+        "proposed_scopes": extract_section_items(body, "## Belief Scopes"),
+        "proposed_attacks": extract_section_items(body, "## Belief Attacks"),
+        "proposed_defeats_or_archives": preferred_items(body, &["## Belief Defeats", "## Belief Archives"]),
+        "decision_required": !has_non_placeholder_section(body, "## Belief Harvest"),
+    })
+}
+
+fn slate_capability_matrix() -> Vec<serde_json::Value> {
+    vec![
+        cap(
+            "create",
+            "discovery",
+            "capture human request and draft Slate work item",
+            "intentional-divergence",
+        ),
+        cap(
+            "list",
+            "discovery",
+            "list Slate work items by status/target/work kind",
+            "preserve-compat",
+        ),
+        cap(
+            "ready",
+            "discovery",
+            "show Slates ready after blockers and intent gates",
+            "intentional-divergence",
+        ),
+        cap(
+            "blocked",
+            "discovery",
+            "show Slates blocked by dependencies or intent/proof gaps",
+            "intentional-divergence",
+        ),
+        cap(
+            "next",
+            "discovery",
+            "recommend next Slate using status, blockers, queue, and intent readiness",
+            "intentional-divergence",
+        ),
+        cap(
+            "show",
+            "discovery",
+            "show Slate, Allium context, beliefs, proof, and files",
+            "intentional-divergence",
+        ),
+        cap(
+            "history",
+            "discovery",
+            "show Slate lifecycle and evidence history",
+            "preserve-compat",
+        ),
+        cap(
+            "prompt",
+            "planning",
+            "build agent prompt with Allium intent and belief constraints",
+            "intentional-divergence",
+        ),
+        cap(
+            "handoff",
+            "planning",
+            "summarize progress, proof gaps, Allium drift, and belief harvest",
+            "intentional-divergence",
+        ),
+        cap(
+            "packet",
+            "planning",
+            "bundle prompt and handoff context",
+            "intentional-divergence",
+        ),
+        cap(
+            "set",
+            "shaping",
+            "mutate Slate metadata and anchors",
+            "intentional-divergence",
+        ),
+        cap(
+            "rename",
+            "shaping",
+            "rename Slate work item and update durable identity",
+            "preserve-compat",
+        ),
+        cap(
+            "split",
+            "shaping",
+            "split Slate into smaller work items with inherited intent",
+            "intentional-divergence",
+        ),
+        cap(
+            "reopen",
+            "shaping",
+            "reopen closed Slate when proof or intent changes",
+            "intentional-divergence",
+        ),
+        cap(
+            "promote",
+            "lifecycle",
+            "advance draft→ready→active with Allium/HITL gates",
+            "intentional-divergence",
+        ),
+        cap(
+            "pause",
+            "lifecycle",
+            "pause active Slate with WIP capture",
+            "preserve-compat",
+        ),
+        cap(
+            "resume",
+            "lifecycle",
+            "resume paused/blocked Slate after blockers clear",
+            "preserve-compat",
+        ),
+        cap(
+            "block",
+            "lifecycle",
+            "block Slate on dependencies, missing intent, or proof gaps",
+            "intentional-divergence",
+        ),
+        cap(
+            "abandon",
+            "lifecycle",
+            "abandon Slate and preserve reason/evidence",
+            "preserve-compat",
+        ),
+        cap(
+            "check",
+            "closure",
+            "check exit criteria plus intent/proof/belief gates",
+            "intentional-divergence",
+        ),
+        cap(
+            "complete",
+            "closure",
+            "complete only after code, Allium, proof, and belief harvest reconcile",
+            "intentional-divergence",
+        ),
+        cap(
+            "archive",
+            "closure",
+            "archive completed/abandoned Slate with recovery tag",
+            "preserve-compat",
+        ),
+    ]
+}
+
+fn cap(
+    spec_action: &'static str,
+    category: &'static str,
+    slate_capability: &'static str,
+    parity_policy: &'static str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "spec_action": spec_action,
+        "category": category,
+        "slate_capability": slate_capability,
+        "parity_policy": parity_policy,
+    })
+}
+
+fn infer_work_kind(spec_type: &str) -> String {
+    match spec_type {
+        "fix" => "fix",
+        "refactor" => "refactor",
+        _ => "build",
+    }
+    .to_string()
+}
+
+fn normalize_work_kind(raw: &str) -> String {
+    let lower = raw.to_ascii_lowercase();
+    if lower.contains("refactor") {
+        "refactor".to_string()
+    } else if lower.contains("fix") || lower.contains("bug") {
+        "fix".to_string()
+    } else {
+        "build".to_string()
+    }
+}
+
+fn infer_allium_intent_status(work_kind: &str, anchors: &[String], body: &str) -> String {
+    let allium_text = extract_section_paragraph(body, "## Allium Intent").unwrap_or_default();
+    let lower = allium_text.to_ascii_lowercase();
+    if work_kind == "refactor" && (lower.contains("no allium") || lower.contains("no behavior")) {
+        return "not_behavioral_refactor".to_string();
+    }
+    if lower.contains("stale") || lower.contains("needs update") {
+        return "needs_update".to_string();
+    }
+    if lower.contains("ambiguous") || lower.contains("unclear") {
+        return "ambiguous".to_string();
+    }
+    if anchors.is_empty() && allium_text.is_empty() {
+        return "missing".to_string();
+    }
+    "anchored".to_string()
+}
+
+fn collect_allium_anchors(frontmatter: &SpecFrontmatterLite, body: &str) -> Vec<String> {
+    let mut anchors = Vec::new();
+    for value in frontmatter
+        .related
+        .iter()
+        .chain(frontmatter.references.iter())
+    {
+        if is_allium_ref(value) {
+            anchors.push(value.clone());
+        }
+    }
+    anchors.extend(extract_section_items(body, "## Allium Intent"));
+    dedup(anchors)
+}
+
+fn collect_relevant_beliefs(frontmatter: &SpecFrontmatterLite, body: &str) -> Vec<String> {
+    let mut refs = frontmatter.beliefs.clone();
+    refs.extend(extract_section_items(body, "## Relevant Beliefs"));
+    dedup(refs)
+}
+
+fn collect_core_doctrine_refs(frontmatter: &SpecFrontmatterLite, body: &str) -> Vec<String> {
+    let mut refs: Vec<String> = frontmatter
+        .references
+        .iter()
+        .chain(frontmatter.related.iter())
+        .filter(|value| value.contains("layer/core"))
+        .cloned()
+        .collect();
+    refs.extend(extract_section_items(body, "## Core Doctrine"));
+    dedup(refs)
+}
+
+fn is_allium_ref(value: &str) -> bool {
+    value.ends_with(".allium") || value.contains("layer/allium") || value.contains("/allium/")
+}
+
+fn preferred_items(body: &str, headings: &[&str]) -> Vec<String> {
+    for heading in headings {
+        let items = extract_section_items(body, heading);
+        if !items.is_empty() {
+            return items;
+        }
+    }
+    Vec::new()
+}
+
+fn has_non_placeholder_section(text: &str, heading: &str) -> bool {
+    extract_section_paragraph(text, heading)
+        .map(|value| {
+            let lower = value.to_ascii_lowercase();
+            !lower.contains("not captured") && !lower.contains("todo") && !lower.is_empty()
+        })
+        .unwrap_or(false)
+        || !extract_section_items(text, heading).is_empty()
+}
+
+fn extract_blockquote(text: &str) -> Option<String> {
+    text.lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("> "))
+        .map(|line| line.trim_start_matches("> ").trim().to_string())
+}
+
+fn dedup(values: Vec<String>) -> Vec<String> {
+    let mut out = Vec::new();
+    for value in values {
+        if !value.trim().is_empty() && !out.contains(&value) {
+            out.push(value);
+        }
+    }
+    out
+}
+
 fn build_prompt_packet(spec: &SpecRecord) -> serde_json::Value {
     let status = status_or(&spec.frontmatter, "unknown");
+    let design_text = spec.design_body.as_deref().unwrap_or_default();
+    let slate_work_item = build_slate_work_item(&spec.frontmatter, &spec.body, design_text);
     let title = extract_title(&spec.body)
         .or(spec.frontmatter.title.clone())
         .unwrap_or_else(|| spec.frontmatter.id.clone());
@@ -961,12 +1292,16 @@ fn build_prompt_packet(spec: &SpecRecord) -> serde_json::Value {
             "Run /session-update periodically.",
             "Run /session-note for important insights.",
             "Run /session-end when complete."
-        ]
+        ],
+        "slate_work_item": slate_work_item,
+        "slate_capabilities": slate_capability_matrix()
     })
 }
 
 fn build_handoff_packet(spec: &SpecRecord) -> serde_json::Value {
     let status = status_or(&spec.frontmatter, "unknown");
+    let design_text = spec.design_body.as_deref().unwrap_or_default();
+    let slate_work_item = build_slate_work_item(&spec.frontmatter, &spec.body, design_text);
     let title = extract_title(&spec.body)
         .or(spec.frontmatter.title.clone())
         .unwrap_or_else(|| spec.frontmatter.id.clone());
@@ -1013,6 +1348,8 @@ fn build_handoff_packet(spec: &SpecRecord) -> serde_json::Value {
         "verification": extract_section_items(&spec.body, "## Verification"),
         "spec_path": spec.path,
         "design_path": spec.design_path,
+        "slate_work_item": slate_work_item,
+        "slate_capabilities": slate_capability_matrix(),
     })
 }
 

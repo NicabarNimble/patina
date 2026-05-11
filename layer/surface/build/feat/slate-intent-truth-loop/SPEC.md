@@ -34,7 +34,7 @@ exit_criteria:
   checked: true
 - id: si2-slate-work-item-model
   text: Slate has an explicit work-item model for build/refactor/fix work that records human complaint, work kind, Allium anchors, user intent alignment, proof plan, relevant existing beliefs, and post-work evidence.
-  checked: false
+  checked: true
 - id: si3-allium-first-intent-dialogue
   text: Slate creation/activation dialogue uses Allium first to discover, confirm, or update intended behavior before implementation work is treated as ready.
   checked: false
@@ -268,4 +268,4 @@ Frontmatter `si1..si9` are the source of truth.
 
 ## Build Readiness
 
-Not ready until the initial Slate work-item model is accepted.
+Ready for implementation. The initial Slate work-item model is accepted and packet-level extraction is in place.

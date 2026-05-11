@@ -132,6 +132,7 @@ Slate recommends and records; the existing belief files, `patina scrape`, and be
 ## Commits
 
 1. `spec: draft slate-intent-truth-loop` — created the system spec to lock the direction.
+2. `feat: add slate work item model` — add packet-level Slate work item extraction and capability matrix to builtin packets and the Slate child dispatch path.
 
 ## Direct Code Targets
 
