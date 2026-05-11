@@ -256,7 +256,7 @@ mod tests {
     fn scans_project_living_slate_work_files() -> Result<()> {
         let temp = tempfile::tempdir()?;
         let project = temp.path();
-        std::fs::create_dir_all(project.join(".patina"))?;
+        std::fs::create_dir_all(crate::paths::project::patina_dir(project))?;
         std::fs::create_dir_all(project.join("layer/slate/work/demo"))?;
         std::fs::write(
             project.join("layer/slate/work/demo/work.toml"),
