@@ -65,6 +65,7 @@ struct SpecRecord {
 }
 
 const SLATE_WORK_DIR: &str = "layer/slate/work";
+const SLATE_EVENTS_PATH: &str = "layer/slate/events.jsonl";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct SlateWorkFile {
@@ -84,6 +85,24 @@ struct SlateWorkFile {
     proof_plan: Vec<String>,
     #[serde(default)]
     closure_evidence: Vec<String>,
+    #[serde(default)]
+    blocked_by: Vec<String>,
+    #[serde(default)]
+    target: Option<String>,
+    #[serde(default)]
+    implementation_plan: Vec<String>,
+    #[serde(default)]
+    belief_harvest_decision: Option<String>,
+    #[serde(default)]
+    created_at: Option<String>,
+    #[serde(default)]
+    updated_at: Option<String>,
+    #[serde(default)]
+    closed_at: Option<String>,
+    #[serde(default)]
+    block_reason: Option<String>,
+    #[serde(default)]
+    pause_reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -586,12 +605,22 @@ fn find_slate_work<'a>(
         .ok_or_else(|| format!("Slate work '{}' not found", id))
 }
 
-fn create_slate_work_file(root: &Path, work: &SlateWorkFile) -> Result<SlateWorkRecord, String> {
+fn timestamp() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_string())
+}
+
+fn write_slate_work_file(root: &Path, work: &mut SlateWorkFile) -> Result<SlateWorkRecord, String> {
     validate_slate_id(&work.id)?;
-    let path = slate_work_path(root, &work.id);
-    if path.exists() {
-        return Err(format!("Slate work '{}' already exists", work.id));
+    let now = timestamp();
+    if work.created_at.is_none() {
+        work.created_at = Some(now.clone());
     }
+    work.updated_at = Some(now);
+
+    let path = slate_work_path(root, &work.id);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("create {}: {}", parent.display(), e))?;
     }
@@ -601,6 +630,104 @@ fn create_slate_work_file(root: &Path, work: &SlateWorkFile) -> Result<SlateWork
         work: work.clone(),
         path: to_repo_relative(root, &path),
     })
+}
+
+fn append_slate_event(
+    root: &Path,
+    work_id: &str,
+    event_type: &str,
+    payload: serde_json::Value,
+) -> Result<(), String> {
+    let path = root.join(SLATE_EVENTS_PATH);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {}", parent.display(), e))?;
+    }
+    let event = serde_json::json!({
+        "work_id": work_id,
+        "event_type": event_type,
+        "payload": payload,
+        "created_at": timestamp(),
+    });
+    use std::io::Write;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("open {}: {}", path.display(), e))?;
+    writeln!(file, "{}", event).map_err(|e| format!("append {}: {}", path.display(), e))
+}
+
+fn create_slate_work_file(
+    root: &Path,
+    work: &mut SlateWorkFile,
+) -> Result<SlateWorkRecord, String> {
+    validate_slate_id(&work.id)?;
+    let path = slate_work_path(root, &work.id);
+    if path.exists() {
+        return Err(format!("Slate work '{}' already exists", work.id));
+    }
+    let record = write_slate_work_file(root, work)?;
+    append_slate_event(
+        root,
+        &record.work.id,
+        "created",
+        serde_json::json!({"status": record.work.status}),
+    )?;
+    Ok(record)
+}
+
+fn update_slate_work(
+    root: &Path,
+    id: &str,
+    event_type: &str,
+    payload: serde_json::Value,
+    mutate: impl FnOnce(&mut SlateWorkFile) -> Result<(), String>,
+) -> Result<SlateWorkRecord, String> {
+    let mut records = load_slate_work(root)?;
+    let mut record = find_slate_work(&records, id)?.clone();
+    mutate(&mut record.work)?;
+    let saved = write_slate_work_file(root, &mut record.work)?;
+    append_slate_event(root, &saved.work.id, event_type, payload)?;
+    records.clear();
+    Ok(saved)
+}
+
+fn validate_ready_gate(work: &SlateWorkFile) -> Result<(), String> {
+    let allium_ok = !work.allium_anchors.is_empty()
+        || (work.kind == "refactor"
+            && work
+                .user_alignment
+                .to_ascii_lowercase()
+                .contains("no behavior"));
+    if work.kind.is_empty()
+        || work.human_request.trim().is_empty()
+        || work.user_alignment.trim().is_empty()
+        || work.proof_plan.is_empty()
+        || !allium_ok
+    {
+        return Err(format!(
+            "Slate work '{}' is not ready: require kind, human request, Allium anchors or no-behavior-change rationale, user alignment, and proof plan",
+            work.id
+        ));
+    }
+    Ok(())
+}
+
+fn load_slate_events(root: &Path, id: &str) -> Result<Vec<serde_json::Value>, String> {
+    let path = root.join(SLATE_EVENTS_PATH);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path.display(), e))?;
+    let mut events = Vec::new();
+    for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+        let event: serde_json::Value =
+            serde_json::from_str(line).map_err(|e| format!("parse {}: {}", path.display(), e))?;
+        if event.get("work_id").and_then(|value| value.as_str()) == Some(id) {
+            events.push(event);
+        }
+    }
+    Ok(events)
 }
 
 fn archive_spec_record(root: &Path, spec: &SpecRecord, dry_run: bool) -> Result<(), String> {
@@ -1756,8 +1883,46 @@ fn slate_work_record(record: SlateWorkRecord) -> exports::patina::slate::control
         belief_refs: record.work.belief_refs,
         proof_plan: record.work.proof_plan,
         closure_evidence: record.work.closure_evidence,
+        blocked_by: record.work.blocked_by,
+        target: record.work.target,
+        implementation_plan: record.work.implementation_plan,
+        belief_harvest_decision: record.work.belief_harvest_decision,
         path: record.path,
     }
+}
+
+fn slate_work_event(value: serde_json::Value) -> exports::patina::slate::control::WorkEvent {
+    exports::patina::slate::control::WorkEvent {
+        work_id: value
+            .get("work_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        event_type: value
+            .get("event_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+        payload_json: value
+            .get("payload")
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "{}".to_string()),
+        created_at: value
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string(),
+    }
+}
+
+fn normalize_work_items(items: &[String]) -> Vec<(String, String, bool)> {
+    items
+        .iter()
+        .map(|text| {
+            let checked = text.contains("[x]") || text.contains("checked: true");
+            (slugify(text), text.clone(), checked)
+        })
+        .collect()
 }
 
 impl exports::patina::slate::control::Guest for SlateManager {
@@ -1785,6 +1950,83 @@ impl exports::patina::slate::control::Guest for SlateManager {
         })
     }
 
+    fn ready_work(
+        req: exports::patina::slate::control::WorkListRequest,
+    ) -> Result<Vec<exports::patina::slate::control::WorkSummary>, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let records = load_slate_work(&project_root)?;
+            Ok(records
+                .into_iter()
+                .filter(|record| record.work.status == "ready" || record.work.status == "active")
+                .filter(|record| {
+                    req.kind
+                        .as_deref()
+                        .is_none_or(|kind| record.work.kind == normalize_slate_kind(kind))
+                })
+                .map(slate_work_summary)
+                .collect())
+        })
+    }
+
+    fn blocked_work(
+        req: exports::patina::slate::control::WorkListRequest,
+    ) -> Result<Vec<exports::patina::slate::control::WorkSummary>, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let records = load_slate_work(&project_root)?;
+            Ok(records
+                .into_iter()
+                .filter(|record| {
+                    record.work.status == "blocked" || !record.work.blocked_by.is_empty()
+                })
+                .filter(|record| {
+                    req.kind
+                        .as_deref()
+                        .is_none_or(|kind| record.work.kind == normalize_slate_kind(kind))
+                })
+                .map(slate_work_summary)
+                .collect())
+        })
+    }
+
+    fn next_work(
+        req: exports::patina::slate::control::WorkListRequest,
+    ) -> Result<Vec<exports::patina::slate::control::WorkRecommendation>, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let records = load_slate_work(&project_root)?;
+            let mut rows = records
+                .into_iter()
+                .filter(|record| {
+                    req.kind
+                        .as_deref()
+                        .is_none_or(|kind| record.work.kind == normalize_slate_kind(kind))
+                })
+                .filter_map(|record| {
+                    let (priority, reason) = match record.work.status.as_str() {
+                        "active" => (1, "Currently active".to_string()),
+                        "ready" => (2, "Ready to start".to_string()),
+                        "blocked" if record.work.blocked_by.is_empty() => {
+                            (3, "Blocked without dependency".to_string())
+                        }
+                        "draft" => (4, "Draft needs intent/proof alignment".to_string()),
+                        _ => return None,
+                    };
+                    Some(exports::patina::slate::control::WorkRecommendation {
+                        id: record.work.id,
+                        status: record.work.status,
+                        reason,
+                        priority,
+                        path: record.path,
+                    })
+                })
+                .collect::<Vec<_>>();
+            rows.sort_by(|a, b| a.priority.cmp(&b.priority).then(a.id.cmp(&b.id)));
+            Ok(rows)
+        })
+    }
+
     fn show_work(
         req: exports::patina::slate::control::WorkIdRequest,
     ) -> Result<exports::patina::slate::control::WorkRecord, String> {
@@ -1797,12 +2039,22 @@ impl exports::patina::slate::control::Guest for SlateManager {
         })
     }
 
+    fn history_work(
+        req: exports::patina::slate::control::WorkIdRequest,
+    ) -> Result<Vec<exports::patina::slate::control::WorkEvent>, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let events = load_slate_events(&project_root, &req.id)?;
+            Ok(events.into_iter().map(slate_work_event).collect())
+        })
+    }
+
     fn create_work(
         req: exports::patina::slate::control::CreateWorkRequest,
     ) -> Result<exports::patina::slate::control::WorkRecord, String> {
         let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
         with_project_root_cwd(&project_root, || {
-            let work = SlateWorkFile {
+            let mut work = SlateWorkFile {
                 id: req.id,
                 title: req.title,
                 kind: normalize_slate_kind(&req.kind),
@@ -1813,8 +2065,287 @@ impl exports::patina::slate::control::Guest for SlateManager {
                 belief_refs: Vec::new(),
                 proof_plan: Vec::new(),
                 closure_evidence: Vec::new(),
+                blocked_by: Vec::new(),
+                target: None,
+                implementation_plan: Vec::new(),
+                belief_harvest_decision: None,
+                created_at: None,
+                updated_at: None,
+                closed_at: None,
+                block_reason: None,
+                pause_reason: None,
             };
-            create_slate_work_file(&project_root, &work).map(slate_work_record)
+            create_slate_work_file(&project_root, &mut work).map(slate_work_record)
+        })
+    }
+
+    fn set_work(
+        req: exports::patina::slate::control::SetWorkRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            update_slate_work(
+                &project_root,
+                &req.id,
+                "set",
+                serde_json::json!({"field": req.field, "value": req.value}),
+                |work| {
+                    match req.field.as_str() {
+                        "title" => work.title = req.value,
+                        "status" => work.status = req.value,
+                        "target" => work.target = Some(req.value),
+                        "user_alignment" => work.user_alignment = req.value,
+                        "belief_harvest_decision" => work.belief_harvest_decision = Some(req.value),
+                        "proof_plan" => work.proof_plan.push(req.value),
+                        "implementation_plan" => work.implementation_plan.push(req.value),
+                        "closure_evidence" => work.closure_evidence.push(req.value),
+                        "allium_anchor" => work.allium_anchors.push(req.value),
+                        "belief_ref" => work.belief_refs.push(req.value),
+                        other => return Err(format!("unsupported Slate field '{}'", other)),
+                    }
+                    Ok(())
+                },
+            )
+            .map(slate_work_record)
+        })
+    }
+
+    fn promote_work(
+        req: exports::patina::slate::control::WorkStatusRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            update_slate_work(
+                &project_root,
+                &req.id,
+                "promoted",
+                serde_json::json!({"force": req.force}),
+                |work| {
+                    match work.status.as_str() {
+                        "draft" => {
+                            if !req.force {
+                                validate_ready_gate(work)?;
+                            }
+                            work.status = "ready".to_string();
+                        }
+                        "ready" => work.status = "active".to_string(),
+                        other => {
+                            return Err(format!(
+                                "cannot promote Slate work '{}' from status '{}'",
+                                work.id, other
+                            ))
+                        }
+                    }
+                    Ok(())
+                },
+            )
+            .map(slate_work_record)
+        })
+    }
+
+    fn check_work(
+        req: exports::patina::slate::control::WorkIdRequest,
+    ) -> Result<exports::patina::slate::control::WorkCheckResult, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let records = load_slate_work(&project_root)?;
+            let record = find_slate_work(&records, &req.id)?;
+            let criteria = normalize_work_items(&record.work.proof_plan);
+            let total = criteria.len();
+            let checked = criteria.iter().filter(|(_, _, checked)| *checked).count();
+            let unchecked = criteria
+                .into_iter()
+                .filter(|(_, _, checked)| !*checked)
+                .map(
+                    |(id, text, _)| exports::patina::slate::control::UncheckedCriterion {
+                        id,
+                        text,
+                    },
+                )
+                .collect::<Vec<_>>();
+            Ok(exports::patina::slate::control::WorkCheckResult {
+                work_id: req.id,
+                total: u32::try_from(total).map_err(|_| "total exceeds u32".to_string())?,
+                checked: u32::try_from(checked).map_err(|_| "checked exceeds u32".to_string())?,
+                unchecked,
+                passed: checked == total && total > 0,
+            })
+        })
+    }
+
+    fn pause_work(
+        req: exports::patina::slate::control::PauseWorkRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            update_slate_work(
+                &project_root,
+                &req.id,
+                "paused",
+                serde_json::json!({"reason": req.reason}),
+                |work| {
+                    work.status = "paused".to_string();
+                    work.pause_reason = Some(req.reason);
+                    Ok(())
+                },
+            )
+            .map(slate_work_record)
+        })
+    }
+
+    fn resume_work(
+        req: exports::patina::slate::control::WorkStatusRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            update_slate_work(
+                &project_root,
+                &req.id,
+                "resumed",
+                serde_json::json!({"force": req.force}),
+                |work| {
+                    if !matches!(work.status.as_str(), "paused" | "blocked") && !req.force {
+                        return Err(format!(
+                            "cannot resume Slate work '{}' from status '{}'",
+                            work.id, work.status
+                        ));
+                    }
+                    work.status = "ready".to_string();
+                    work.pause_reason = None;
+                    Ok(())
+                },
+            )
+            .map(slate_work_record)
+        })
+    }
+
+    fn block_work(
+        req: exports::patina::slate::control::BlockWorkRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            update_slate_work(
+                &project_root,
+                &req.id,
+                "blocked",
+                serde_json::json!({"reason": req.reason, "blocked_by": req.blocked_by}),
+                |work| {
+                    work.status = "blocked".to_string();
+                    work.block_reason = Some(req.reason);
+                    if let Some(blocker) = req.blocked_by {
+                        if !work.blocked_by.contains(&blocker) {
+                            work.blocked_by.push(blocker);
+                        }
+                    }
+                    Ok(())
+                },
+            )
+            .map(slate_work_record)
+        })
+    }
+
+    fn abandon_work(
+        req: exports::patina::slate::control::PauseWorkRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            update_slate_work(
+                &project_root,
+                &req.id,
+                "abandoned",
+                serde_json::json!({"reason": req.reason}),
+                |work| {
+                    work.status = "abandoned".to_string();
+                    work.closed_at = Some(timestamp());
+                    work.block_reason = Some(req.reason);
+                    Ok(())
+                },
+            )
+            .map(slate_work_record)
+        })
+    }
+
+    fn rename_work(
+        req: exports::patina::slate::control::RenameWorkRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            validate_slate_id(&req.new_id)?;
+            let records = load_slate_work(&project_root)?;
+            let mut record = find_slate_work(&records, &req.id)?.clone();
+            let old_dir = slate_work_path(&project_root, &req.id)
+                .parent()
+                .unwrap()
+                .to_path_buf();
+            let new_path = slate_work_path(&project_root, &req.new_id);
+            if new_path.exists() {
+                return Err(format!("Slate work '{}' already exists", req.new_id));
+            }
+            record.work.id = req.new_id.clone();
+            let saved = write_slate_work_file(&project_root, &mut record.work)?;
+            if old_dir.exists() {
+                fs::remove_dir_all(&old_dir)
+                    .map_err(|e| format!("remove {}: {}", old_dir.display(), e))?;
+            }
+            append_slate_event(
+                &project_root,
+                &saved.work.id,
+                "renamed",
+                serde_json::json!({"old_id": req.id}),
+            )?;
+            Ok(slate_work_record(saved))
+        })
+    }
+
+    fn reopen_work(
+        req: exports::patina::slate::control::WorkStatusRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            update_slate_work(
+                &project_root,
+                &req.id,
+                "reopened",
+                serde_json::json!({"force": req.force}),
+                |work| {
+                    if !matches!(work.status.as_str(), "complete" | "abandoned") && !req.force {
+                        return Err(format!(
+                            "cannot reopen Slate work '{}' from status '{}'",
+                            work.id, work.status
+                        ));
+                    }
+                    work.status = "active".to_string();
+                    work.closed_at = None;
+                    Ok(())
+                },
+            )
+            .map(slate_work_record)
+        })
+    }
+
+    fn split_work(
+        req: exports::patina::slate::control::SplitWorkRequest,
+    ) -> Result<exports::patina::slate::control::WorkRecord, String> {
+        let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
+        with_project_root_cwd(&project_root, || {
+            let records = load_slate_work(&project_root)?;
+            let parent = find_slate_work(&records, &req.id)?;
+            let mut child = parent.work.clone();
+            child.id = req.new_id;
+            child.title = req.title;
+            child.status = "draft".to_string();
+            child.closure_evidence.clear();
+            child.closed_at = None;
+            child.created_at = None;
+            child.updated_at = None;
+            let saved = create_slate_work_file(&project_root, &mut child)?;
+            append_slate_event(
+                &project_root,
+                &parent.work.id,
+                "split",
+                serde_json::json!({"child_id": saved.work.id}),
+            )?;
+            Ok(slate_work_record(saved))
         })
     }
 
@@ -2312,6 +2843,71 @@ impl exports::patina::slate::control::Guest for SlateManager {
         );
 
         Ok(data.to_string())
+    }
+}
+
+#[cfg(test)]
+mod slate_native_tests {
+    use super::*;
+
+    fn temp_project() -> tempfile::TempDir {
+        let temp = tempfile::tempdir().expect("temp project");
+        fs::create_dir_all(temp.path().join(".patina")).expect("patina dir");
+        fs::create_dir_all(temp.path().join("layer")).expect("layer dir");
+        temp
+    }
+
+    #[test]
+    fn native_slate_create_update_and_history_are_project_living() {
+        let temp = temp_project();
+        let mut work = SlateWorkFile {
+            id: "demo".to_string(),
+            title: "Demo".to_string(),
+            kind: "build".to_string(),
+            status: "draft".to_string(),
+            human_request: "Build it".to_string(),
+            allium_anchors: vec!["layer/allium/demo.allium".to_string()],
+            user_alignment: "User confirmed".to_string(),
+            proof_plan: vec!["[x] cargo test".to_string()],
+            ..Default::default()
+        };
+
+        let created = create_slate_work_file(temp.path(), &mut work).expect("create work");
+        assert_eq!(created.path, "layer/slate/work/demo/work.toml");
+
+        let promoted = update_slate_work(
+            temp.path(),
+            "demo",
+            "promoted",
+            serde_json::json!({"to": "ready"}),
+            |work| {
+                validate_ready_gate(work)?;
+                work.status = "ready".to_string();
+                Ok(())
+            },
+        )
+        .expect("promote");
+        assert_eq!(promoted.work.status, "ready");
+
+        let events = load_slate_events(temp.path(), "demo").expect("events");
+        assert_eq!(events.len(), 2);
+        assert!(temp.path().join("layer/slate/work/demo/work.toml").exists());
+        assert!(temp.path().join("layer/slate/events.jsonl").exists());
+    }
+
+    #[test]
+    fn native_slate_ready_gate_blocks_missing_intent() {
+        let work = SlateWorkFile {
+            id: "demo".to_string(),
+            title: "Demo".to_string(),
+            kind: "build".to_string(),
+            human_request: "Build it".to_string(),
+            user_alignment: "User confirmed".to_string(),
+            proof_plan: vec!["cargo test".to_string()],
+            ..Default::default()
+        };
+        let err = validate_ready_gate(&work).expect_err("missing allium should block");
+        assert!(err.contains("Allium"));
     }
 }
 

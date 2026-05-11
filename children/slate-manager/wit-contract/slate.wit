@@ -137,6 +137,72 @@ interface control {
         belief-refs: list<string>,
         proof-plan: list<string>,
         closure-evidence: list<string>,
+        blocked-by: list<string>,
+        target: option<string>,
+        implementation-plan: list<string>,
+        belief-harvest-decision: option<string>,
+        path: string,
+    }
+
+    record work-status-request {
+        project: option<string>,
+        id: string,
+        force: bool,
+    }
+
+    record set-work-request {
+        project: option<string>,
+        id: string,
+        field: string,
+        value: string,
+    }
+
+    record block-work-request {
+        project: option<string>,
+        id: string,
+        reason: string,
+        blocked-by: option<string>,
+    }
+
+    record pause-work-request {
+        project: option<string>,
+        id: string,
+        reason: string,
+    }
+
+    record rename-work-request {
+        project: option<string>,
+        id: string,
+        new-id: string,
+    }
+
+    record split-work-request {
+        project: option<string>,
+        id: string,
+        new-id: string,
+        title: string,
+    }
+
+    record work-event {
+        work-id: string,
+        event-type: string,
+        payload-json: string,
+        created-at: string,
+    }
+
+    record work-check-result {
+        work-id: string,
+        total: u32,
+        checked: u32,
+        unchecked: list<unchecked-criterion>,
+        passed: bool,
+    }
+
+    record work-recommendation {
+        id: string,
+        status: string,
+        reason: string,
+        priority: u32,
         path: string,
     }
 
@@ -227,8 +293,22 @@ interface control {
     packet-spec: func(req: spec-id-request) -> result<packet-result, string>;
     complete-spec: func(req: complete-request) -> result<complete-result, string>;
     list-work: func(req: work-list-request) -> result<list<work-summary>, string>;
+    ready-work: func(req: work-list-request) -> result<list<work-summary>, string>;
+    blocked-work: func(req: work-list-request) -> result<list<work-summary>, string>;
+    next-work: func(req: work-list-request) -> result<list<work-recommendation>, string>;
     show-work: func(req: work-id-request) -> result<work-record, string>;
+    history-work: func(req: work-id-request) -> result<list<work-event>, string>;
     create-work: func(req: create-work-request) -> result<work-record, string>;
+    set-work: func(req: set-work-request) -> result<work-record, string>;
+    promote-work: func(req: work-status-request) -> result<work-record, string>;
+    check-work: func(req: work-id-request) -> result<work-check-result, string>;
+    pause-work: func(req: pause-work-request) -> result<work-record, string>;
+    resume-work: func(req: work-status-request) -> result<work-record, string>;
+    block-work: func(req: block-work-request) -> result<work-record, string>;
+    abandon-work: func(req: pause-work-request) -> result<work-record, string>;
+    rename-work: func(req: rename-work-request) -> result<work-record, string>;
+    reopen-work: func(req: work-status-request) -> result<work-record, string>;
+    split-work: func(req: split-work-request) -> result<work-record, string>;
 
     archive-spec: func(req: archive-request) -> result<archive-result, string>;
 

@@ -15,6 +15,9 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 toml = "0.8"
 
+[dev-dependencies]
+tempfile = "3.14"
+
 [package.metadata.component]
 package = "patina:slate-manager"
 

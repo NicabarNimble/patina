@@ -23,6 +23,14 @@ pub struct SlateWorkItem {
     pub proof_plan: Vec<String>,
     #[serde(default)]
     pub closure_evidence: Vec<String>,
+    #[serde(default)]
+    pub blocked_by: Vec<String>,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub implementation_plan: Vec<String>,
+    #[serde(default)]
+    pub belief_harvest_decision: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -72,6 +80,10 @@ impl SlateProjectStore {
                 belief_refs_json TEXT NOT NULL,
                 proof_plan_json TEXT NOT NULL,
                 closure_evidence_json TEXT NOT NULL,
+                blocked_by_json TEXT NOT NULL DEFAULT '[]',
+                target TEXT,
+                implementation_plan_json TEXT NOT NULL DEFAULT '[]',
+                belief_harvest_decision TEXT,
                 source_path TEXT NOT NULL,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );
@@ -104,8 +116,9 @@ impl SlateProjectStore {
             INSERT INTO slate_work_items (
                 id, title, kind, status, human_request, user_alignment,
                 allium_anchors_json, belief_refs_json, proof_plan_json,
-                closure_evidence_json, source_path, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, CURRENT_TIMESTAMP)
+                closure_evidence_json, blocked_by_json, target, implementation_plan_json,
+                belief_harvest_decision, source_path, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 kind = excluded.kind,
@@ -116,6 +129,10 @@ impl SlateProjectStore {
                 belief_refs_json = excluded.belief_refs_json,
                 proof_plan_json = excluded.proof_plan_json,
                 closure_evidence_json = excluded.closure_evidence_json,
+                blocked_by_json = excluded.blocked_by_json,
+                target = excluded.target,
+                implementation_plan_json = excluded.implementation_plan_json,
+                belief_harvest_decision = excluded.belief_harvest_decision,
                 source_path = excluded.source_path,
                 updated_at = excluded.updated_at
             "#,
@@ -130,6 +147,10 @@ impl SlateProjectStore {
                 serde_json::to_string(&projection.item.belief_refs)?,
                 serde_json::to_string(&projection.item.proof_plan)?,
                 serde_json::to_string(&projection.item.closure_evidence)?,
+                serde_json::to_string(&projection.item.blocked_by)?,
+                projection.item.target,
+                serde_json::to_string(&projection.item.implementation_plan)?,
+                projection.item.belief_harvest_decision,
                 projection.source_path,
             ],
         )?;
@@ -150,7 +171,8 @@ impl SlateProjectStore {
             r#"
             SELECT id, title, kind, status, human_request, user_alignment,
                    allium_anchors_json, belief_refs_json, proof_plan_json,
-                   closure_evidence_json, source_path
+                   closure_evidence_json, blocked_by_json, target,
+                   implementation_plan_json, belief_harvest_decision, source_path
             FROM slate_work_items
             ORDER BY status, kind, id
             "#,
@@ -161,6 +183,8 @@ impl SlateProjectStore {
                 let belief_json: String = row.get(7)?;
                 let proof_json: String = row.get(8)?;
                 let closure_json: String = row.get(9)?;
+                let blocked_json: String = row.get(10)?;
+                let implementation_json: String = row.get(12)?;
                 Ok(SlateWorkProjection {
                     item: SlateWorkItem {
                         id: row.get(0)?,
@@ -173,8 +197,13 @@ impl SlateProjectStore {
                         belief_refs: serde_json::from_str(&belief_json).unwrap_or_default(),
                         proof_plan: serde_json::from_str(&proof_json).unwrap_or_default(),
                         closure_evidence: serde_json::from_str(&closure_json).unwrap_or_default(),
+                        blocked_by: serde_json::from_str(&blocked_json).unwrap_or_default(),
+                        target: row.get(11)?,
+                        implementation_plan: serde_json::from_str(&implementation_json)
+                            .unwrap_or_default(),
+                        belief_harvest_decision: row.get(13)?,
                     },
-                    source_path: row.get(10)?,
+                    source_path: row.get(14)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -240,6 +269,10 @@ human_request = "Build the thing"
 allium_anchors = ["layer/allium/demo.allium"]
 user_alignment = "User confirmed."
 proof_plan = ["cargo test"]
+blocked_by = ["dependency"]
+target = "q1"
+implementation_plan = ["edit code"]
+belief_harvest_decision = "no belief change"
 "#,
         )?;
 
