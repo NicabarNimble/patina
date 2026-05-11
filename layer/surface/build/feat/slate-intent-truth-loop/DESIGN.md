@@ -2,18 +2,193 @@
 
 ## Why This Design
 
+Slate is becoming the place where change work happens. The existing `patina spec` system already provides useful todo lifecycle mechanics, but the future Slate product should be grounded by Allium and beliefs rather than replacing them.
+
+The central design rule is:
+
+> Slate manages the work transaction. Allium holds intended behavior. Beliefs hold defeasible doctrine and evidence.
+
+This keeps each artifact honest:
+
+- Slate does not become a second specification language.
+- Allium does not become unchallenged stale truth.
+- Beliefs do not become unpruned doctrine.
+- Existing Allium and belief mechanisms remain authoritative for their own domains.
+
 ## Build Target
+
+Implement Slate as a structured build/refactor/fix todo system with an intent/proof loop.
+
+### Slate work-item fields
+
+Initial conceptual record:
+
+```text
+SlateWorkItem
+  id
+  title
+  work_kind: build | refactor | fix
+  human_request
+  status: draft | ready | active | blocked | complete
+  allium_context
+  user_intent_alignment
+  relevant_beliefs
+  core_doctrine_refs
+  implementation_plan
+  proof_plan
+  execution_evidence
+  drift_classification
+  belief_harvest
+```
+
+### Allium context
+
+```text
+AlliumContext
+  files: list<path>
+  constructs: entities/rules/surfaces/contracts/invariants/open_questions
+  check_summary
+  analyse_findings
+  model_summary
+  plan_obligations
+  intent_status:
+    already_matches
+    needs_update
+    missing
+    ambiguous
+    not_behavioral_refactor
+```
+
+Slate should collect this from existing Allium CLI/skill workflows and store summaries/links, not reinterpret Allium itself.
+
+### User intent alignment
+
+```text
+UserIntentAlignment
+  aligned: bool
+  captured_at
+  captured_by
+  statement
+  allium_delta_required: bool
+  unresolved_questions: list<string>
+```
+
+If intended behavior is missing or disputed, Slate blocks until user alignment is captured or the Slate is abandoned.
+
+### Belief harvest
+
+```text
+BeliefHarvest
+  relevant_existing: list<wikilink>
+  evidence_to_add: list<path-or-commit-or-session>
+  proposed_new_beliefs: list<statement>
+  proposed_scopes: list<wikilink>
+  proposed_attacks: list<wikilink>
+  proposed_defeats_or_archives: list<wikilink>
+```
+
+Slate recommends and records; the existing belief files, `patina scrape`, and belief audit/graph machinery remain the belief system.
 
 ## Resolved Decisions
 
+1. **Allium first during Slate creation**
+   - The HITL dialogue asks what behavior is intended and whether Allium already says it.
+   - Beliefs can constrain the work, but new beliefs generally come after proof.
+
+2. **Slate blocks on unclear truth**
+   - If user intent and Allium disagree, Slate does not silently choose.
+   - It routes to Allium tending/elicitation or records an explicit non-behavioral refactor reason.
+
+3. **Refactor is special**
+   - Refactor work may intentionally leave Allium unchanged.
+   - Slate must still capture behavior-preservation intent and proof.
+
+4. **Fix is classification-heavy**
+   - Fix work must classify mismatch as code bug, Allium stale, belief stale, ambiguous intent, or implementation-only detail.
+
+5. **Belief updates are evidence-backed**
+   - New beliefs should be harvested from proof, repeated pattern, failure mode, or architectural lesson.
+   - Beliefs with missing/changing proof should be challenged, scoped, defeated, or archived through existing conventions.
+
+6. **`spec` compatibility remains**
+   - Current `patina spec` and `slate-pando-migration` parity work remains useful.
+   - This design defines the product direction after parity: Slate as workbench, not new spec language.
+
 ## Commits
-1. `commit message` — what and why
+
+1. `spec: draft slate-intent-truth-loop` — created the system spec to lock the direction.
 
 ## Direct Code Targets
-- `path/to/file.rs:line` — exact change location
+
+- `children/slate-manager/src/lib.rs` — current Slate child command handling and packet generation logic.
+- `children/slate-manager/wit-contract/slate.wit` — typed Slate result surfaces for prompt/handoff/packet/work context.
+- `children/slate-manager/wit/deps/patina-slate.wit` — generated/consumed WIT dependency surface.
+- `src/commands/spec/mod.rs` — compatibility route from `patina spec` into Slate.
+- `src/spec.rs` — legacy spec command value execution and route backend behavior.
+- `src/commands/spec/internal/packets.rs` — current prompt/handoff/packet precedent.
+- `src/commands/spec/internal/queries.rs` — current list/check/show/history mechanics.
+- `src/commands/spec/internal/mutations.rs` — current lifecycle transitions and completion gates.
+- `src/commands/scrape/beliefs/mod.rs` — existing belief indexing, health, contestation, and evidence metrics to consume, not replace.
+- `src/commands/scrape/beliefs/verification/` — existing belief verification mechanism to consume, not replace.
 
 ## Verification Plan
 
+### Static validation
+
+```bash
+patina spec check slate-intent-truth-loop --json
+cargo check -q --workspace
+```
+
+### Targeted tests
+
+```bash
+cargo test -q -p patina-ai-child-slate-manager
+cargo test -q --lib spec
+cargo test -q --lib belief
+```
+
+### Behavioral fixtures
+
+Create or extend fixtures for:
+
+1. **Build Slate**
+   - User requests a new behavior.
+   - Slate finds missing Allium intent.
+   - Slate blocks until Allium intent is added/confirmed.
+   - Slate packet includes proof obligations.
+
+2. **Refactor Slate**
+   - User requests structure change without behavior change.
+   - Slate records Allium no-change rationale.
+   - Slate closes only after behavior-preservation proof.
+
+3. **Fix Slate**
+   - User dislikes observed behavior.
+   - Slate compares user intent, Allium, implementation, and beliefs.
+   - Slate classifies the mismatch before changing code.
+
+4. **Belief harvest**
+   - Work proof supports an existing belief: Slate recommends adding evidence.
+   - Work proof defeats or scopes a belief: Slate recommends attack/scope/defeat using existing belief conventions.
+   - No evidence-backed lesson emerges: Slate recommends no belief change.
+
+5. **Allium stale truth**
+   - Allium states old behavior but user confirms new business intent.
+   - Slate requires Allium update before completion.
+
 ## Build Readiness
 
+Ready when:
+
+- the first structured Slate work-item shape is accepted,
+- we decide whether this spec supersedes, splits, or follows `[[slate-pando-migration]]`.
+
+Current `spec` lifecycle mechanics have been reviewed and mapped in this draft.
+
 ## Open Questions
+
+- Should this become a child spec under `[[slate-pando-migration]]`, or should it supersede that spec after parity work is closed?
+- Should Slate store Allium CLI outputs verbatim as artifacts, or store normalized summaries with links to raw artifacts?
+- Which interface owns HITL dialogue state: Slate itself, the agent interface, or a shared session artifact?
+- Should belief harvest be advisory only at first, or should completion require explicit accept/skip decisions for each recommendation?
