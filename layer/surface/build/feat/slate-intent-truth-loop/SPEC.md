@@ -52,7 +52,7 @@ exit_criteria:
   checked: true
 - id: si8-proof-tests
   text: Tests cover build/refactor/fix Slate flows, Allium missing/stale intent blocking, belief harvest recommendations, and compatibility with existing `patina spec` routing modes.
-  checked: false
+  checked: true
 - id: si9-full-spec-capability-coverage
   text: Slate represents the full useful `patina spec` capability surface (create/list/ready/blocked/next/promote/check/show/prompt/handoff/packet/set/pause/resume/block/split/complete/abandon/archive/history/rename/reopen) as Slate workflow capabilities, with documented intentional divergences where Slate improves the workflow.
   checked: false

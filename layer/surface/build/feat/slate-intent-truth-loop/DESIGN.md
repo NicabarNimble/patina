@@ -137,6 +137,7 @@ Slate recommends and records; the existing belief files, `patina scrape`, and be
 4. `feat: gate slate readiness on intent alignment` — update spec creation templates and promotion readiness lint so build/fix/refactor Slates must capture human request, Allium intent, user alignment, and proof before becoming ready.
 5. `feat: add slate allium tool orchestration` — expose Allium check/analyse/plan/model command plans and Allium skill workflow guidance in Slate packet/WIT context.
 6. `feat: require slate belief harvest on completion` — add completion gates requiring explicit belief harvest/challenge decisions before non-forced build/fix/refactor Slate closure.
+7. `test: cover slate intent and belief gates` — add unit coverage for missing Allium intent, refactor no-behavior-change path, and belief harvest completion gates while preserving existing Slate observe parity coverage.
 
 ## Direct Code Targets
 

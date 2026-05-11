@@ -1572,6 +1572,92 @@ pub fn reopen_spec_value(id: &str) -> Result<MutationResult> {
 mod tests {
     use super::*;
 
+    fn loaded_for_gate(spec_type: &str, body: &str) -> LoadedSpec {
+        LoadedSpec {
+            file_path: "layer/surface/build/feat/example/SPEC.md".to_string(),
+            status: Some(SpecStatus::Draft),
+            title: Some("Example".to_string()),
+            content: String::new(),
+            frontmatter: SpecFrontmatter {
+                id: "example".to_string(),
+                r#type: spec_type.to_string(),
+                status: Some(SpecStatus::Draft),
+                ..Default::default()
+            },
+            body: body.to_string(),
+        }
+    }
+
+    #[test]
+    fn slate_readiness_rejects_missing_allium_intent() {
+        let loaded = loaded_for_gate(
+            "feat",
+            r#"
+## Human Request
+Change behavior.
+
+## User Alignment
+User confirmed.
+
+## Verification
+- cargo test
+"#,
+        );
+        let err = validate_slate_intent_readiness(&loaded).unwrap_err();
+        assert!(err.to_string().contains("## Allium Intent"));
+    }
+
+    #[test]
+    fn slate_readiness_allows_refactor_no_behavior_change() {
+        let loaded = loaded_for_gate(
+            "refactor",
+            r#"
+## Human Request
+Refactor structure.
+
+## Allium Intent
+No behavior change; no Allium change needed.
+
+## User Alignment
+User confirmed intended behavior is unchanged.
+
+## Verification
+- cargo test
+"#,
+        );
+        validate_slate_intent_readiness(&loaded).unwrap();
+    }
+
+    #[test]
+    fn slate_completion_requires_belief_harvest_decision() {
+        let loaded = loaded_for_gate(
+            "fix",
+            r#"
+## Belief Harvest
+
+## Verification
+- cargo test
+"#,
+        );
+        let err = validate_slate_belief_harvest_completion(&loaded).unwrap_err();
+        assert!(err.to_string().contains("Belief Harvest"));
+    }
+
+    #[test]
+    fn slate_completion_allows_no_belief_change_decision() {
+        let loaded = loaded_for_gate(
+            "fix",
+            r#"
+## Belief Harvest
+No belief change; proof did not produce reusable doctrine.
+
+## Verification
+- cargo test
+"#,
+        );
+        validate_slate_belief_harvest_completion(&loaded).unwrap();
+    }
+
     #[test]
     fn release_bump_frontmatter_values_map_to_bump_types() {
         assert_eq!(
