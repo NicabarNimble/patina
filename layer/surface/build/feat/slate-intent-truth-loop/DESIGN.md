@@ -152,6 +152,90 @@ Slate recommends and records; the existing belief files, `patina scrape`, and be
 - `src/commands/scrape/beliefs/mod.rs` — existing belief indexing, health, contestation, and evidence metrics to consume, not replace.
 - `src/commands/scrape/beliefs/verification/` — existing belief verification mechanism to consume, not replace.
 
+## Final Native Slate Slice Plan
+
+`si9-full-slate-native-capability-coverage` closes only when Slate's own WIT/WASI child and project-living artifacts cover the full work lifecycle without relying on `patina spec` storage, paths, or lifecycle code.
+
+### 1. Expand project-living Slate artifact schema
+
+Canonical durable files remain under `layer/slate/`:
+
+```text
+layer/slate/work/<slate-id>/work.toml
+layer/slate/events.jsonl
+layer/slate/proofs/<slate-id>/...
+```
+
+`work.toml` should grow to cover:
+
+- identity: `id`, `title`, `kind`, `status`, `created_at`, `updated_at`, `closed_at`,
+- human intent: `human_request`, `user_alignment`, unresolved questions,
+- Allium grounding: anchors, intent status, command summaries, proof obligations,
+- dependencies/blockers: `blocked_by`, block reason, pause/resume reason,
+- plans: implementation plan, proof plan,
+- execution/proof: closure evidence, verification results,
+- belief harvest: existing beliefs, evidence to add, proposed beliefs/scopes/attacks/defeats, explicit no-change decision,
+- management metadata: tags, target/queue, related work, supersedes/superseded-by.
+
+Use reusable field shapes where likely; avoid overfitting names that should become general work/proof/intent toys later.
+
+### 2. Add native WIT operations
+
+Extend `children/slate-manager/wit-contract/slate.wit` and `wit/deps/patina-slate.wit` with Slate-native operations:
+
+- discovery: `list-work`, `ready-work`, `blocked-work`, `next-work`, `show-work`, `history-work`,
+- creation/shaping: `create-work`, `set-work`, `rename-work`, `split-work`, `reopen-work`,
+- lifecycle: `promote-work`, `pause-work`, `resume-work`, `block-work`, `abandon-work`,
+- planning: `prompt-work`, `handoff-work`, `packet-work`,
+- closure: `check-work`, `complete-work`, `archive-work`.
+
+Existing `*-spec` operations remain explicit bridge/compatibility operations only. They must not be used as the implementation path for native Slate operations.
+
+### 3. Project artifact writes + Mother projection
+
+Native Slate operations mutate project-living artifacts first, then refresh Mother projection:
+
+1. read/write `layer/slate/work/<id>/work.toml`,
+2. append lifecycle/proof events to `layer/slate/events.jsonl`,
+3. project current state into `~/.patina/mother/projects/<project_uid>/slate.db`,
+4. store event rows in `slate_work_events` for query speed,
+5. tolerate missing projection DB by rebuilding from project artifacts.
+
+The project files are the shareable source of truth. `slate.db` is a Mother-owned index/cache/projection.
+
+### 4. Lifecycle gates
+
+Implement gates in Slate, not `patina spec`:
+
+- `promote-work draft→ready` requires work kind, human request, Allium intent/explicit no-behavior-change rationale, user alignment, and proof plan.
+- `promote-work ready→active` records start evidence and leaves unresolved intent/proof blockers visible.
+- `block-work` records dependency, intent, proof, or external blocker classification.
+- `complete-work` requires verification evidence, Allium drift classification, closure evidence, and explicit belief harvest decision.
+- `reopen-work` records why previous proof/intent/closure is no longer sufficient.
+
+### 5. Allium and belief integration
+
+Slate stores references/summaries and orchestrates existing systems:
+
+- Allium commands: `allium check`, `allium analyse`, `allium plan`, `allium model`,
+- Allium skills/workflows: tend, weed, propagate,
+- belief system: existing belief markdown, `layer/core`, `patina scrape`, belief audit/graph/verification.
+
+Do not invent new Allium drift semantics or new belief schemas inside Slate.
+
+### 6. Tests required for si9
+
+Add tests that prove:
+
+- native create/list/show/readiness works from `layer/slate/`,
+- projection rebuilds `slate.db` from project artifacts,
+- promote blocks missing Allium/user alignment/proof,
+- refactor no-behavior-change path can promote with explicit rationale,
+- complete blocks missing belief harvest/closure evidence,
+- pause/resume/block/reopen/history append events,
+- prompt/handoff/packet work outputs include Allium, belief, proof, and closure context,
+- `patina spec` tests remain independent and unaffected.
+
 ## Verification Plan
 
 ### Static validation
