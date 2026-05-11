@@ -1,3 +1,5 @@
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+
 wit_bindgen::generate!({
     path: "wit",
     world: "slate-manager",
@@ -1539,6 +1541,141 @@ pub fn dispatch_for_test(command_json: &str) -> Result<serde_json::Value, String
     Ok(data)
 }
 
+fn json_string(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<String, String> {
+    obj.get(key)
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| format!("missing string field {}", key))
+        .map(ToString::to_string)
+}
+
+fn json_bool(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> Result<bool, String> {
+    obj.get(key)
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| format!("missing bool field {}", key))
+}
+
+fn json_string_vec(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<Vec<String>, String> {
+    obj.get(key)
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("missing list field {}", key))?
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .ok_or_else(|| format!("{} element must be string", key))
+                .map(ToString::to_string)
+        })
+        .collect()
+}
+
+fn json_object<'a>(
+    obj: &'a serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<&'a serde_json::Map<String, serde_json::Value>, String> {
+    obj.get(key)
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| format!("missing object field {}", key))
+}
+
+fn parse_slate_allium_context(
+    value: &serde_json::Value,
+) -> Result<exports::patina::slate::control::SlateAlliumContext, String> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| "slate allium context must be object".to_string())?;
+    Ok(exports::patina::slate::control::SlateAlliumContext {
+        anchors: json_string_vec(obj, "anchors")?,
+        intent_summary: json_string(obj, "intent_summary")?,
+        intent_status: json_string(obj, "intent_status")?,
+        open_questions: json_string_vec(obj, "open_questions")?,
+    })
+}
+
+fn parse_slate_user_alignment(
+    value: &serde_json::Value,
+) -> Result<exports::patina::slate::control::SlateUserAlignment, String> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| "slate user alignment must be object".to_string())?;
+    Ok(exports::patina::slate::control::SlateUserAlignment {
+        aligned: json_bool(obj, "aligned")?,
+        statement: json_string(obj, "statement")?,
+        unresolved_questions: json_string_vec(obj, "unresolved_questions")?,
+    })
+}
+
+fn parse_slate_belief_harvest(
+    value: &serde_json::Value,
+) -> Result<exports::patina::slate::control::SlateBeliefHarvest, String> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| "slate belief harvest must be object".to_string())?;
+    Ok(exports::patina::slate::control::SlateBeliefHarvest {
+        existing_beliefs: json_string_vec(obj, "existing_beliefs")?,
+        evidence_to_add: json_string_vec(obj, "evidence_to_add")?,
+        proposed_new_beliefs: json_string_vec(obj, "proposed_new_beliefs")?,
+        proposed_scopes: json_string_vec(obj, "proposed_scopes")?,
+        proposed_attacks: json_string_vec(obj, "proposed_attacks")?,
+        proposed_defeats_or_archives: json_string_vec(obj, "proposed_defeats_or_archives")?,
+        decision_required: json_bool(obj, "decision_required")?,
+    })
+}
+
+fn parse_slate_work_item(
+    value: &serde_json::Value,
+) -> Result<exports::patina::slate::control::SlateWorkItem, String> {
+    let obj = value
+        .as_object()
+        .ok_or_else(|| "slate work item must be object".to_string())?;
+    Ok(exports::patina::slate::control::SlateWorkItem {
+        work_kind: json_string(obj, "work_kind")?,
+        human_request: json_string(obj, "human_request")?,
+        allium: parse_slate_allium_context(
+            obj.get("allium")
+                .ok_or_else(|| "missing slate allium".to_string())?,
+        )?,
+        user_alignment: parse_slate_user_alignment(
+            obj.get("user_alignment")
+                .ok_or_else(|| "missing slate user_alignment".to_string())?,
+        )?,
+        relevant_beliefs: json_string_vec(obj, "relevant_beliefs")?,
+        core_doctrine_refs: json_string_vec(obj, "core_doctrine_refs")?,
+        implementation_plan: json_string_vec(obj, "implementation_plan")?,
+        proof_plan: json_string_vec(obj, "proof_plan")?,
+        closure_evidence: json_string_vec(obj, "closure_evidence")?,
+        belief_harvest: parse_slate_belief_harvest(
+            obj.get("belief_harvest")
+                .ok_or_else(|| "missing slate belief_harvest".to_string())?,
+        )?,
+    })
+}
+
+fn parse_slate_capabilities(
+    value: &serde_json::Value,
+) -> Result<Vec<exports::patina::slate::control::SlateCapabilityRow>, String> {
+    value
+        .as_array()
+        .ok_or_else(|| "slate capabilities must be array".to_string())?
+        .iter()
+        .map(|item| {
+            let obj = item
+                .as_object()
+                .ok_or_else(|| "slate capability row must be object".to_string())?;
+            Ok(exports::patina::slate::control::SlateCapabilityRow {
+                spec_action: json_string(obj, "spec_action")?,
+                category: json_string(obj, "category")?,
+                slate_capability: json_string(obj, "slate_capability")?,
+                parity_policy: json_string(obj, "parity_policy")?,
+            })
+        })
+        .collect()
+}
+
 impl exports::patina::slate::control::Guest for SlateManager {
     fn list_specs(
         req: exports::patina::slate::control::ListRequest,
@@ -1839,6 +1976,14 @@ impl exports::patina::slate::control::Guest for SlateManager {
                 verification: parse_vec("verification")?,
                 definition_of_done: parse_vec("definition_of_done")?,
                 session_workflow: parse_vec("session_workflow")?,
+                slate_work_item: parse_slate_work_item(
+                    obj.get("slate_work_item")
+                        .ok_or_else(|| "prompt missing slate_work_item".to_string())?,
+                )?,
+                slate_capabilities: parse_slate_capabilities(
+                    obj.get("slate_capabilities")
+                        .ok_or_else(|| "prompt missing slate_capabilities".to_string())?,
+                )?,
             })
         })
     }
@@ -1919,6 +2064,14 @@ impl exports::patina::slate::control::Guest for SlateManager {
                     .get("design_path")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
+                slate_work_item: parse_slate_work_item(
+                    obj.get("slate_work_item")
+                        .ok_or_else(|| "handoff missing slate_work_item".to_string())?,
+                )?,
+                slate_capabilities: parse_slate_capabilities(
+                    obj.get("slate_capabilities")
+                        .ok_or_else(|| "handoff missing slate_capabilities".to_string())?,
+                )?,
             })
         })
     }

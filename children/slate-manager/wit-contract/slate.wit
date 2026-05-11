@@ -52,6 +52,49 @@ interface control {
         design-path: option<string>,
     }
 
+    record slate-allium-context {
+        anchors: list<string>,
+        intent-summary: string,
+        intent-status: string,
+        open-questions: list<string>,
+    }
+
+    record slate-user-alignment {
+        aligned: bool,
+        statement: string,
+        unresolved-questions: list<string>,
+    }
+
+    record slate-belief-harvest {
+        existing-beliefs: list<string>,
+        evidence-to-add: list<string>,
+        proposed-new-beliefs: list<string>,
+        proposed-scopes: list<string>,
+        proposed-attacks: list<string>,
+        proposed-defeats-or-archives: list<string>,
+        decision-required: bool,
+    }
+
+    record slate-work-item {
+        work-kind: string,
+        human-request: string,
+        allium: slate-allium-context,
+        user-alignment: slate-user-alignment,
+        relevant-beliefs: list<string>,
+        core-doctrine-refs: list<string>,
+        implementation-plan: list<string>,
+        proof-plan: list<string>,
+        closure-evidence: list<string>,
+        belief-harvest: slate-belief-harvest,
+    }
+
+    record slate-capability-row {
+        spec-action: string,
+        category: string,
+        slate-capability: string,
+        parity-policy: string,
+    }
+
     record prompt-result {
         spec-id: string,
         status: string,
@@ -66,6 +109,8 @@ interface control {
         verification: list<string>,
         definition-of-done: list<string>,
         session-workflow: list<string>,
+        slate-work-item: slate-work-item,
+        slate-capabilities: list<slate-capability-row>,
     }
 
     record progress-summary {
@@ -85,6 +130,8 @@ interface control {
         verification: list<string>,
         spec-path: string,
         design-path: option<string>,
+        slate-work-item: slate-work-item,
+        slate-capabilities: list<slate-capability-row>,
     }
 
     record packet-result {

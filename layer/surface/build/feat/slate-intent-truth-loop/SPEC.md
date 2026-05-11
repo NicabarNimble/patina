@@ -49,7 +49,7 @@ exit_criteria:
   checked: false
 - id: si7-packets-and-wit-surface
   text: Slate prompt/handoff/packet and WIT-facing result surfaces expose the Allium intent context, proof obligations, and belief harvest/challenge recommendations in structured form.
-  checked: false
+  checked: true
 - id: si8-proof-tests
   text: Tests cover build/refactor/fix Slate flows, Allium missing/stale intent blocking, belief harvest recommendations, and compatibility with existing `patina spec` routing modes.
   checked: false
