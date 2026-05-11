@@ -17,7 +17,19 @@ This keeps each artifact honest:
 
 ## Build Target
 
-Implement Slate as a structured build/refactor/fix todo system with an intent/proof loop.
+Implement Slate as a structured build/refactor/fix todo system with an intent/proof loop. This is a full-capability target, not a reduced MVP: Slate should cover the useful current `patina spec` lifecycle surface while intentionally improving workflow around Allium and beliefs.
+
+### Capability coverage
+
+Slate should represent these current `spec` capabilities as workflow operations:
+
+- discovery: create, list, ready, blocked, next, show, history,
+- planning packets: prompt, handoff, packet,
+- metadata/work shaping: set, rename, split, reopen,
+- lifecycle movement: promote, pause, resume, block, abandon,
+- closure: check, complete, archive.
+
+Coverage is not blind old-output parity. Where Slate preserves old behavior, compatibility should hold. Where Slate intentionally changes the workflow to add Allium intent or belief anchoring, the divergence must be documented, tested, and exposed clearly.
 
 ### Slate work-item fields
 
@@ -150,6 +162,12 @@ cargo test -q -p patina-ai-child-slate-manager
 cargo test -q --lib spec
 cargo test -q --lib belief
 ```
+
+### Capability coverage checks
+
+- Every useful existing `patina spec` command has a Slate workflow equivalent or a documented intentional divergence.
+- Slate packet/readiness/closure surfaces expose Allium intent and belief anchoring where relevant.
+- Compatibility modes still preserve old behavior when no intentional Slate workflow change applies.
 
 ### Behavioral fixtures
 
