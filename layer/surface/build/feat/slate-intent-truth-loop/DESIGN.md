@@ -135,6 +135,7 @@ Slate recommends and records; the existing belief files, `patina scrape`, and be
 2. `feat: add slate work item model` — add packet-level Slate work item extraction and capability matrix to builtin packets and the Slate child dispatch path.
 3. `feat: expose slate intent context over wit` — extend Slate WIT prompt/handoff surfaces with work item, Allium context, proof, capability matrix, and belief harvest fields.
 4. `feat: gate slate readiness on intent alignment` — update spec creation templates and promotion readiness lint so build/fix/refactor Slates must capture human request, Allium intent, user alignment, and proof before becoming ready.
+5. `feat: add slate allium tool orchestration` — expose Allium check/analyse/plan/model command plans and Allium skill workflow guidance in Slate packet/WIT context.
 
 ## Direct Code Targets
 

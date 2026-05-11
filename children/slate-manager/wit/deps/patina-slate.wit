@@ -57,6 +57,8 @@ interface control {
         intent-summary: string,
         intent-status: string,
         open-questions: list<string>,
+        tool-commands: list<string>,
+        skill-workflows: list<string>,
     }
 
     record slate-user-alignment {

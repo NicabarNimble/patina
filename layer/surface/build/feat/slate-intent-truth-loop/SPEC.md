@@ -43,7 +43,7 @@ exit_criteria:
   checked: true
 - id: si5-use-allium-drift-tools
   text: Slate uses existing Allium check/analyse/plan/model and Allium skill workflows for code/spec drift instead of imposing a competing drift method.
-  checked: false
+  checked: true
 - id: si6-belief-harvest-and-prune
   text: Slate closure includes a belief harvest/challenge pass that uses existing belief markdown/core doctrine conventions, evidence links, `patina scrape`, and belief audit signals; it does not replace the belief system.
   checked: false

@@ -955,6 +955,12 @@ fn build_slate_work_item(
             "intent_summary": allium_intent,
             "intent_status": infer_allium_intent_status(&work_kind, &collect_allium_anchors(frontmatter, body), body),
             "open_questions": open_questions,
+            "tool_commands": build_allium_tool_commands(&collect_allium_anchors(frontmatter, body)),
+            "skill_workflows": [
+                "tend: update intended behavior when HITL changes business truth",
+                "weed: compare Allium intent against implementation drift",
+                "propagate: derive tests from Allium obligations"
+            ],
         },
         "user_alignment": {
             "aligned": has_non_placeholder_section(body, "## User Alignment"),
@@ -968,6 +974,30 @@ fn build_slate_work_item(
         "closure_evidence": preferred_items(body, &["## Closure Evidence", "## Evidence"]),
         "belief_harvest": build_belief_harvest(&collect_relevant_beliefs(frontmatter, body), body),
     })
+}
+
+fn build_allium_tool_commands(anchors: &[String]) -> Vec<String> {
+    if anchors.is_empty() {
+        return vec![
+            "allium check <allium-files>".to_string(),
+            "allium analyse <allium-files>".to_string(),
+            "allium plan <allium-files>".to_string(),
+            "allium model <allium-files>".to_string(),
+        ];
+    }
+
+    anchors
+        .iter()
+        .flat_map(|anchor| {
+            let target = anchor.trim_start_matches("- ").to_string();
+            [
+                format!("allium check {}", target),
+                format!("allium analyse {}", target),
+                format!("allium plan {}", target),
+                format!("allium model {}", target),
+            ]
+        })
+        .collect()
 }
 
 fn build_belief_harvest(existing_beliefs: &[String], body: &str) -> serde_json::Value {
@@ -1593,6 +1623,8 @@ fn parse_slate_allium_context(
         intent_summary: json_string(obj, "intent_summary")?,
         intent_status: json_string(obj, "intent_status")?,
         open_questions: json_string_vec(obj, "open_questions")?,
+        tool_commands: json_string_vec(obj, "tool_commands")?,
+        skill_workflows: json_string_vec(obj, "skill_workflows")?,
     })
 }
 

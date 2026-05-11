@@ -79,6 +79,8 @@ pub struct SlateAlliumContext {
     pub intent_summary: String,
     pub intent_status: String,
     pub open_questions: Vec<String>,
+    pub tool_commands: Vec<String>,
+    pub skill_workflows: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -289,6 +291,12 @@ fn build_slate_work_item(
             intent_summary: allium_intent,
             intent_status: infer_allium_intent_status(&work_kind, &allium_anchors, body),
             open_questions: allium_open_questions,
+            tool_commands: build_allium_tool_commands(&allium_anchors),
+            skill_workflows: vec![
+                "tend: update intended behavior when HITL changes business truth".to_string(),
+                "weed: compare Allium intent against implementation drift".to_string(),
+                "propagate: derive tests from Allium obligations".to_string(),
+            ],
         },
         user_alignment,
         relevant_beliefs,
@@ -298,6 +306,30 @@ fn build_slate_work_item(
         closure_evidence,
         belief_harvest,
     }
+}
+
+fn build_allium_tool_commands(anchors: &[String]) -> Vec<String> {
+    if anchors.is_empty() {
+        return vec![
+            "allium check <allium-files>".to_string(),
+            "allium analyse <allium-files>".to_string(),
+            "allium plan <allium-files>".to_string(),
+            "allium model <allium-files>".to_string(),
+        ];
+    }
+
+    anchors
+        .iter()
+        .flat_map(|anchor| {
+            let target = anchor.trim_start_matches("- ").to_string();
+            [
+                format!("allium check {}", target),
+                format!("allium analyse {}", target),
+                format!("allium plan {}", target),
+                format!("allium model {}", target),
+            ]
+        })
+        .collect()
 }
 
 fn build_belief_harvest(existing_beliefs: &[String], body: &str) -> SlateBeliefHarvest {
