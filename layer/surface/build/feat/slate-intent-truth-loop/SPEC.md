@@ -85,7 +85,7 @@ Implement Slate as the Patina change-work layer for build/refactor/fix tasks:
 
 ## Status
 
-Draft. This spec captures the future Slate direction that should follow or reshape the existing `[[slate-pando-migration]]` parity work.
+Draft. This spec follows and reframes `[[slate-pando-migration]]`: the migration work should keep the existing `patina spec` surface safe, but Slate does not need blind 1:1 parity where the intended workflow is changing.
 
 ## Non-Goals
 
@@ -134,7 +134,7 @@ Review existing `patina spec` and `children/slate-manager` methods:
 - pause/block/resume as work-state controls,
 - set/rename/reopen/history as management operations.
 
-Keep useful mechanics, but stop treating SPEC.md prose as the long-term source of behavioral truth. Future Slate packets should point to Allium intent and proof obligations.
+Keep useful mechanics, but stop treating SPEC.md prose as the long-term source of behavioral truth. Future Slate should represent most existing `spec` lifecycle actions as todo/workflow operations, while adding Allium intent context as the behavioral truth layer. Compatibility matters where behavior is preserved; blind parity is not required where Slate intentionally changes the workflow.
 
 ### 2. Add Allium-first intent context
 
@@ -217,7 +217,7 @@ A Slate is not complete merely because code changed. It is complete when:
 7. Add post-work belief harvest/challenge recommendations.
 8. Extend WIT and packet surfaces to expose the new structured context.
 9. Add tests for build/refactor/fix flows and failure/blocking cases.
-10. Reconcile this direction with `[[slate-pando-migration]]` so parity work remains compatibility infrastructure, not the product ceiling.
+10. Reconcile this direction with `[[slate-pando-migration]]` so compatibility work remains migration infrastructure, while intentional Slate workflow changes are documented rather than forced into blind parity.
 
 ## Resolved Decisions
 
@@ -229,6 +229,7 @@ A Slate is not complete merely because code changed. It is complete when:
 - Beliefs are actively challenged and pruned when proof changes or disappears.
 - `layer/core` markdown remains reusable doctrine and value grounding.
 - Existing `spec` mechanics are migration scaffolding and lifecycle precedent, not the final authority model.
+- Most current `spec` actions should be represented in Slate, but parity is required only for compatibility-preserved behavior; Allium is an additive intent layer, not a replacement for todo lifecycle mechanics.
 
 ## Verification
 
@@ -253,4 +254,4 @@ Frontmatter `si1..si8` are the source of truth.
 
 ## Build Readiness
 
-Not ready until the initial Slate work-item model is accepted and the `[[slate-pando-migration]]` relationship is resolved.
+Not ready until the initial Slate work-item model is accepted.

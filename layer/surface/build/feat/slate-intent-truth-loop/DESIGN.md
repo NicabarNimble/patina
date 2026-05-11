@@ -110,9 +110,12 @@ Slate recommends and records; the existing belief files, `patina scrape`, and be
    - New beliefs should be harvested from proof, repeated pattern, failure mode, or architectural lesson.
    - Beliefs with missing/changing proof should be challenged, scoped, defeated, or archived through existing conventions.
 
-6. **`spec` compatibility remains**
-   - Current `patina spec` and `slate-pando-migration` parity work remains useful.
-   - This design defines the product direction after parity: Slate as workbench, not new spec language.
+6. **`spec` compatibility remains, but blind parity is not the goal**
+   - Current `patina spec` and `slate-pando-migration` work remains useful as compatibility infrastructure.
+   - Most current `spec` actions should be represented in Slate as todo/workflow mechanics.
+   - Slate does not need 1:1 parity where the workflow is intentionally changing.
+   - Allium is additive intent grounding for Slate, not a replacement for Slate's todo lifecycle.
+   - This design defines the product direction: Slate as workbench, not new spec language.
 
 ## Commits
 
@@ -181,14 +184,12 @@ Create or extend fixtures for:
 
 Ready when:
 
-- the first structured Slate work-item shape is accepted,
-- we decide whether this spec supersedes, splits, or follows `[[slate-pando-migration]]`.
+- the first structured Slate work-item shape is accepted.
 
-Current `spec` lifecycle mechanics have been reviewed and mapped in this draft.
+Current `spec` lifecycle mechanics have been reviewed and mapped in this draft. This spec follows and reframes `[[slate-pando-migration]]`: preserve compatibility where behavior remains, but document intentional Slate workflow changes instead of forcing blind parity.
 
 ## Open Questions
 
-- Should this become a child spec under `[[slate-pando-migration]]`, or should it supersede that spec after parity work is closed?
 - Should Slate store Allium CLI outputs verbatim as artifacts, or store normalized summaries with links to raw artifacts?
 - Which interface owns HITL dialogue state: Slate itself, the agent interface, or a shared session artifact?
 - Should belief harvest be advisory only at first, or should completion require explicit accept/skip decisions for each recommendation?
