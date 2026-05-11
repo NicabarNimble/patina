@@ -37,10 +37,10 @@ exit_criteria:
   checked: true
 - id: si3-allium-first-intent-dialogue
   text: Slate creation/activation dialogue uses Allium first to discover, confirm, or update intended behavior before implementation work is treated as ready.
-  checked: false
+  checked: true
 - id: si4-user-alignment-gate
   text: Slate refuses or blocks work when Allium intent is missing, stale, or disputed until HITL alignment is captured as part of the Slate record.
-  checked: false
+  checked: true
 - id: si5-use-allium-drift-tools
   text: Slate uses existing Allium check/analyse/plan/model and Allium skill workflows for code/spec drift instead of imposing a competing drift method.
   checked: false

@@ -12,7 +12,7 @@ use super::archive::{
     archive_spec_inner, find_spec, load_spec, release_and_archive, resolve_spec_dir, LoadedSpec,
 };
 use super::db_path;
-use super::queries::{check_spec_value, get_all_specs, ListFilters};
+use super::queries::{check_spec_value, extract_section_items, get_all_specs, ListFilters};
 use super::queue::tag_exists;
 
 const FRESHNESS_MAX_GLOBAL_COMMITS: u64 = 200;
@@ -509,6 +509,109 @@ pub enum MutationDetail {
     },
 }
 
+fn extract_section_paragraph(text: &str, heading: &str) -> Option<String> {
+    let mut in_section = false;
+    let mut lines = Vec::new();
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed == heading {
+            in_section = true;
+            continue;
+        }
+        if in_section && trimmed.starts_with("## ") {
+            break;
+        }
+        if in_section && !trimmed.is_empty() && !trimmed.starts_with('-') {
+            lines.push(trimmed.to_string());
+        }
+    }
+
+    if lines.is_empty() {
+        None
+    } else {
+        Some(lines.join(" "))
+    }
+}
+
+fn section_is_captured(text: &str, heading: &str) -> bool {
+    extract_section_paragraph(text, heading)
+        .map(|value| {
+            let lower = value.to_ascii_lowercase();
+            !lower.contains("not captured") && !lower.contains("todo") && !lower.trim().is_empty()
+        })
+        .unwrap_or(false)
+        || !extract_section_items(text, heading).is_empty()
+}
+
+fn has_blockquote(text: &str) -> bool {
+    text.lines().any(|line| line.trim_start().starts_with("> "))
+}
+
+fn validate_slate_intent_readiness(loaded: &LoadedSpec) -> Result<()> {
+    let spec_type = loaded.frontmatter.r#type.as_str();
+    if !matches!(spec_type, "feat" | "fix" | "refactor") {
+        return Ok(());
+    }
+
+    let mut missing = Vec::new();
+    if !section_is_captured(&loaded.body, "## Human Request") && !has_blockquote(&loaded.body) {
+        missing.push("## Human Request");
+    }
+    if !section_is_captured(&loaded.body, "## Allium Intent") {
+        missing.push("## Allium Intent");
+    }
+    if !section_is_captured(&loaded.body, "## User Alignment") {
+        missing.push("## User Alignment");
+    }
+    if !section_is_captured(&loaded.body, "## Proof Plan")
+        && extract_section_items(&loaded.body, "## Verification").is_empty()
+    {
+        missing.push("## Proof Plan or ## Verification");
+    }
+
+    if !missing.is_empty() {
+        anyhow::bail!(
+            "Spec '{}' is not ready for Slate: missing intent/proof sections: {}. Capture HITL-aligned Allium intent, or state why no Allium change is needed for refactor work.",
+            loaded.frontmatter.id,
+            missing.join(", ")
+        );
+    }
+
+    let allium_text =
+        extract_section_paragraph(&loaded.body, "## Allium Intent").unwrap_or_default();
+    let allium_lower = allium_text.to_ascii_lowercase();
+    if allium_lower.contains("ambiguous")
+        || allium_lower.contains("unclear")
+        || allium_lower.contains("disputed")
+    {
+        anyhow::bail!(
+            "Spec '{}' is not ready for Slate: Allium intent is marked ambiguous/disputed. Resolve HITL alignment before promotion.",
+            loaded.frontmatter.id
+        );
+    }
+
+    if spec_type == "refactor" {
+        let says_no_behavior_change = allium_lower.contains("no behavior")
+            || allium_lower.contains("no allium")
+            || allium_lower.contains("unchanged behavior");
+        let has_allium_anchor = loaded
+            .frontmatter
+            .related
+            .iter()
+            .chain(loaded.frontmatter.references.iter())
+            .any(|value| value.contains("layer/allium") || value.ends_with(".allium"));
+        if !says_no_behavior_change && !has_allium_anchor {
+            anyhow::bail!(
+                "Spec '{}' is not ready for Slate: refactor work must either anchor Allium intent or explicitly state that behavior remains unchanged.",
+                loaded.frontmatter.id
+            );
+        }
+    }
+
+    Ok(())
+}
+
 fn lint_ready_spec(loaded: &LoadedSpec) -> Result<()> {
     let required_headings = [
         "## Problem",
@@ -606,6 +709,7 @@ fn lint_ready_spec(loaded: &LoadedSpec) -> Result<()> {
     }
 
     validate_recipe_toy_names(&loaded.frontmatter.id, &loaded.body)?;
+    validate_slate_intent_readiness(loaded)?;
 
     Ok(())
 }

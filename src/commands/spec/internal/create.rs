@@ -40,11 +40,11 @@ pub struct CreateSpecRequest {
 fn body_template(spec_type: SpecType) -> &'static str {
     match spec_type {
         SpecType::Feat => {
-            "## Problem\n\n## Goal\n\n## Status\n\n## Non-Goals\n\n## Target Shape\n\n## Solution\n\n## Implementation Order\n\n## Resolved Decisions\n\n## Verification\n\n## Exit Criteria\n\n## Build Readiness\n"
+            "## Human Request\n\n## Work Kind\n\nbuild\n\n## Allium Intent\n\n## User Alignment\n\n## Problem\n\n## Goal\n\n## Status\n\n## Non-Goals\n\n## Target Shape\n\n## Solution\n\n## Implementation Plan\n\n## Proof Plan\n\n## Belief Harvest\n\n## Closure Evidence\n\n## Implementation Order\n\n## Resolved Decisions\n\n## Verification\n\n## Exit Criteria\n\n## Build Readiness\n"
         }
-        SpecType::Fix => "## Problem\n\n## Root Cause\n\n## Fix\n\n## Exit Criteria\n",
+        SpecType::Fix => "## Human Request\n\n## Work Kind\n\nfix\n\n## Allium Intent\n\n## User Alignment\n\n## Problem\n\n## Root Cause\n\n## Fix\n\n## Proof Plan\n\n## Belief Harvest\n\n## Closure Evidence\n\n## Exit Criteria\n",
         SpecType::Refactor => {
-            "## Problem\n\n## Goal\n\n## Status\n\n## Non-Goals\n\n## Current State\n\n## Target State\n\n## Solution\n\n## Implementation Order\n\n## Resolved Decisions\n\n## Verification\n\n## Exit Criteria\n\n## Build Readiness\n"
+            "## Human Request\n\n## Work Kind\n\nrefactor\n\n## Allium Intent\n\nState the Allium anchor, or explicitly state that intended behavior is unchanged and no Allium change is needed.\n\n## User Alignment\n\n## Problem\n\n## Goal\n\n## Status\n\n## Non-Goals\n\n## Current State\n\n## Target State\n\n## Solution\n\n## Implementation Plan\n\n## Proof Plan\n\n## Belief Harvest\n\n## Closure Evidence\n\n## Implementation Order\n\n## Resolved Decisions\n\n## Verification\n\n## Exit Criteria\n\n## Build Readiness\n"
         }
         SpecType::Explore => "## Question\n\n## Findings\n\n## Conclusions\n",
     }
