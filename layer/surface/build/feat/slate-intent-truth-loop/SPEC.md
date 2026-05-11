@@ -1,7 +1,7 @@
 ---
 type: feat
 id: slate-intent-truth-loop
-status: ready
+status: active
 created: 2026-05-11
 sessions:
   origin: 20260508-144836-859149000
