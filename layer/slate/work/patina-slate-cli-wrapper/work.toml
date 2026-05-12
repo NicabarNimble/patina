@@ -1,24 +1,31 @@
 id = "patina-slate-cli-wrapper"
 title = "First-class patina slate CLI wrapper"
 kind = "build"
-status = "ready"
+status = "active"
 human_request = "Add a real Slate feature: a human-friendly `patina slate ...` command surface that wraps native Slate WIT operations instead of requiring raw `patina child call` invocations."
 allium_anchors = ["layer/allium/mother/mother-child-toy-orchestration.allium"]
 user_alignment = "User asked to continue with a real feature in Slate after live 1:1 WIT CLI tests showed the raw child-call path works but is sharp for humans."
-belief_refs = []
+belief_refs = [
+    "[[read-code-before-write-code]]",
+    "[[scalpel-commits]]",
+]
 proof_plan = [
     "[ ] `patina slate --help` and subcommand help document the native Slate work surface.",
     "[ ] `patina slate create/list/show/next` operate on `layer/slate/work` artifacts through Slate WIT operations.",
     "[ ] `patina slate check/packet/complete/archive/history` preserve the closure gates proven by raw WIT CLI tests.",
     "[ ] Tests cover CLI argument mapping and fail-closed behavior when `slate-manager` is unavailable.",
+    "[ ] The first-class CLI exposes exactly the requested core workflow commands: create, next, show, check, complete, archive.",
+    "[ ] Each command maps to the corresponding `slate-manager` WIT work operation and returns useful human output plus JSON where appropriate.",
+    "[ ] Project resolution hides local WASI guest paths from users; normal project-root usage works without passing `/project`.",
 ]
-closure_evidence = []
+closure_evidence = ["Anchored the Slate CLI wrapper work in core values [[read-code-before-write-code]] and [[scalpel-commits]] before implementation."]
 blocked_by = []
 target = "[[slate-pando-migration]] sp1/sp1b usability bridge"
 implementation_plan = [
     "Add top-level `patina slate` subcommands for list, next, show, create, set, promote, check, packet, complete, archive, and history backed by `slate-manager` WIT operations.",
     "Preserve `patina spec`/Slate island separation: wrappers call native Slate work operations only, not `patina spec` storage or lifecycle.",
     "Normalize project resolution so users can call from a project root without manually passing WASI guest paths like `/project`.",
+    "Initial command set for this build: `patina slate create`, `patina slate next`, `patina slate show`, `patina slate check`, `patina slate complete`, and `patina slate archive`. Keep additional wrappers such as list/history/packet as follow-ups unless needed for tests.",
 ]
 created_at = "1778521827"
-updated_at = "1778521838"
+updated_at = "1778597664"
