@@ -143,3 +143,4 @@
 {"created_at":"1778606425","event_type":"set","payload":{"field":"closure_evidence","value":"Documented monorepo transition in `children/README.md` and `layer/slate/README.md`, keeping `children/slate-manager` as a compatibility/development mirror; `cargo check -q` passed."},"work_id":"slate-child-external-repo"}
 {"created_at":"1778606464","event_type":"set","payload":{"field":"belief_harvest_decision","value":"no new belief required; extraction follows existing contract-first execution and mother-brokers-child-skills beliefs"},"work_id":"slate-child-external-repo"}
 {"created_at":"1778606480","event_type":"completed","payload":{"force":false},"work_id":"slate-child-external-repo"}
+{"created_at":"1778606509","event_type":"archived","payload":{"force":false,"tag":"slate/slate-child-external-repo"},"work_id":"slate-child-external-repo"}
