@@ -3285,7 +3285,7 @@ name = "patina-ai-child-content-extractor"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "patina-sdk",
+ "patina-sdk 0.22.0",
  "sha2",
  "uuid",
  "wit-bindgen 0.41.0",
@@ -3295,7 +3295,7 @@ dependencies = [
 name = "patina-ai-child-dedup-filter"
 version = "0.1.0"
 dependencies = [
- "patina-sdk",
+ "patina-sdk 0.22.0",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3312,7 +3312,7 @@ name = "patina-ai-child-file-system-monitor"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "patina-sdk",
+ "patina-sdk 0.22.0",
  "sha2",
  "wit-bindgen 0.41.0",
 ]
@@ -3322,7 +3322,7 @@ name = "patina-ai-child-lakehouse-catalog"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "patina-sdk",
+ "patina-sdk 0.22.0",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3330,7 +3330,7 @@ dependencies = [
 name = "patina-ai-child-legacy-typed-bridge"
 version = "0.1.0"
 dependencies = [
- "patina-sdk",
+ "patina-sdk 0.22.0",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3342,7 +3342,7 @@ dependencies = [
  "arrow-schema 55.2.0",
  "chrono",
  "parquet",
- "patina-sdk",
+ "patina-sdk 0.22.0",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3350,7 +3350,7 @@ dependencies = [
 name = "patina-ai-child-schema-enforcer"
 version = "0.1.0"
 dependencies = [
- "patina-sdk",
+ "patina-sdk 0.22.0",
  "wit-bindgen 0.41.0",
 ]
 
@@ -3366,7 +3366,7 @@ dependencies = [
 name = "patina-ai-child-slate-manager"
 version = "0.1.0"
 dependencies = [
- "patina-sdk",
+ "patina-sdk 0.22.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -3398,6 +3398,15 @@ dependencies = [
 [[package]]
 name = "patina-sdk"
 version = "0.22.0"
+dependencies = [
+ "wit-bindgen 0.41.0",
+]
+
+[[package]]
+name = "patina-sdk"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79ea5c5ea6b01a21538d6ead8ac20ab2231efaace669ace8d9109c42549115be"
 dependencies = [
  "wit-bindgen 0.41.0",
 ]

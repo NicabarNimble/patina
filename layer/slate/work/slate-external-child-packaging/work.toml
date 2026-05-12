@@ -13,8 +13,8 @@ belief_refs = [
 ]
 proof_plan = [
     "[x] `patina-sdk` is consumable by an external child crate without `path = ../../sdk/patina-sdk`; v0.22.0 is published on crates.io.",
-    "[ ] Stable WIT toy contracts required by Slate are present in the external child package or fetched/published through a documented versioned mechanism.",
-    "[ ] External Slate child build works through the supported component build command, including the previously failing `wasi:logging@0.1.0` dependency story.",
+    "[x] Stable WIT toy contracts required by Slate are present in the external child package and declared as cargo-component target dependencies.",
+    "[x] External Slate child build works through `cargo component build -p patina-ai-child-slate-manager --release`, including the previously failing `wasi:logging@0.1.0` dependency story.",
     "[ ] First-class package/install command installs Slate child `.wasm`, `child.toml`, skills, and WIT metadata into Patina/Mother without manual copy steps.",
     "[ ] `patina mother skills show slate-manager` or equivalent lists Slate child skill packages and command/help surfaces.",
     "[ ] A standalone Slate child repo/package smoke test can create/show/check work through `patina slate ...` after installation.",
@@ -24,6 +24,8 @@ closure_evidence = [
     "Validated SDK package locally: `cargo check -q -p patina-sdk`, `cargo package -p patina-sdk --allow-dirty --list` included `TOY_GOVERNANCE.md`, and clean `cargo publish -p patina-sdk --dry-run` verified v0.22.0.",
     "Attempted real `cargo publish -p patina-sdk`; blocked locally by missing crates.io token: `no token found, please run cargo login or use CARGO_REGISTRY_TOKEN`.",
     'Published `patina-sdk` v0.22.0 to crates.io; verified with `cargo search patina-sdk --limit 1` showing `patina-sdk = "0.22.0"`.',
+    'Updated `children/slate-manager` to depend on published `patina-sdk = "0.22.0"` instead of a monorepo path dependency; `cargo tree -p patina-ai-child-slate-manager --depth 2` shows crates.io `patina-sdk v0.22.0`.',
+    "Fixed the `cargo component build -p patina-ai-child-slate-manager --release` WIT dependency resolution by declaring `[package.metadata.component.target.dependencies]` for `wasi:logging`, `patina:git`, `patina:measure`, and `patina:slate`, and arranging local WIT deps in package directories.",
 ]
 blocked_by = []
 target = "Standalone app-like WIT/WASI Slate child outside Patina monorepo"
@@ -36,4 +38,4 @@ implementation_plan = [
     "Prove Slate can be extracted by creating or simulating an external Slate child package that builds and installs without relying on monorepo-relative paths.",
 ]
 created_at = "1778600907"
-updated_at = "1778602094"
+updated_at = "1778604067"
