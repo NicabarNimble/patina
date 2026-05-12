@@ -1,7 +1,7 @@
 id = "slate-external-child-packaging"
 title = "External Slate child packaging"
 kind = "build"
-status = "active"
+status = "complete"
 human_request = "Make Slate extractable as an app-like WIT/WASI Patina child that can live outside the Patina monorepo: package patina-sdk, stabilize WIT toy contracts, fix cargo component build, add first-class child packaging/install, and expose Mother child skills/help."
 allium_anchors = ["layer/allium/mother/mother-child-toy-orchestration.allium"]
 user_alignment = "User wants app-like WIT/WASI Patina children that can be built as standalone projects outside the Patina monorepo, with Slate as the first concrete extraction target."
@@ -41,5 +41,7 @@ implementation_plan = [
     "Expose Mother child skill/help discovery so installed children can advertise skills and commands through `patina mother skills ...`.",
     "Prove Slate can be extracted by creating or simulating an external Slate child package that builds and installs without relying on monorepo-relative paths.",
 ]
+belief_harvest_decision = "no new belief required; work operationalizes existing contract-first execution and Mother-brokers-child-skills beliefs"
 created_at = "1778600907"
-updated_at = "1778605042"
+updated_at = "1778605234"
+closed_at = "1778605234"
