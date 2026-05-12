@@ -1,0 +1,21 @@
+id = "slate-manager-monorepo-removal"
+title = "Remove in-tree Slate manager"
+kind = "refactor"
+status = "active"
+human_request = "Archive/remove the in-tree Slate manager so Patina works with Slate from /Users/nicabar/Projects/Patina/patina-child-slate as the source of truth."
+allium_anchors = []
+user_alignment = "User wants the monorepo to be good with Slate gone from children/slate-manager and future work to happen in the external repo location."
+belief_refs = []
+proof_plan = [
+    "[ ] `children/slate-manager` is no longer a tracked in-tree child source in the Patina monorepo.",
+    "[ ] Workspace metadata and dev-dependencies no longer require `patina-ai-child-slate-manager` from `children/slate-manager`.",
+    "[ ] Tests that depended on the in-tree Slate manager are removed or refactored without weakening runtime fail-closed coverage.",
+    "[ ] `cargo check -q` and relevant tests pass after removal.",
+    "[ ] `patina slate show/check` still works using the installed external Slate child from `/Users/nicabar/Projects/Patina/patina-child-slate`.",
+    "[ ] Documentation points to the external Slate repo as the working location.",
+]
+closure_evidence = []
+blocked_by = []
+implementation_plan = ["Remove `children/slate-manager` from the Patina workspace as an in-tree source of truth; adjust workspace/dev-dependencies/tests/docs that assumed the in-tree crate; rely on the installed external child package for `patina slate ...`; verify cargo checks/tests and Slate commands still work from the external install."]
+created_at = "1778606794"
+updated_at = "1778606847"
