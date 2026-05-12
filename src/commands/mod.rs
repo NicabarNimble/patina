@@ -29,6 +29,7 @@ pub mod scry;
 pub mod secrets;
 pub mod session;
 pub mod setup;
+pub mod slate;
 pub mod spec;
 pub mod version;
 pub mod yolo;

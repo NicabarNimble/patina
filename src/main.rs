@@ -456,6 +456,12 @@ enum Commands {
         command: SetupCommands,
     },
 
+    /// Manage Slate work transactions
+    Slate {
+        #[command(subcommand)]
+        command: commands::slate::SlateCommands,
+    },
+
     /// Manage spec lifecycle (archive completed specs)
     Spec {
         /// Target Patina project path or project UID for cross-project spec operations
@@ -1170,6 +1176,9 @@ fn main() -> Result<()> {
                 commands::setup::execute_grammars(options)?;
             }
         },
+        Some(Commands::Slate { command }) => {
+            commands::slate::execute(command)?;
+        }
         Some(Commands::Spec { project, command }) => {
             main_dispatch::spec::dispatch_spec(project, command)?;
         }
