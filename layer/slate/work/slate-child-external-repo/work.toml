@@ -1,7 +1,7 @@
 id = "slate-child-external-repo"
 title = "External Slate child repo"
 kind = "build"
-status = "active"
+status = "complete"
 human_request = "Move Slate manager to /Users/nicabar/Projects/Patina/patina-child-slate and set it up as its own public GitHub repo on the user's account."
 allium_anchors = []
 user_alignment = "User wants Slate manager to become a standalone public child repo now that external packaging is proven."
@@ -22,5 +22,7 @@ closure_evidence = [
 ]
 blocked_by = []
 implementation_plan = ["Create a standalone repository directory from `children/slate-manager`, including Cargo metadata, WIT deps/contracts, skills, README, license/gitignore, and child manifest; initialize git and public GitHub remote under the user account; verify standalone build/install/use through Patina CLI; leave monorepo with a thin documented pointer rather than silently deleting runtime source until extraction handoff is explicit."]
+belief_harvest_decision = "no new belief required; extraction follows existing contract-first execution and mother-brokers-child-skills beliefs"
 created_at = "1778605974"
-updated_at = "1778606425"
+updated_at = "1778606480"
+closed_at = "1778606480"
