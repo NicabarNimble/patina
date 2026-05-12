@@ -19,7 +19,11 @@ proof_plan = [
     "[ ] `patina mother skills show slate-manager` or equivalent lists Slate child skill packages and command/help surfaces.",
     "[ ] A standalone Slate child repo/package smoke test can create/show/check work through `patina slate ...` after installation.",
 ]
-closure_evidence = []
+closure_evidence = [
+    "Bumped local `sdk/patina-sdk` to 0.22.0 and included `TOY_GOVERNANCE.md` in the published crate package. Commit: [[commit-ddba7f85]].",
+    "Validated SDK package locally: `cargo check -q -p patina-sdk`, `cargo package -p patina-sdk --allow-dirty --list` included `TOY_GOVERNANCE.md`, and clean `cargo publish -p patina-sdk --dry-run` verified v0.22.0.",
+    "Attempted real `cargo publish -p patina-sdk`; blocked locally by missing crates.io token: `no token found, please run cargo login or use CARGO_REGISTRY_TOKEN`.",
+]
 blocked_by = []
 target = "Standalone app-like WIT/WASI Slate child outside Patina monorepo"
 implementation_plan = [
@@ -31,4 +35,4 @@ implementation_plan = [
     "Prove Slate can be extracted by creating or simulating an external Slate child package that builds and installs without relying on monorepo-relative paths.",
 ]
 created_at = "1778600907"
-updated_at = "1778600958"
+updated_at = "1778601466"
