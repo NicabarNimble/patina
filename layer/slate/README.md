@@ -12,16 +12,23 @@ layer/slate/work/<slate-id>/work.toml
 
 `patina spec` is a separate island. Explicit bridge/import/export operations may exist, but `SPEC.md` and `DESIGN.md` are not canonical Slate storage.
 
+## Slate Child Package
+
+Slate's standalone child package is public at <https://github.com/NicabarNimble/patina-child-slate> with a local checkout at `/Users/nicabar/Projects/Patina/patina-child-slate`.
+
+The Patina monorepo may keep `children/slate-manager` as a compatibility/development mirror until the workspace and tests no longer need an in-tree child crate.
+
 ## Child Skill Packages
 
 Slate child skills are owned by `slate-manager` and should be discoverable by Mother for active children.
 
 Current child-owned packages:
 
-- `children/slate-manager/skills/slate-code/SKILL.md`
-- `children/slate-manager/skills/slate-version-control/SKILL.md`
+- external package: `/Users/nicabar/Projects/Patina/patina-child-slate/skills/slate-code/SKILL.md`
+- external package: `/Users/nicabar/Projects/Patina/patina-child-slate/skills/slate-version-control/SKILL.md`
+- compatibility mirror: `children/slate-manager/skills/`
 
-Temporary project/interface bridge skills may point at those packages until Mother exposes first-class child skill discovery such as `patina mother skills show slate-manager`.
+Mother exposes installed child skill discovery through commands such as `patina mother skills show slate-manager`.
 
 ## Version / Archive Semantics
 
