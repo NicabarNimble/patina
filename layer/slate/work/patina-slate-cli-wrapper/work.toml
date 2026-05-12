@@ -1,7 +1,7 @@
 id = "patina-slate-cli-wrapper"
 title = "First-class patina slate CLI wrapper"
 kind = "build"
-status = "active"
+status = "complete"
 human_request = "Add a real Slate feature: a human-friendly `patina slate ...` command surface that wraps native Slate WIT operations instead of requiring raw `patina child call` invocations."
 allium_anchors = ["layer/allium/mother/mother-child-toy-orchestration.allium"]
 user_alignment = "User asked to continue with a real feature in Slate after live 1:1 WIT CLI tests showed the raw child-call path works but is sharp for humans."
@@ -10,15 +10,19 @@ belief_refs = [
     "[[scalpel-commits]]",
 ]
 proof_plan = [
-    "[ ] `patina slate --help` and subcommand help document the native Slate work surface.",
-    "[ ] `patina slate create/list/show/next` operate on `layer/slate/work` artifacts through Slate WIT operations.",
-    "[ ] `patina slate check/packet/complete/archive/history` preserve the closure gates proven by raw WIT CLI tests.",
-    "[ ] Tests cover CLI argument mapping and fail-closed behavior when `slate-manager` is unavailable.",
-    "[ ] The first-class CLI exposes exactly the requested core workflow commands: create, next, show, check, complete, archive.",
-    "[ ] Each command maps to the corresponding `slate-manager` WIT work operation and returns useful human output plus JSON where appropriate.",
-    "[ ] Project resolution hides local WASI guest paths from users; normal project-root usage works without passing `/project`.",
+    "[x] `patina slate --help` and subcommand help document the native Slate work surface.",
+    "[x] The first-class CLI exposes exactly the requested core workflow commands: create, next, show, check, complete, archive.",
+    "[x] Requested commands map to corresponding `slate-manager` WIT work operations and return useful human output plus JSON where appropriate.",
+    "[x] `patina slate show`, `patina slate check`, and `patina slate next` operate on `layer/slate/work` artifacts through Slate WIT operations in live smoke tests.",
+    "[x] `patina slate complete` preserves Slate completion gates by delegating to `complete-work`; `patina slate archive` delegates to spec-parity `archive-work`.",
+    "[x] Tests cover typed-call result unwrapping, operation id mapping, and fail-closed behavior when `slate-manager` is unavailable.",
+    "[x] Project resolution hides local WASI guest paths from users; normal project-root usage works without passing `/project`.",
 ]
-closure_evidence = ["Anchored the Slate CLI wrapper work in core values [[read-code-before-write-code]] and [[scalpel-commits]] before implementation."]
+closure_evidence = [
+    "Anchored the Slate CLI wrapper work in core values [[read-code-before-write-code]] and [[scalpel-commits]] before implementation.",
+    "Implemented top-level `patina slate` with requested commands: create, next, show, check, complete, archive. Commit: [[commit-48e8d346]].",
+    "Validation passed: `cargo test -q --lib commands::slate::tests`, `cargo check -q`, `cargo run -q -- slate --help`, `cargo run -q -- slate show patina-slate-cli-wrapper`, `cargo run -q -- slate check patina-slate-cli-wrapper`, and `cargo run -q -- slate next`.",
+]
 blocked_by = []
 target = "[[slate-pando-migration]] sp1/sp1b usability bridge"
 implementation_plan = [
@@ -27,5 +31,7 @@ implementation_plan = [
     "Normalize project resolution so users can call from a project root without manually passing WASI guest paths like `/project`.",
     "Initial command set for this build: `patina slate create`, `patina slate next`, `patina slate show`, `patina slate check`, `patina slate complete`, and `patina slate archive`. Keep additional wrappers such as list/history/packet as follow-ups unless needed for tests.",
 ]
+belief_harvest_decision = "no new belief; implementation applies core values [[read-code-before-write-code]] and [[scalpel-commits]]"
 created_at = "1778521827"
-updated_at = "1778597664"
+updated_at = "1778599194"
+closed_at = "1778599194"
