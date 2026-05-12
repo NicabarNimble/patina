@@ -17,7 +17,7 @@ proof_plan = [
     "[x] External Slate child build works through `cargo component build -p patina-ai-child-slate-manager --release`, including the previously failing `wasi:logging@0.1.0` dependency story.",
     "[x] First-class `patina child install` command installs Slate child `.wasm`, `child.toml`, skills, and WIT metadata into Patina/Mother without manual copy steps.",
     "[x] `patina mother skills show slate-manager` lists Slate child skill packages and `patina mother skills help slate-manager slate-code` renders command/help surface.",
-    "[ ] A standalone Slate child repo/package smoke test can create/show/check work through `patina slate ...` after installation.",
+    "[x] A standalone Slate child repo/package smoke test can create/show/check work through `patina slate ...` after installation.",
 ]
 closure_evidence = [
     "Bumped local `sdk/patina-sdk` to 0.22.0 and included `TOY_GOVERNANCE.md` in the published crate package. Commit: [[commit-ddba7f85]].",
@@ -29,6 +29,7 @@ closure_evidence = [
     "Added `patina child install <path> --wasm <component> --force`, which installs `.wasm`, `child.toml`, `skills/`, `wit/`, and `wit-contract/` into `~/.patina/plugins/<child>/` while preserving existing local filesystem scope additions by default.",
     "Live-smoked `cargo run -q -- child install children/slate-manager --wasm target/wasm32-wasip1/release/patina_ai_child_slate_manager.wasm --force`; install preserved local `/project` read-write mount and `cargo run -q -- slate show slate-external-child-packaging` succeeded through the installed child.",
     "Added `patina mother skills list/show/help` to discover installed child skill packages from `~/.patina/plugins/<child>/skills`; live smoke shows `patina mother skills show slate-manager` lists `slate-code` and `slate-version-control`.",
+    "Standalone smoke: copied `children/slate-manager` to `/tmp/patina-child-slate-standalone.*`, built there with `cargo component build --release` against crates.io `patina-sdk v0.22.0`, installed with `patina child install`, then verified `patina slate create`, `patina slate show`, and `patina slate check` worked through the installed standalone-built child.",
 ]
 blocked_by = []
 target = "Standalone app-like WIT/WASI Slate child outside Patina monorepo"
@@ -41,4 +42,4 @@ implementation_plan = [
     "Prove Slate can be extracted by creating or simulating an external Slate child package that builds and installs without relying on monorepo-relative paths.",
 ]
 created_at = "1778600907"
-updated_at = "1778604837"
+updated_at = "1778605042"
