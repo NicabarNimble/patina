@@ -2516,27 +2516,67 @@ impl exports::patina::slate::control::Guest for SlateManager {
     ) -> Result<exports::patina::slate::control::WorkArchiveResult, String> {
         let project_root = resolve_project_root_from_hint(req.project.as_deref())?;
         with_project_root_cwd(&project_root, || {
-            let saved = update_slate_work(
+            let records = load_slate_work(&project_root)?;
+            let record = find_slate_work(&records, &req.id)?;
+            let status = record.work.status.clone();
+            if !matches!(status.as_str(), "complete" | "abandoned") && !req.force {
+                return Err(format!(
+                    "cannot archive Slate work '{}' from status '{}'",
+                    record.work.id, status
+                ));
+            }
+
+            let tag_name = format!("slate/{}", record.work.id);
+            if patina::git::git::tag_exists(&tag_name)? {
+                return Err(format!(
+                    "Tag '{}' already exists. Slate work may have been archived previously.",
+                    tag_name
+                ));
+            }
+
+            if !patina::git::git::is_clean_tracked()? {
+                return Err(
+                    "Working tree has uncommitted tracked changes. Commit or stash before archiving."
+                        .to_string(),
+                );
+            }
+
+            let work_dir = slate_work_path(&project_root, &record.work.id)
+                .parent()
+                .ok_or_else(|| format!("Slate work '{}' has no parent directory", record.work.id))?
+                .to_path_buf();
+            let remove_target = to_repo_relative(&project_root, &work_dir);
+            let work_file_rel = record.path.clone();
+            let title = record.work.title.clone();
+
+            append_slate_event(
                 &project_root,
-                &req.id,
+                &record.work.id,
                 "archived",
-                serde_json::json!({"force": req.force}),
-                |work| {
-                    if !matches!(work.status.as_str(), "complete" | "abandoned") && !req.force {
-                        return Err(format!(
-                            "cannot archive Slate work '{}' from status '{}'",
-                            work.id, work.status
-                        ));
-                    }
-                    work.status = "archived".to_string();
-                    work.closed_at = Some(timestamp());
-                    Ok(())
-                },
+                serde_json::json!({"force": req.force, "tag": tag_name}),
             )?;
+            patina::git::git::add_paths(std::slice::from_ref(&SLATE_EVENTS_PATH.to_string()))?;
+            patina::git::git::remove_paths(std::slice::from_ref(&remove_target))?;
+
+            let commit_msg = format!(
+                "docs: archive {} ({})\n\nSlate work preserved via git tag: {}\nRecover with: git show {}:{}",
+                tag_name, status, tag_name, tag_name, work_file_rel
+            );
+            patina::git::git::commit(&commit_msg)?;
+            patina::git::git::create_tag_at(&tag_name, "HEAD~1")?;
+
+            toys::log::info(
+                "slate-manager",
+                &format!(
+                    "archived slate id={} status={} target={} title={}",
+                    record.work.id, status, remove_target, title
+                ),
+            );
+
             Ok(exports::patina::slate::control::WorkArchiveResult {
-                work_id: saved.work.id,
-                new_status: saved.work.status,
-                path: saved.path,
+                work_id: record.work.id.clone(),
+                new_status: "archived".to_string(),
+                path: remove_target,
                 archived: true,
             })
         })

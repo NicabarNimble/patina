@@ -188,6 +188,59 @@ pub enum MotherCommands {
     /// Project registration operations (check-in/sync/list)
     #[command(subcommand)]
     Projects(ProjectsCommands),
+
+    /// Mother-owned view buffers and display shapes
+    #[command(subcommand)]
+    View(ViewCommands),
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum ViewCommands {
+    /// List available Mother view shapes
+    Shapes {
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// List live/stale/blocked Mother view buffers
+    Buffers {
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Open a Mother-owned view buffer from a shape or friendly target
+    Open {
+        /// Friendly target (`README.md`, `readme`) or shape id
+        target: String,
+
+        /// Open the rendered buffer in a new tmux pane instead of current stdout
+        #[arg(long)]
+        tmux: bool,
+
+        /// With --tmux, split below (Doom/vi-style `s`)
+        #[arg(short = 's', long, conflicts_with = "right")]
+        below: bool,
+
+        /// With --tmux, split right (Doom/vi-style `v`)
+        #[arg(short = 'v', long, conflicts_with = "below")]
+        right: bool,
+
+        /// Output raw JSON
+        #[arg(long, conflicts_with = "tmux")]
+        json: bool,
+    },
+
+    /// Fetch an opened buffer payload
+    Payload {
+        /// View buffer id
+        buffer_id: String,
+
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -643,6 +696,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("  patina mother children Child registry control-plane");
             println!("  patina mother lifecycle Lifecycle operations");
             println!("  patina mother projects Project check-in/list/sync");
+            println!("  patina mother view     Mother-owned view buffers");
             println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
             Ok(())
@@ -723,7 +777,227 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
         Some(MotherCommands::Children(command)) => children::execute_children(command),
         Some(MotherCommands::Lifecycle(command)) => execute_lifecycle(command),
         Some(MotherCommands::Projects(command)) => execute_projects(command),
+        Some(MotherCommands::View(command)) => execute_view(command),
     }
+}
+
+fn execute_view(command: ViewCommands) -> Result<()> {
+    let client = patina::mother::control_plane_client();
+    match command {
+        ViewCommands::Shapes { json } => {
+            let payload = client.get_json("/api/view-shapes")?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                return Ok(());
+            }
+            let shapes = payload
+                .get("shapes")
+                .and_then(|value| value.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if shapes.is_empty() {
+                println!("No Mother view shapes registered.");
+                return Ok(());
+            }
+            println!("Mother view shapes:\n");
+            for shape in shapes {
+                println!(
+                    "  {:<48} {:<10} {}",
+                    shape
+                        .get("shape_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("-"),
+                    shape
+                        .get("major_mode")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("-"),
+                    shape.get("title").and_then(|v| v.as_str()).unwrap_or("-")
+                );
+            }
+            Ok(())
+        }
+        ViewCommands::Buffers { json } => {
+            let payload = client.get_json("/api/view-buffers")?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                return Ok(());
+            }
+            let buffers = payload
+                .get("buffers")
+                .and_then(|value| value.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if buffers.is_empty() {
+                println!("No Mother view buffers are open.");
+                return Ok(());
+            }
+            println!("Mother view buffers:\n");
+            for buffer in buffers {
+                println!(
+                    "  {:<52} {:<10} {:<10} {}",
+                    buffer
+                        .get("buffer_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("-"),
+                    buffer.get("state").and_then(|v| v.as_str()).unwrap_or("-"),
+                    buffer
+                        .get("major_mode")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("-"),
+                    buffer.get("name").and_then(|v| v.as_str()).unwrap_or("-")
+                );
+            }
+            Ok(())
+        }
+        ViewCommands::Open {
+            target,
+            tmux,
+            below,
+            right,
+            json,
+        } => {
+            let shape_id = resolve_view_target(&target);
+            let payload = client.post_json(
+                "/api/view-buffers/open",
+                &serde_json::json!({ "shape_id": shape_id }),
+            )?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                return Ok(());
+            }
+            if tmux || below || right {
+                let buffer_id = payload
+                    .get("buffer")
+                    .and_then(|buffer| buffer.get("buffer_id"))
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("Mother open response missing buffer_id"))?;
+                let split = if below {
+                    TmuxSplit::Below
+                } else {
+                    TmuxSplit::Right
+                };
+                return open_view_in_tmux(buffer_id, split);
+            }
+            print_opened_view_payload(&payload)
+        }
+        ViewCommands::Payload { buffer_id, json } => {
+            let payload = client.get_json(&format!("/api/view-buffers/{}/payload", buffer_id))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                return Ok(());
+            }
+            let opened = payload
+                .get("opened")
+                .ok_or_else(|| anyhow::anyhow!("Mother payload response missing `opened`"))?;
+            print_opened_view_payload(opened)
+        }
+    }
+}
+
+fn resolve_view_target(target: &str) -> String {
+    let normalized = target.trim().to_ascii_lowercase();
+    if normalized == "readme" || normalized == "readme.md" || normalized.ends_with("/readme.md") {
+        mother_crate::PROJECT_README_SHAPE_ID.to_string()
+    } else {
+        target.to_string()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum TmuxSplit {
+    Right,
+    Below,
+}
+
+fn open_view_in_tmux(buffer_id: &str, split: TmuxSplit) -> Result<()> {
+    if std::env::var_os("TMUX").is_none() {
+        anyhow::bail!("--tmux requires running inside tmux");
+    }
+
+    let cwd = std::env::current_dir().context("resolve current directory for tmux pane")?;
+    let command = format!(
+        "cd {} && patina mother view payload {} | less -R -X",
+        shell_quote(&cwd.to_string_lossy()),
+        shell_quote(buffer_id)
+    );
+
+    let mut tmux = Command::new("tmux");
+    tmux.arg("split-window");
+    match split {
+        TmuxSplit::Right => {
+            tmux.arg("-h").arg("-l").arg("50%");
+        }
+        TmuxSplit::Below => {
+            tmux.arg("-v").arg("-l").arg("40%");
+        }
+    }
+    tmux.arg(command);
+
+    let status = tmux.status().context("run tmux split-window")?;
+    if !status.success() {
+        anyhow::bail!("tmux split-window failed with status {}", status);
+    }
+
+    println!(
+        "Opened Mother view buffer {} in tmux {} pane",
+        buffer_id,
+        match split {
+            TmuxSplit::Right => "right",
+            TmuxSplit::Below => "below",
+        }
+    );
+    Ok(())
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn print_opened_view_payload(payload: &serde_json::Value) -> Result<()> {
+    let buffer = payload
+        .get("buffer")
+        .ok_or_else(|| anyhow::anyhow!("Mother open response missing `buffer`"))?;
+    let framed_payload = payload
+        .get("payload")
+        .ok_or_else(|| anyhow::anyhow!("Mother open response missing `payload`"))?;
+    let payload_json = framed_payload
+        .get("json")
+        .ok_or_else(|| anyhow::anyhow!("Mother open response missing `payload.json`"))?;
+
+    let name = buffer.get("name").and_then(|v| v.as_str()).unwrap_or("-");
+    let buffer_id = buffer
+        .get("buffer_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("-");
+    let mode = buffer
+        .get("major_mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("-");
+    let shape_id = buffer
+        .get("shape_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("-");
+
+    println!("Opened Mother view buffer: {}", name);
+    println!("  buffer_id: {}", buffer_id);
+    println!("  shape_id:  {}", shape_id);
+    println!("  mode:      {}", mode);
+
+    if mode == "markdown" {
+        if let Some(path) = payload_json.get("path").and_then(|v| v.as_str()) {
+            println!("  path:      {}", path);
+        }
+        if let Some(status) = payload_json.get("git_status").and_then(|v| v.as_str()) {
+            println!("  git:       {}", status);
+        }
+        if let Some(content) = payload_json.get("content").and_then(|v| v.as_str()) {
+            println!("\n--- {} ---\n{}", name, content);
+            return Ok(());
+        }
+    }
+
+    println!("\n{}", serde_json::to_string_pretty(payload_json)?);
+    Ok(())
 }
 
 fn execute_federation(command: FederationCommands) -> Result<()> {

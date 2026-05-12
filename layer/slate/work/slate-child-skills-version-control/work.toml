@@ -1,0 +1,33 @@
+id = "slate-child-skills-version-control"
+title = "Slate child skills and version-control parity"
+kind = "build"
+status = "complete"
+human_request = "Make Slate child skills discoverable through the Mother skill model and align Slate version/archive behavior with spec behavior for now, with room to diverge later."
+allium_anchors = ["layer/allium/mother/mother-child-toy-orchestration.allium"]
+user_alignment = "User approved both the child-owned skill package direction and Mother skill discovery direction, and clarified that Slate version behavior should match spec behavior for now even if we later diverge."
+belief_refs = ["[[mother-brokers-child-skills]]"]
+proof_plan = [
+    "[x] Slate child-owned skills exist under `children/slate-manager/skills/` and document code-change/version-control workflows.",
+    "[x] Mother has a discoverable child skill/help surface or durable design artifact defining the API and CLI shape.",
+    "[x] Slate version/archive semantics are updated or explicitly specified to match spec archive/tag behavior for now.",
+    "[x] Validation covers the changed skill/version-control behavior.",
+]
+closure_evidence = [
+    "Created child-owned Slate skill package docs under `children/slate-manager/skills/`, including `slate-code` and `slate-version-control`.",
+    "Updated `.pi/skills/patina-mother-system/SKILL.md` and `.pi/skills/patina-slate-code/SKILL.md` to treat `.pi` skills as temporary bridges to child-owned packages.",
+    "Added `layer/slate/child-skill-discovery.md` defining the desired Mother `patina mother skills ...` discovery/help surface.",
+    "Updated `layer/slate/README.md` to state spec-parity Slate archive/version semantics for now.",
+    "Updated native `archive-work` in `children/slate-manager/src/lib.rs` to use spec-parity behavior: terminal gate, clean tracked tree gate, `slate/<id>` recovery tag, archive commit, and removal of `layer/slate/work/<id>/`.",
+    "Validation passed: `cargo test -q -p patina-ai-child-slate-manager` and `cargo check -q`.",
+]
+blocked_by = []
+target = "[[mother-brokers-child-skills]] + Slate/spec archive parity"
+implementation_plan = [
+    "Move/duplicate the current bridge Slate skill into a child-owned package under `children/slate-manager/skills/` while keeping `.pi/skills` as a temporary bridge if needed.",
+    "Add/shape Mother skill discovery so active children can expose skills/help like a command surface.",
+    "Align native Slate archive/version behavior with spec behavior for now: terminal work gets preserved by a `slate/<id>` recovery tag and archive semantics are explicit.",
+]
+belief_harvest_decision = "no new belief; applies existing [[mother-brokers-child-skills]] and clarifies Slate/spec archive parity as a current implementation decision"
+created_at = "1778590828"
+updated_at = "1778591341"
+closed_at = "1778591341"

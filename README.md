@@ -1,20 +1,41 @@
 # Patina
 
-> Context management for AI-assisted development
+> Experimental infrastructure built around shared beliefs anchored in truth.
+>
+> Welcome to my playground.
 >
 > ⚠️ **Experimental:** Patina is an active experiment; proceed with caution in production workflows.
 
-Patina is a local-first Rust CLI that turns a repository into a reusable knowledge system for humans and AI tools. It scrapes code, git history, layer artifacts, and optional external sources into a local store, builds semantic indices, and exposes commands for retrieval, structure queries, workflow tracking, and cross-project knowledge.
+Patina helps a project anchor what it believes: decisions, doctrine, code evidence, sessions, specs, and events that can be proven, challenged, revised, and shared across projects. It is local-first Rust infrastructure for making project truth durable enough for humans and AI agents to reuse instead of re-explaining every session.
+
+Patina has two closely related halves:
+
+1. **Patina belief network** — shared project truth backed by code, git history, layer artifacts, specs, sessions, and evidence.
+2. **Mother/Child/Toy infrastructure** — experimental AI infrastructure around that belief network for context, sandboxing, and observability.
 
 ## What Patina Does
 
-- Builds project memory from code, commits, specs, sessions, and beliefs
-- Provides semantic search with `patina scry` and structural queries with `patina assay`
-- Captures project rules and decisions through `patina context`, specs, and epistemic beliefs
-- Supports cross-project knowledge via external repos, persona data, and the Mother daemon
-- Extends the system with WASM children built on the WASI component model and Patina SDK
+- Anchors project beliefs in evidence so they can be validated, challenged, and reused.
+- Builds local project memory from code, commits, specs, sessions, beliefs, events, and optional external sources.
+- Provides semantic search with `patina scry`, structural/factual queries with `patina assay`, and AI-facing guidance with `patina context`.
+- Supports cross-project knowledge via external repos, persona data, shared beliefs, and the Mother daemon.
+- Coordinates sandboxed WASI/WASM children through Mother and explicit toy capabilities.
 
-Patina is designed around a simple idea: project knowledge should compound instead of being re-explained every session.
+## Mother / Child / Toy
+
+Mother/Child/Toy is Patina's experimental infrastructure layer around shared beliefs anchored in truth.
+
+- **Mother** is the local control plane. It owns routing, project coordination, child orchestration, grants, readiness, secrets/session coordination, and observability.
+- **Children** are sandboxed WASI/WASM components with typed WIT contracts. They perform specific work without becoming one growing monolith.
+- **Toys** are explicit capabilities granted to children, such as filesystem, git, logging, measurement, state, or messaging.
+
+The model exists to bridge three gaps in current agentic work:
+
+1. **Context** — project beliefs and evidence should travel across sessions and projects.
+2. **Sandbox** — tools should run as constrained WASI/WASM children with explicit capabilities, not ambient authority.
+3. **Observability** — sessions, beliefs, specs, events, child health, operations, and proof trails should leave evidence that can be reviewed and challenged.
+
+MCT works best inside Patina today, and is designed so the infrastructure can become reusable outside Patina over time.
 
 ## Quick Start
 

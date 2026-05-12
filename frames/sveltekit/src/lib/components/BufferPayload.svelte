@@ -35,11 +35,20 @@
     return JSON.stringify(value, null, 2);
   }
 
+  function stringField(payloadJson: unknown, field: string): string | null {
+    const record = asRecord(payloadJson);
+    const value = record?.[field];
+    return typeof value === 'string' ? value : null;
+  }
+
   let tableColumns = $derived(payload ? columns(payload.json) : []);
   let tableRows = $derived(payload ? rows(payload.json) : []);
   let renderAsTable = $derived(
     Boolean(payload && (mode === 'table' || mode === 'list') && tableColumns.length > 0)
   );
+  let markdownContent = $derived(payload ? stringField(payload.json, 'content') : null);
+  let markdownPath = $derived(payload ? stringField(payload.json, 'path') : null);
+  let markdownGitStatus = $derived(payload ? stringField(payload.json, 'git_status') : null);
 </script>
 
 {#if !payload}
@@ -83,6 +92,14 @@
           </tbody>
         </table>
       </div>
+    {:else if mode === 'markdown' && markdownContent !== null}
+      <article class="markdown-render">
+        <div class="document-meta">
+          {#if markdownPath}<span>{markdownPath}</span>{/if}
+          {#if markdownGitStatus}<span>git: {markdownGitStatus}</span>{/if}
+        </div>
+        <pre>{markdownContent}</pre>
+      </article>
     {:else if mode === 'markdown' || mode === 'document' || mode === 'log'}
       <pre class="document-render">{jsonText(payload.json)}</pre>
     {:else}
@@ -166,5 +183,23 @@
     background: #070b12;
     color: #e2e8f0;
     padding: 1rem;
+  }
+
+  .markdown-render {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .document-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    color: #94a3b8;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8rem;
+  }
+
+  .markdown-render pre {
+    line-height: 1.55;
   }
 </style>

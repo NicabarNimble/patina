@@ -14,7 +14,10 @@ use super::{
     ViewShapeAdaptation, ViewShapeCreation, ViewShapeMaturity, ViewShapeRevision,
     ViewShapeRevisionOrigin, ViewShapeRevisionState, ViewShapeScope, Window, WindowConnectionState,
 };
-use crate::view_buffer::catalog::{DataCatalog, MOTHER_STATUS_SHAPE_ID, MOTHER_STATUS_SOURCE_ID};
+use crate::view_buffer::catalog::{
+    DataCatalog, MOTHER_STATUS_SHAPE_ID, MOTHER_STATUS_SOURCE_ID, PROJECT_README_FACT_PREFIX,
+    PROJECT_README_SHAPE_ID, PROJECT_README_SOURCE_ID,
+};
 
 pub const SHAPE_MATCH_CONFIDENCE_THRESHOLD: f64 = 0.60;
 
@@ -1230,6 +1233,10 @@ impl ViewBufferService {
     }
 
     fn payload_json_for_shape(&self, shape: &ViewShape) -> serde_json::Value {
+        if shape.major_mode == MajorMode::Markdown && shape.shape_id == PROJECT_README_SHAPE_ID {
+            return self.markdown_artifact_payload_json(shape);
+        }
+
         let rows: Vec<_> = shape
             .requirements
             .iter()
@@ -1252,6 +1259,31 @@ impl ViewBufferService {
             "rows": rows,
         })
     }
+
+    fn markdown_artifact_payload_json(&self, shape: &ViewShape) -> serde_json::Value {
+        let fact = |suffix: &str| {
+            self.catalog
+                .value(&format!("{}.{}", PROJECT_README_FACT_PREFIX, suffix))
+                .cloned()
+                .unwrap_or(serde_json::Value::Null)
+        };
+
+        json!({
+            "major_mode": shape.major_mode,
+            "minor_modes": shape.minor_modes,
+            "artifact_kind": "markdown-file",
+            "source_ref": shape.source_ref,
+            "path": fact("path"),
+            "content": fact("content"),
+            "modified_at": fact("modified_at"),
+            "git_status": fact("git_status"),
+            "diff_hunks": fact("diff_hunks"),
+        })
+    }
+}
+
+pub fn builtin_view_shapes() -> Vec<ViewShape> {
+    vec![mother_status_shape(), readme_markdown_shape()]
 }
 
 pub fn mother_status_shape() -> ViewShape {
@@ -1289,10 +1321,59 @@ pub fn mother_status_shape() -> ViewShape {
     }
 }
 
+pub fn readme_markdown_shape() -> ViewShape {
+    ViewShape {
+        shape_id: PROJECT_README_SHAPE_ID.to_string(),
+        title: "README.md".to_string(),
+        source_ref: PROJECT_README_SOURCE_ID.to_string(),
+        scope: ViewShapeScope::Project,
+        version: 1,
+        active: true,
+        major_mode: MajorMode::Markdown,
+        minor_modes: vec![MinorMode::Pinned],
+        maturity: ViewShapeMaturity::Candidate,
+        payload_contract: PayloadContract::FramedJson,
+        payload_version: 1,
+        vision_id: None,
+        project_uid: None,
+        replaced_by: None,
+        requirements: vec![
+            required(
+                &format!("{}.path", PROJECT_README_FACT_PREFIX),
+                "display README artifact path",
+            ),
+            required(
+                &format!("{}.content", PROJECT_README_FACT_PREFIX),
+                "render README markdown content",
+            ),
+            required(
+                &format!("{}.modified_at", PROJECT_README_FACT_PREFIX),
+                "display README file modification time",
+            ),
+            required(
+                &format!("{}.git_status", PROJECT_README_FACT_PREFIX),
+                "display README git status",
+            ),
+            optional(
+                &format!("{}.diff_hunks", PROJECT_README_FACT_PREFIX),
+                "display README diff hunks when available",
+            ),
+        ],
+    }
+}
+
 fn required(fact_path: &str, purpose: &str) -> ViewRequirement {
     ViewRequirement {
         fact_path: fact_path.to_string(),
         required: true,
+        purpose: purpose.to_string(),
+    }
+}
+
+fn optional(fact_path: &str, purpose: &str) -> ViewRequirement {
+    ViewRequirement {
+        fact_path: fact_path.to_string(),
+        required: false,
         purpose: purpose.to_string(),
     }
 }
@@ -1338,8 +1419,8 @@ mod tests {
 
     use super::*;
     use crate::view_buffer::{
-        BufferState, FrameKind, MotherStatusFacts, ObservabilityGapStatus, SourceAvailability,
-        WindowConnectionState,
+        BufferState, FrameKind, MarkdownArtifactFacts, MotherStatusFacts, ObservabilityGapStatus,
+        SourceAvailability, WindowConnectionState,
     };
 
     fn status_catalog() -> DataCatalog {
@@ -1354,6 +1435,91 @@ mod tests {
             memory_pressure: "ok".to_string(),
             observed_at: Utc.with_ymd_and_hms(2026, 5, 9, 12, 0, 0).unwrap(),
         })
+    }
+
+    fn status_catalog_with_readme() -> DataCatalog {
+        status_catalog().with_project_readme(Some(MarkdownArtifactFacts {
+            path: "/tmp/project/README.md".to_string(),
+            content: "# Patina\n\nShared beliefs anchored in truth.".to_string(),
+            modified_at: "2026-05-11T12:00:00Z".to_string(),
+            git_status: " M README.md".to_string(),
+            diff_hunks: vec!["@@ -1,3 +1,5 @@".to_string()],
+            observed_at: Utc.with_ymd_and_hms(2026, 5, 11, 12, 0, 0).unwrap(),
+        }))
+    }
+
+    #[test]
+    fn opens_readme_markdown_artifact_buffer() {
+        // obligation: spec.mother-markdown-artifact-buffer.payload
+        let mut service = ViewBufferService::with_catalog_and_shapes(
+            status_catalog_with_readme(),
+            vec![readme_markdown_shape()],
+        );
+
+        let outcome = service
+            .open_buffer(OpenBufferRequest {
+                shape_id: PROJECT_README_SHAPE_ID.to_string(),
+            })
+            .expect("open README markdown buffer");
+
+        let OpenBufferOutcome::Opened(opened) = outcome else {
+            panic!("expected README markdown buffer to open");
+        };
+        assert_eq!(opened.buffer.name, "*README.md*");
+        assert_eq!(opened.buffer.major_mode, MajorMode::Markdown);
+        assert_eq!(opened.payload.frame.shape_id, PROJECT_README_SHAPE_ID);
+        assert_eq!(
+            opened.payload.json["path"],
+            serde_json::json!("/tmp/project/README.md")
+        );
+        assert_eq!(
+            opened.payload.json["content"],
+            serde_json::json!("# Patina\n\nShared beliefs anchored in truth.")
+        );
+        assert_eq!(
+            opened.payload.json["git_status"],
+            serde_json::json!(" M README.md")
+        );
+        assert_eq!(
+            opened.payload.json["diff_hunks"],
+            serde_json::json!(["@@ -1,3 +1,5 @@"])
+        );
+
+        let reopened = ViewBufferService::with_catalog_shapes_and_buffers(
+            status_catalog_with_readme(),
+            vec![readme_markdown_shape()],
+            vec![opened.buffer.clone()],
+        )
+        .opened_buffer_payload(&opened.buffer.buffer_id)
+        .expect("reopen README markdown payload");
+        assert_eq!(
+            reopened.payload.json["content"],
+            opened.payload.json["content"]
+        );
+    }
+
+    #[test]
+    fn missing_readme_reports_observability_gap() {
+        // obligation: spec.mother-markdown-artifact-buffer.missing-readme-gap
+        let mut service = ViewBufferService::with_catalog_and_shapes(
+            status_catalog().with_project_readme(None),
+            vec![readme_markdown_shape()],
+        );
+
+        let outcome = service
+            .open_buffer(OpenBufferRequest {
+                shape_id: PROJECT_README_SHAPE_ID.to_string(),
+            })
+            .expect("opening missing README should report gap");
+
+        let OpenBufferOutcome::ObservabilityGap(gap) = outcome else {
+            panic!("expected observability gap for missing README");
+        };
+        assert_eq!(gap.shape_id.as_deref(), Some(PROJECT_README_SHAPE_ID));
+        assert_eq!(
+            gap.missing_fact_path,
+            format!("{}.path", PROJECT_README_FACT_PREFIX)
+        );
     }
 
     #[test]

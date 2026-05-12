@@ -1,0 +1,24 @@
+id = "patina-slate-cli-wrapper"
+title = "First-class patina slate CLI wrapper"
+kind = "build"
+status = "ready"
+human_request = "Add a real Slate feature: a human-friendly `patina slate ...` command surface that wraps native Slate WIT operations instead of requiring raw `patina child call` invocations."
+allium_anchors = ["layer/allium/mother/mother-child-toy-orchestration.allium"]
+user_alignment = "User asked to continue with a real feature in Slate after live 1:1 WIT CLI tests showed the raw child-call path works but is sharp for humans."
+belief_refs = []
+proof_plan = [
+    "[ ] `patina slate --help` and subcommand help document the native Slate work surface.",
+    "[ ] `patina slate create/list/show/next` operate on `layer/slate/work` artifacts through Slate WIT operations.",
+    "[ ] `patina slate check/packet/complete/archive/history` preserve the closure gates proven by raw WIT CLI tests.",
+    "[ ] Tests cover CLI argument mapping and fail-closed behavior when `slate-manager` is unavailable.",
+]
+closure_evidence = []
+blocked_by = []
+target = "[[slate-pando-migration]] sp1/sp1b usability bridge"
+implementation_plan = [
+    "Add top-level `patina slate` subcommands for list, next, show, create, set, promote, check, packet, complete, archive, and history backed by `slate-manager` WIT operations.",
+    "Preserve `patina spec`/Slate island separation: wrappers call native Slate work operations only, not `patina spec` storage or lifecycle.",
+    "Normalize project resolution so users can call from a project root without manually passing WASI guest paths like `/project`.",
+]
+created_at = "1778521827"
+updated_at = "1778521838"

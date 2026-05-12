@@ -10,6 +10,9 @@ use super::{
 
 pub const MOTHER_STATUS_SOURCE_ID: &str = "mother.status";
 pub const MOTHER_STATUS_SHAPE_ID: &str = "mother.status.default";
+pub const PROJECT_README_SOURCE_ID: &str = "project.artifact.README.md";
+pub const PROJECT_README_SHAPE_ID: &str = "project.artifact.README.md.markdown";
+pub const PROJECT_README_FACT_PREFIX: &str = "project.artifact.README.md";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MotherStatusFacts {
@@ -21,6 +24,16 @@ pub struct MotherStatusFacts {
     pub children_total: usize,
     pub startup_profile: String,
     pub memory_pressure: String,
+    pub observed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MarkdownArtifactFacts {
+    pub path: String,
+    pub content: String,
+    pub modified_at: String,
+    pub git_status: String,
+    pub diff_hunks: Vec<String>,
     pub observed_at: DateTime<Utc>,
 }
 
@@ -44,24 +57,106 @@ impl DataCatalog {
             },
         );
 
-        catalog.observe_raw("mother.status.version", status.version);
-        catalog.observe_raw("mother.status.uptime_secs", status.uptime_secs);
         catalog.observe_raw(
+            MOTHER_STATUS_SOURCE_ID,
+            "mother.status.version",
+            status.version,
+        );
+        catalog.observe_raw(
+            MOTHER_STATUS_SOURCE_ID,
+            "mother.status.uptime_secs",
+            status.uptime_secs,
+        );
+        catalog.observe_raw(
+            MOTHER_STATUS_SOURCE_ID,
             "mother.status.control_plane_ready",
             status.control_plane_ready,
         );
         catalog.observe_raw(
+            MOTHER_STATUS_SOURCE_ID,
             "mother.status.registered_projects",
             status.registered_projects,
         );
         catalog.observe_raw(
+            MOTHER_STATUS_SOURCE_ID,
             "mother.status.children_ready_count",
             status.children_ready_count,
         );
-        catalog.observe_raw("mother.status.children_total", status.children_total);
-        catalog.observe_raw("mother.status.startup_profile", status.startup_profile);
-        catalog.observe_raw("mother.status.memory.pressure", status.memory_pressure);
+        catalog.observe_raw(
+            MOTHER_STATUS_SOURCE_ID,
+            "mother.status.children_total",
+            status.children_total,
+        );
+        catalog.observe_raw(
+            MOTHER_STATUS_SOURCE_ID,
+            "mother.status.startup_profile",
+            status.startup_profile,
+        );
+        catalog.observe_raw(
+            MOTHER_STATUS_SOURCE_ID,
+            "mother.status.memory.pressure",
+            status.memory_pressure,
+        );
         catalog
+    }
+
+    pub fn with_project_readme(mut self, readme: Option<MarkdownArtifactFacts>) -> Self {
+        match readme {
+            Some(readme) => {
+                self.sources.insert(
+                    PROJECT_README_SOURCE_ID.to_string(),
+                    CataloguedSource {
+                        source_id: PROJECT_README_SOURCE_ID.to_string(),
+                        source_kind: CataloguedSourceKind::File,
+                        availability: SourceAvailability::Available,
+                        last_observed_at: Some(readme.observed_at),
+                    },
+                );
+                self.observe_raw(
+                    PROJECT_README_SOURCE_ID,
+                    &format!("{}.path", PROJECT_README_FACT_PREFIX),
+                    readme.path,
+                );
+                self.observe_raw(
+                    PROJECT_README_SOURCE_ID,
+                    &format!("{}.content", PROJECT_README_FACT_PREFIX),
+                    readme.content,
+                );
+                self.observe_raw(
+                    PROJECT_README_SOURCE_ID,
+                    &format!("{}.modified_at", PROJECT_README_FACT_PREFIX),
+                    readme.modified_at,
+                );
+                self.observe_raw(
+                    PROJECT_README_SOURCE_ID,
+                    &format!("{}.git_status", PROJECT_README_FACT_PREFIX),
+                    readme.git_status,
+                );
+                self.observe_raw(
+                    PROJECT_README_SOURCE_ID,
+                    &format!("{}.diff_hunks", PROJECT_README_FACT_PREFIX),
+                    serde_json::Value::Array(
+                        readme
+                            .diff_hunks
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
+                );
+            }
+            None => {
+                self.sources.insert(
+                    PROJECT_README_SOURCE_ID.to_string(),
+                    CataloguedSource {
+                        source_id: PROJECT_README_SOURCE_ID.to_string(),
+                        source_kind: CataloguedSourceKind::File,
+                        availability: SourceAvailability::Unavailable,
+                        last_observed_at: None,
+                    },
+                );
+            }
+        }
+        self
     }
 
     pub fn sources(&self) -> impl Iterator<Item = &CataloguedSource> {
@@ -112,12 +207,12 @@ impl DataCatalog {
         self
     }
 
-    fn observe_raw(&mut self, fact_path: &str, value: impl Into<Value>) {
+    fn observe_raw(&mut self, source_id: &str, fact_path: &str, value: impl Into<Value>) {
         self.facts.insert(
             fact_path.to_string(),
             CataloguedFact {
                 fact_path: fact_path.to_string(),
-                source_id: MOTHER_STATUS_SOURCE_ID.to_string(),
+                source_id: source_id.to_string(),
                 fact_kind: FactKind::Raw,
                 observation_state: ObservationState::Observed,
             },

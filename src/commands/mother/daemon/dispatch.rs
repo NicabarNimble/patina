@@ -4,9 +4,55 @@ use anyhow::Context;
 
 impl ServerState {
     fn ensure_builtin_view_shapes(&self) -> anyhow::Result<()> {
-        self.runtime_store
-            .seed_view_shape(&mother_crate::view_buffer::mother_status_shape())?;
+        for shape in mother_crate::view_buffer::builtin_view_shapes() {
+            self.runtime_store.seed_view_shape(&shape)?;
+        }
         Ok(())
+    }
+
+    fn view_data_catalog(&self) -> anyhow::Result<mother_crate::view_buffer::DataCatalog> {
+        let details = self.health_details()?;
+        Ok(mother_crate::view_buffer::DataCatalog::mother_status(
+            mother_crate::view_buffer::MotherStatusFacts {
+                version: self.version(),
+                uptime_secs: self.uptime_secs(),
+                control_plane_ready: details.control_plane_ready,
+                registered_projects: details.registered_projects,
+                children_ready_count: details.children_ready_count,
+                children_total: details.children_total,
+                startup_profile: details.startup_profile,
+                memory_pressure: details.memory.pressure,
+                observed_at: Utc::now(),
+            },
+        )
+        .with_project_readme(self.current_project_readme_facts()))
+    }
+
+    fn current_project_readme_facts(
+        &self,
+    ) -> Option<mother_crate::view_buffer::MarkdownArtifactFacts> {
+        let project_root = self
+            .active_project_root()
+            .or_else(|| std::env::current_dir().ok())?;
+        readme_facts_for_project(&project_root)
+    }
+
+    fn active_project_root(&self) -> Option<PathBuf> {
+        let registrations = self.runtime_store.list_registered_projects().ok()?;
+        if let Some(active_uid) = health::read_current_project_uid() {
+            if let Some(root) = registrations
+                .iter()
+                .find(|registration| registration.project_uid == active_uid)
+                .map(|registration| PathBuf::from(&registration.project_path))
+            {
+                return Some(root);
+            }
+        }
+
+        registrations
+            .into_iter()
+            .map(|registration| PathBuf::from(registration.project_path))
+            .find(|root| root.join("README.md").is_file())
     }
 
     fn build_view_request_detail(
@@ -57,6 +103,81 @@ impl ServerState {
             matched_shape,
         ))
     }
+}
+
+fn readme_facts_for_project(
+    project_root: &Path,
+) -> Option<mother_crate::view_buffer::MarkdownArtifactFacts> {
+    let readme_path = project_root.join("README.md");
+    let content = std::fs::read_to_string(&readme_path).ok()?;
+    let metadata = std::fs::metadata(&readme_path).ok()?;
+    let modified_at = metadata
+        .modified()
+        .ok()
+        .map(chrono::DateTime::<Utc>::from)
+        .unwrap_or_else(Utc::now)
+        .to_rfc3339();
+    let observed_at = Utc::now();
+    let path = readme_path
+        .canonicalize()
+        .unwrap_or(readme_path)
+        .to_string_lossy()
+        .to_string();
+
+    Some(mother_crate::view_buffer::MarkdownArtifactFacts {
+        path,
+        content,
+        modified_at,
+        git_status: readme_git_status(project_root),
+        diff_hunks: readme_diff_hunks(project_root),
+        observed_at,
+    })
+}
+
+fn readme_git_status(project_root: &Path) -> String {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(project_root)
+        .arg("status")
+        .arg("--short")
+        .arg("--")
+        .arg("README.md")
+        .output();
+
+    match output {
+        Ok(output) if output.status.success() => {
+            let status = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if status.is_empty() {
+                "clean".to_string()
+            } else {
+                status
+            }
+        }
+        _ => "unknown".to_string(),
+    }
+}
+
+fn readme_diff_hunks(project_root: &Path) -> Vec<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(project_root)
+        .arg("diff")
+        .arg("--")
+        .arg("README.md")
+        .output();
+
+    let Ok(output) = output else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|line| line.starts_with("@@"))
+        .map(ToString::to_string)
+        .collect()
 }
 
 impl ApiRuntime for ServerState {
@@ -1057,20 +1178,7 @@ impl ApiRuntime for ServerState {
         &self,
         buffer_id: &str,
     ) -> anyhow::Result<mother_crate::view_buffer::OpenedBuffer> {
-        let details = self.health_details()?;
-        let catalog = mother_crate::view_buffer::DataCatalog::mother_status(
-            mother_crate::view_buffer::MotherStatusFacts {
-                version: self.version(),
-                uptime_secs: self.uptime_secs(),
-                control_plane_ready: details.control_plane_ready,
-                registered_projects: details.registered_projects,
-                children_ready_count: details.children_ready_count,
-                children_total: details.children_total,
-                startup_profile: details.startup_profile,
-                memory_pressure: details.memory.pressure,
-                observed_at: Utc::now(),
-            },
-        );
+        let catalog = self.view_data_catalog()?;
         self.ensure_builtin_view_shapes()?;
         let shapes = self.runtime_store.list_view_shapes()?;
         let buffers = self.runtime_store.list_view_buffers()?;
@@ -1084,20 +1192,7 @@ impl ApiRuntime for ServerState {
         &self,
         request: mother_crate::view_buffer::OpenBufferRequest,
     ) -> anyhow::Result<mother_crate::view_buffer::OpenBufferOutcome> {
-        let details = self.health_details()?;
-        let catalog = mother_crate::view_buffer::DataCatalog::mother_status(
-            mother_crate::view_buffer::MotherStatusFacts {
-                version: self.version(),
-                uptime_secs: self.uptime_secs(),
-                control_plane_ready: details.control_plane_ready,
-                registered_projects: details.registered_projects,
-                children_ready_count: details.children_ready_count,
-                children_total: details.children_total,
-                startup_profile: details.startup_profile,
-                memory_pressure: details.memory.pressure,
-                observed_at: Utc::now(),
-            },
-        );
+        let catalog = self.view_data_catalog()?;
         self.ensure_builtin_view_shapes()?;
         let shapes = self.runtime_store.list_view_shapes()?;
         let mut service =

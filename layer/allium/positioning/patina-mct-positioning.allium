@@ -1,0 +1,226 @@
+-- allium: 3
+-- patina-mct-positioning.allium
+
+-- Scope: Public positioning for Patina and Mother/Child/Toy.
+-- Includes:
+--   - README/marketing reader understanding
+--   - Patina as shared beliefs anchored in project truth
+--   - Mother/Child/Toy as experimental infrastructure around those beliefs
+--   - The three agentic gaps: context, sandbox, observability
+--   - Evidence requirements for public claims
+-- Excludes:
+--   - Exact README prose and copy editing
+--   - UI layout, command syntax, or implementation details
+--   - Full product roadmap or release promises
+
+entity PublicReader {
+    kind: ai_heavy_developer | tool_builder | wasi_wasm_developer | skeptical_builder | contributor
+}
+
+entity PositioningStakeholder {
+    name: String
+}
+
+entity PublicPositioning {
+    surface: readme | marketing_material | release_note
+    status: draft | approved | published
+
+    primary_identity: shared_beliefs_anchored_in_truth | generic_context_tool | generic_agent_runtime
+    patina_role: belief_network | search_tool | task_tracker | llm_runtime
+    mct_role: infrastructure_around_beliefs | standalone_platform | plugin_system | unspecified
+
+    experimental_framing_visible: Boolean
+    playground_voice_visible: Boolean
+
+    explains_context_gap: Boolean
+    explains_sandbox_gap: Boolean
+    explains_observability_gap: Boolean
+
+    claims: MessagingClaim with positioning = this
+    unanchored_claims: claims where requires_evidence and not has_evidence
+
+    transitions status {
+        draft -> approved
+        approved -> published
+        terminal: published
+    }
+
+    all_primary_gaps_explained:
+        explains_context_gap and explains_sandbox_gap and explains_observability_gap
+    has_unanchored_claims: unanchored_claims.count > 0
+}
+
+entity MessagingClaim {
+    positioning: PublicPositioning
+    kind: identity | belief | infrastructure | capability | observability | future_direction
+    text: String
+    requires_evidence: Boolean
+    evidence: Set<EvidenceAnchor>
+
+    has_evidence: evidence.count > 0
+}
+
+entity EvidenceAnchor {
+    path: String
+    kind: code | allium | belief | spec | session | manifest | readme
+}
+
+entity ReaderUnderstanding {
+    reader: PublicReader
+    positioning: PublicPositioning
+    understands_shared_beliefs: Boolean
+    understands_mct_infrastructure: Boolean
+    understands_context_gap: Boolean
+    understands_sandbox_gap: Boolean
+    understands_observability_gap: Boolean
+    understands_experimental_status: Boolean
+}
+
+rule DraftPositioningStartsAsWorkInProgress {
+    when: StakeholderDraftsPositioning(stakeholder)
+    ensures: PublicPositioning.created(
+        surface: readme,
+        status: draft,
+        primary_identity: shared_beliefs_anchored_in_truth,
+        patina_role: belief_network,
+        mct_role: infrastructure_around_beliefs,
+        experimental_framing_visible: true,
+        playground_voice_visible: true,
+        explains_context_gap: true,
+        explains_sandbox_gap: true,
+        explains_observability_gap: true
+    )
+}
+
+rule ApprovePositioningWhenBeliefFirstAndMctAroundIt {
+    when: StakeholderApprovesPositioning(stakeholder, positioning)
+    requires: positioning.status = draft
+    requires: positioning.primary_identity = shared_beliefs_anchored_in_truth
+    requires: positioning.patina_role = belief_network
+    requires: positioning.mct_role = infrastructure_around_beliefs
+    requires: positioning.experimental_framing_visible
+    requires: positioning.playground_voice_visible
+    requires: positioning.all_primary_gaps_explained
+    requires: not positioning.has_unanchored_claims
+    ensures: positioning.status = approved
+    ensures: PositioningApproved(positioning: positioning)
+}
+
+rule PublishApprovedPositioning {
+    when: StakeholderPublishesPositioning(stakeholder, positioning)
+    requires: positioning.status = approved
+    ensures: positioning.status = published
+    ensures: PositioningPublished(positioning: positioning)
+}
+
+rule RejectPositioningWhenPatinaIsNotBeliefNetwork {
+    when: StakeholderReviewsPositioning(stakeholder, positioning)
+    requires: positioning.patina_role != belief_network
+    ensures: PositioningRevisionRequested(
+        positioning: positioning,
+        reason: "patina_must_be_framed_as_belief_network"
+    )
+}
+
+rule RejectPositioningWhenMctIsNotInfrastructureAroundBeliefs {
+    when: StakeholderReviewsPositioning(stakeholder, positioning)
+    requires: positioning.mct_role != infrastructure_around_beliefs
+    ensures: PositioningRevisionRequested(
+        positioning: positioning,
+        reason: "mct_must_be_infrastructure_around_beliefs"
+    )
+}
+
+rule RejectPositioningWhenAgenticGapsAreMissing {
+    when: StakeholderReviewsPositioning(stakeholder, positioning)
+    requires: not positioning.all_primary_gaps_explained
+    ensures: PositioningRevisionRequested(
+        positioning: positioning,
+        reason: "context_sandbox_observability_must_be_explained"
+    )
+}
+
+rule RejectPositioningWhenEvidenceBackedClaimIsUnanchored {
+    when: StakeholderReviewsPositioning(stakeholder, positioning)
+    requires: positioning.has_unanchored_claims
+    ensures: PositioningRevisionRequested(
+        positioning: positioning,
+        reason: "public_claims_must_map_to_repo_evidence"
+    )
+}
+
+rule ReaderUnderstandsPatinaAndMctAfterReadingPublishedPositioning {
+    when: ReaderReadsPositioning(reader, positioning)
+    requires: positioning.status = published
+    requires: positioning.primary_identity = shared_beliefs_anchored_in_truth
+    requires: positioning.patina_role = belief_network
+    requires: positioning.mct_role = infrastructure_around_beliefs
+    requires: positioning.all_primary_gaps_explained
+    ensures: ReaderUnderstanding.created(
+        reader: reader,
+        positioning: positioning,
+        understands_shared_beliefs: true,
+        understands_mct_infrastructure: true,
+        understands_context_gap: true,
+        understands_sandbox_gap: true,
+        understands_observability_gap: true,
+        understands_experimental_status: positioning.experimental_framing_visible
+    )
+}
+
+surface PositioningReview {
+    facing stakeholder: PositioningStakeholder
+    context positioning: PublicPositioning
+
+    exposes:
+        positioning.primary_identity
+        positioning.patina_role
+        positioning.mct_role
+        positioning.experimental_framing_visible
+        positioning.playground_voice_visible
+        positioning.explains_context_gap
+        positioning.explains_sandbox_gap
+        positioning.explains_observability_gap
+        positioning.has_unanchored_claims
+
+    provides:
+        StakeholderReviewsPositioning(stakeholder, positioning)
+        StakeholderApprovesPositioning(stakeholder, positioning)
+            when positioning.status = draft
+        StakeholderPublishesPositioning(stakeholder, positioning)
+            when positioning.status = approved
+}
+
+surface PublicReadmePositioning {
+    facing reader: PublicReader
+    context positioning: PublicPositioning where surface = readme
+
+    exposes:
+        reader.kind
+        positioning.primary_identity
+        positioning.patina_role
+        positioning.mct_role
+        positioning.experimental_framing_visible
+        positioning.playground_voice_visible
+        positioning.explains_context_gap
+        positioning.explains_sandbox_gap
+        positioning.explains_observability_gap
+
+    provides:
+        ReaderReadsPositioning(reader, positioning)
+            when positioning.status = published
+
+    @guarantee BeliefNetworkFirst
+        -- The README presents Patina first as shared beliefs anchored in project truth.
+
+    @guarantee MctAsInfrastructureAroundBeliefs
+        -- The README presents Mother/Child/Toy as experimental infrastructure around the belief network,
+        -- not as a detached platform that is already separate from Patina.
+
+    @guarantee ContextSandboxObservability
+        -- The README explains the three primary gaps MCT addresses in agentic work: context,
+        -- sandbox, and observability.
+
+    @guarantee EvidenceBackedClaims
+        -- Public claims that imply product capability are anchored to repo evidence.
+}
