@@ -3397,7 +3397,7 @@ dependencies = [
 
 [[package]]
 name = "patina-sdk"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "wit-bindgen 0.41.0",
 ]
