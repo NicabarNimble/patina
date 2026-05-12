@@ -189,9 +189,34 @@ pub enum MotherCommands {
     #[command(subcommand)]
     Projects(ProjectsCommands),
 
+    /// Discover skills exposed by installed children
+    #[command(subcommand)]
+    Skills(SkillsCommands),
+
     /// Mother-owned view buffers and display shapes
     #[command(subcommand)]
     View(ViewCommands),
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
+#[command(disable_help_subcommand = true)]
+pub enum SkillsCommands {
+    /// List installed children with skill packages
+    List,
+
+    /// Show skill packages for one child
+    Show {
+        /// Child name, e.g. slate-manager
+        child: String,
+    },
+
+    /// Print help for a child skill package
+    Help {
+        /// Child name, e.g. slate-manager
+        child: String,
+        /// Skill package name, e.g. slate-code
+        skill: String,
+    },
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -696,6 +721,7 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             println!("  patina mother children Child registry control-plane");
             println!("  patina mother lifecycle Lifecycle operations");
             println!("  patina mother projects Project check-in/list/sync");
+            println!("  patina mother skills   Discover child skill packages");
             println!("  patina mother view     Mother-owned view buffers");
             println!("  patina mother search   Cross-project belief search\n");
             println!("Run 'patina mother --help' for details.");
@@ -777,8 +803,143 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
         Some(MotherCommands::Children(command)) => children::execute_children(command),
         Some(MotherCommands::Lifecycle(command)) => execute_lifecycle(command),
         Some(MotherCommands::Projects(command)) => execute_projects(command),
+        Some(MotherCommands::Skills(command)) => execute_skills(command),
         Some(MotherCommands::View(command)) => execute_view(command),
     }
+}
+
+fn execute_skills(command: SkillsCommands) -> Result<()> {
+    match command {
+        SkillsCommands::List => {
+            let rows = installed_child_skill_rows()?;
+            if rows.is_empty() {
+                println!("No installed child skill packages found.");
+                return Ok(());
+            }
+            println!("Mother child skills:\n");
+            for (child, skills) in rows {
+                if skills.is_empty() {
+                    println!("  {}  —", child);
+                } else {
+                    println!("  {}  {}", child, skills.join(", "));
+                }
+            }
+            Ok(())
+        }
+        SkillsCommands::Show { child } => {
+            let skills = child_skills(&child)?;
+            if skills.is_empty() {
+                println!("No skills found for child '{}'.", child);
+                return Ok(());
+            }
+            println!("{} skills:\n", child);
+            for skill in skills {
+                println!("  {:<28} {}", skill.name, skill.description);
+            }
+            Ok(())
+        }
+        SkillsCommands::Help { child, skill } => {
+            let path = child_skill_path(&child, &skill);
+            if !path.exists() {
+                anyhow::bail!(
+                    "skill '{}' for child '{}' not found at {}",
+                    skill,
+                    child,
+                    path.display()
+                );
+            }
+            println!("{}", std::fs::read_to_string(path)?);
+            Ok(())
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ChildSkillSummary {
+    name: String,
+    description: String,
+}
+
+fn installed_child_skill_rows() -> Result<Vec<(String, Vec<String>)>> {
+    let mut rows = Vec::new();
+    let dir = paths::child::command_children_dir();
+    if !dir.exists() {
+        return Ok(rows);
+    }
+    for entry in std::fs::read_dir(&dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("toml") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        let skill_names = child_skills(stem)?
+            .into_iter()
+            .map(|skill| skill.name)
+            .collect::<Vec<_>>();
+        rows.push((stem.to_string(), skill_names));
+    }
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(rows)
+}
+
+fn child_skills(child: &str) -> Result<Vec<ChildSkillSummary>> {
+    let skills_dir = paths::child::command_children_dir()
+        .join(child)
+        .join("skills");
+    if !skills_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut skills = Vec::new();
+    for entry in std::fs::read_dir(skills_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let path = entry.path().join("SKILL.md");
+        if !path.exists() {
+            continue;
+        }
+        skills.push(read_skill_summary(&path)?);
+    }
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(skills)
+}
+
+fn child_skill_path(child: &str, skill: &str) -> PathBuf {
+    paths::child::command_children_dir()
+        .join(child)
+        .join("skills")
+        .join(skill)
+        .join("SKILL.md")
+}
+
+fn read_skill_summary(path: &Path) -> Result<ChildSkillSummary> {
+    let raw = std::fs::read_to_string(path)?;
+    let mut name = path
+        .parent()
+        .and_then(|parent| parent.file_name())
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let mut description = String::new();
+
+    if raw.starts_with("---\n") {
+        for line in raw.lines().skip(1) {
+            if line.trim() == "---" {
+                break;
+            }
+            if let Some(value) = line.strip_prefix("name:") {
+                name = value.trim().trim_matches('"').to_string();
+            } else if let Some(value) = line.strip_prefix("description:") {
+                description = value.trim().trim_matches('"').to_string();
+            }
+        }
+    }
+
+    Ok(ChildSkillSummary { name, description })
 }
 
 fn execute_view(command: ViewCommands) -> Result<()> {
