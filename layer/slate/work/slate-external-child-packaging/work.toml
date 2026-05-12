@@ -1,0 +1,34 @@
+id = "slate-external-child-packaging"
+title = "External Slate child packaging"
+kind = "build"
+status = "active"
+human_request = "Make Slate extractable as an app-like WIT/WASI Patina child that can live outside the Patina monorepo: package patina-sdk, stabilize WIT toy contracts, fix cargo component build, add first-class child packaging/install, and expose Mother child skills/help."
+allium_anchors = ["layer/allium/mother/mother-child-toy-orchestration.allium"]
+user_alignment = "User wants app-like WIT/WASI Patina children that can be built as standalone projects outside the Patina monorepo, with Slate as the first concrete extraction target."
+belief_refs = [
+    "[[contract-first-execution]]",
+    "[[mother-brokers-child-skills]]",
+    "[[read-code-before-write-code]]",
+    "[[scalpel-commits]]",
+]
+proof_plan = [
+    "[ ] `patina-sdk` is consumable by an external child crate without `path = ../../sdk/patina-sdk`.",
+    "[ ] Stable WIT toy contracts required by Slate are present in the external child package or fetched/published through a documented versioned mechanism.",
+    "[ ] External Slate child build works through the supported component build command, including the previously failing `wasi:logging@0.1.0` dependency story.",
+    "[ ] First-class package/install command installs Slate child `.wasm`, `child.toml`, skills, and WIT metadata into Patina/Mother without manual copy steps.",
+    "[ ] `patina mother skills show slate-manager` or equivalent lists Slate child skill packages and command/help surfaces.",
+    "[ ] A standalone Slate child repo/package smoke test can create/show/check work through `patina slate ...` after installation.",
+]
+closure_evidence = []
+blocked_by = []
+target = "Standalone app-like WIT/WASI Slate child outside Patina monorepo"
+implementation_plan = [
+    "Package `sdk/patina-sdk` so external child repos can depend on it by version instead of monorepo path dependency.",
+    "Define stable WIT toy contract distribution for child repos: copy/publish/version `patina:git`, `patina:measure`, logging/keyvalue compatibility, filesystem guidance, and child runtime imports.",
+    "Fix the `cargo component build -p patina-ai-child-slate-manager --release` path or document/replace it with a supported external-child build command.",
+    "Add first-class child packaging/install flow so a standalone Slate child repo can produce a `.wasm`, `child.toml`, WIT package, skills, and installable bundle.",
+    "Expose Mother child skill/help discovery so installed children can advertise skills and commands through `patina mother skills ...`.",
+    "Prove Slate can be extracted by creating or simulating an external Slate child package that builds and installs without relying on monorepo-relative paths.",
+]
+created_at = "1778600907"
+updated_at = "1778600958"
