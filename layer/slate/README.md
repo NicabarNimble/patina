@@ -16,7 +16,7 @@ layer/slate/work/<slate-id>/work.toml
 
 Slate's standalone child package is public at <https://github.com/NicabarNimble/patina-child-slate> with a local checkout at `/Users/nicabar/Projects/Patina/patina-child-slate`.
 
-The Patina monorepo may keep `children/slate-manager` as a compatibility/development mirror until the workspace and tests no longer need an in-tree child crate.
+Work on Slate manager behavior in that external repo. Patina consumes Slate as an installed child package rather than as an in-tree workspace crate.
 
 ## Child Skill Packages
 
@@ -24,9 +24,8 @@ Slate child skills are owned by `slate-manager` and should be discoverable by Mo
 
 Current child-owned packages:
 
-- external package: `/Users/nicabar/Projects/Patina/patina-child-slate/skills/slate-code/SKILL.md`
-- external package: `/Users/nicabar/Projects/Patina/patina-child-slate/skills/slate-version-control/SKILL.md`
-- compatibility mirror: `children/slate-manager/skills/`
+- `/Users/nicabar/Projects/Patina/patina-child-slate/skills/slate-code/SKILL.md`
+- `/Users/nicabar/Projects/Patina/patina-child-slate/skills/slate-version-control/SKILL.md`
 
 Mother exposes installed child skill discovery through commands such as `patina mother skills show slate-manager`.
 

@@ -20,8 +20,10 @@ patina mother skills help slate-manager slate-version-control
 
 ## Child package layout
 
+Slate manager now lives outside the Patina monorepo:
+
 ```text
-children/slate-manager/
+/Users/nicabar/Projects/Patina/patina-child-slate/
   child.toml
   skills/
     README.md
@@ -41,16 +43,15 @@ A child skill package is documentation plus command examples and lifecycle gates
 
 ## Slate responsibilities
 
-- own Slate-specific skills under `children/slate-manager/skills/`;
+- own Slate-specific skills under `/Users/nicabar/Projects/Patina/patina-child-slate/skills/`;
 - keep command examples accurate with the child WIT operations;
 - document version/archive semantics in `slate-version-control`;
-- keep `.pi/skills/` files as temporary bridges only.
+- install skill packages with the child so Mother can broker them.
 
-## Current bridge
+## Current surface
 
-Until the Mother surface exists, agents can read:
+Mother can render installed child skills:
 
-- `.pi/skills/patina-mother-system/SKILL.md`
-- `.pi/skills/patina-slate-code/SKILL.md`
-- `children/slate-manager/skills/slate-code/SKILL.md`
-- `children/slate-manager/skills/slate-version-control/SKILL.md`
+- `patina mother skills show slate-manager`
+- `patina mother skills help slate-manager slate-code`
+- `patina mother skills help slate-manager slate-version-control`
