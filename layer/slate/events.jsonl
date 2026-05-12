@@ -163,3 +163,4 @@
 {"created_at":"1778607429","event_type":"set","payload":{"field":"closure_evidence","value":"Updated `layer/slate/child-skill-discovery.md` to show the external child package layout and current `patina mother skills ...` surface instead of the removed `children/slate-manager` path."},"work_id":"slate-manager-monorepo-removal"}
 {"created_at":"1778607485","event_type":"set","payload":{"field":"belief_harvest_decision","value":"no new belief required; this operationalizes contract-first execution and explicit fail-closed behavior by making Slate an installed external child"},"work_id":"slate-manager-monorepo-removal"}
 {"created_at":"1778607501","event_type":"completed","payload":{"force":false},"work_id":"slate-manager-monorepo-removal"}
+{"created_at":"1778607535","event_type":"archived","payload":{"force":false,"tag":"slate/slate-manager-monorepo-removal"},"work_id":"slate-manager-monorepo-removal"}
