@@ -4,7 +4,12 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 
 use crate::{
-    view_buffer::{self, Buffer, Frame, ObservabilityGap, Window},
+    view_buffer::{
+        self, Buffer, DisplayPattern, DisplayRequest, DisplayRequestOutcome, Frame,
+        ObservabilityGap, ObservabilityImprovementArtifact, ShapeMatch, ViewDerivation,
+        ViewMaturationEvent, ViewShape, ViewShapeAdaptation, ViewShapeCreation, ViewShapeRevision,
+        Window,
+    },
     TaskIntent, TaskIntentKind,
 };
 
@@ -1819,6 +1824,183 @@ impl MotherRuntimeStore {
         Ok(())
     }
 
+    pub fn save_view_display_request(&self, request: &DisplayRequest) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_display_request(&conn, request)
+    }
+
+    pub fn get_view_display_request(&self, request_id: &str) -> Result<Option<DisplayRequest>> {
+        let conn = self.open()?;
+        view_buffer::store::get_display_request(&conn, request_id)
+    }
+
+    pub fn list_view_display_requests(&self) -> Result<Vec<DisplayRequest>> {
+        let conn = self.open()?;
+        view_buffer::store::list_display_requests(&conn)
+    }
+
+    pub fn update_view_display_request_outcome(
+        &self,
+        request_id: &str,
+        outcome: &DisplayRequestOutcome,
+    ) -> Result<bool> {
+        let conn = self.open()?;
+        view_buffer::store::update_display_request_outcome(&conn, request_id, outcome)
+    }
+
+    pub fn save_view_shape_match(&self, shape_match: &ShapeMatch) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_shape_match(&conn, shape_match)
+    }
+
+    pub fn get_view_shape_match(&self, request_id: &str) -> Result<Option<ShapeMatch>> {
+        let conn = self.open()?;
+        view_buffer::store::get_shape_match(&conn, request_id)
+    }
+
+    pub fn list_view_shape_matches(&self) -> Result<Vec<ShapeMatch>> {
+        let conn = self.open()?;
+        view_buffer::store::list_shape_matches(&conn)
+    }
+
+    pub fn save_view_shape_adaptation(&self, adaptation: &ViewShapeAdaptation) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_shape_adaptation(&conn, adaptation)
+    }
+
+    pub fn get_view_shape_adaptation(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<ViewShapeAdaptation>> {
+        let conn = self.open()?;
+        view_buffer::store::get_shape_adaptation(&conn, request_id)
+    }
+
+    pub fn save_view_shape_creation(&self, creation: &ViewShapeCreation) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_shape_creation(&conn, creation)
+    }
+
+    pub fn get_view_shape_creation(&self, request_id: &str) -> Result<Option<ViewShapeCreation>> {
+        let conn = self.open()?;
+        view_buffer::store::get_shape_creation(&conn, request_id)
+    }
+
+    pub fn save_view_shape_revision(&self, revision: &ViewShapeRevision) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_shape_revision(&conn, revision)
+    }
+
+    pub fn get_view_shape_revision(&self, revision_id: &str) -> Result<Option<ViewShapeRevision>> {
+        let conn = self.open()?;
+        view_buffer::store::get_shape_revision(&conn, revision_id)
+    }
+
+    pub fn list_view_shape_revisions(&self) -> Result<Vec<ViewShapeRevision>> {
+        let conn = self.open()?;
+        view_buffer::store::list_shape_revisions(&conn)
+    }
+
+    pub fn upsert_view_shape(&self, shape: &ViewShape) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::upsert_shape(&conn, shape)
+    }
+
+    pub fn seed_view_shape(&self, shape: &ViewShape) -> Result<bool> {
+        let conn = self.open()?;
+        if view_buffer::store::get_shape(&conn, &shape.shape_id)?.is_some() {
+            return Ok(false);
+        }
+        view_buffer::store::upsert_shape(&conn, shape)?;
+        Ok(true)
+    }
+
+    pub fn get_view_shape(&self, shape_id: &str) -> Result<Option<ViewShape>> {
+        let conn = self.open()?;
+        view_buffer::store::get_shape(&conn, shape_id)
+    }
+
+    pub fn list_view_shapes(&self) -> Result<Vec<ViewShape>> {
+        let conn = self.open()?;
+        view_buffer::store::list_shapes(&conn)
+    }
+
+    pub fn deactivate_view_shape(&self, shape_id: &str) -> Result<bool> {
+        let conn = self.open()?;
+        view_buffer::store::deactivate_shape(&conn, shape_id)
+    }
+
+    pub fn upsert_view_derivation(&self, derivation: &ViewDerivation) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::upsert_derivation(&conn, derivation)
+    }
+
+    pub fn get_view_derivation(&self, derivation_id: &str) -> Result<Option<ViewDerivation>> {
+        let conn = self.open()?;
+        view_buffer::store::get_derivation(&conn, derivation_id)
+    }
+
+    pub fn list_view_derivations(&self) -> Result<Vec<ViewDerivation>> {
+        let conn = self.open()?;
+        view_buffer::store::list_derivations(&conn)
+    }
+
+    pub fn upsert_view_display_pattern(&self, pattern: &DisplayPattern) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::upsert_display_pattern(&conn, pattern)
+    }
+
+    pub fn get_view_display_pattern(&self, pattern_id: &str) -> Result<Option<DisplayPattern>> {
+        let conn = self.open()?;
+        view_buffer::store::get_display_pattern(&conn, pattern_id)
+    }
+
+    pub fn list_view_display_patterns(&self) -> Result<Vec<DisplayPattern>> {
+        let conn = self.open()?;
+        view_buffer::store::list_display_patterns(&conn)
+    }
+
+    pub fn save_view_maturation_event(&self, event: &ViewMaturationEvent) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_maturation_event(&conn, event)
+    }
+
+    pub fn get_view_maturation_event(
+        &self,
+        maturation_id: &str,
+    ) -> Result<Option<ViewMaturationEvent>> {
+        let conn = self.open()?;
+        view_buffer::store::get_maturation_event(&conn, maturation_id)
+    }
+
+    pub fn list_view_maturation_events(&self) -> Result<Vec<ViewMaturationEvent>> {
+        let conn = self.open()?;
+        view_buffer::store::list_maturation_events(&conn)
+    }
+
+    pub fn save_view_observability_improvement(
+        &self,
+        artifact: &ObservabilityImprovementArtifact,
+    ) -> Result<()> {
+        let conn = self.open()?;
+        view_buffer::store::save_observability_improvement(&conn, artifact)
+    }
+
+    pub fn get_view_observability_improvement(
+        &self,
+        artifact_id: &str,
+    ) -> Result<Option<ObservabilityImprovementArtifact>> {
+        let conn = self.open()?;
+        view_buffer::store::get_observability_improvement(&conn, artifact_id)
+    }
+
+    pub fn list_view_observability_improvements(
+        &self,
+    ) -> Result<Vec<ObservabilityImprovementArtifact>> {
+        let conn = self.open()?;
+        view_buffer::store::list_observability_improvements(&conn)
+    }
+
     pub fn save_view_buffer(&self, buffer: &Buffer) -> Result<()> {
         let conn = self.open()?;
         view_buffer::store::save_buffer(&conn, buffer)
@@ -1852,6 +2034,11 @@ impl MotherRuntimeStore {
     pub fn save_view_observability_gap(&self, gap: &ObservabilityGap) -> Result<()> {
         let conn = self.open()?;
         view_buffer::store::save_gap(&conn, gap)
+    }
+
+    pub fn get_view_observability_gap(&self, gap_id: &str) -> Result<Option<ObservabilityGap>> {
+        let conn = self.open()?;
+        view_buffer::store::get_gap(&conn, gap_id)
     }
 
     pub fn list_view_observability_gaps(&self) -> Result<Vec<ObservabilityGap>> {
@@ -1907,6 +2094,543 @@ mod tests {
     }
 
     #[test]
+    fn view_display_requests_and_shape_matches_are_persistent() {
+        // obligation: entity-state.DisplayRequest + entity-state.ShapeMatch
+        // obligation: spec.mother-view-request-composer.mvrc2-request-persistence
+        use crate::view_buffer::{
+            DisplayRequest, DisplayRequestOutcome, ShapeMatch, ShapeMatchKind,
+        };
+
+        let store = temp_store();
+        let requested_at = chrono::DateTime::parse_from_rfc3339("2026-05-09T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let request = DisplayRequest::pending(
+            "req_1".to_string(),
+            "local-user".to_string(),
+            "pi".to_string(),
+            "show mother status".to_string(),
+            requested_at,
+        );
+        let shape_match = ShapeMatch {
+            request_id: request.request_id.clone(),
+            shape_id: Some("mother.status.default".to_string()),
+            match_kind: ShapeMatchKind::ExplicitUserChoice,
+            confidence: 1.0,
+        };
+
+        store.save_view_display_request(&request).unwrap();
+        store.save_view_shape_match(&shape_match).unwrap();
+        assert!(store
+            .update_view_display_request_outcome(
+                &request.request_id,
+                &DisplayRequestOutcome::BufferOpened,
+            )
+            .unwrap());
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        let mut expected_request = request.clone();
+        expected_request.outcome = DisplayRequestOutcome::BufferOpened;
+        assert_eq!(
+            reopened
+                .get_view_display_request(&request.request_id)
+                .unwrap(),
+            Some(expected_request.clone())
+        );
+        assert_eq!(
+            reopened.list_view_display_requests().unwrap(),
+            vec![expected_request]
+        );
+        assert_eq!(
+            reopened.get_view_shape_match(&request.request_id).unwrap(),
+            Some(shape_match.clone())
+        );
+        assert_eq!(
+            reopened.list_view_shape_matches().unwrap(),
+            vec![shape_match]
+        );
+        assert!(!reopened
+            .update_view_display_request_outcome("missing", &DisplayRequestOutcome::Unable)
+            .unwrap());
+    }
+
+    #[test]
+    fn view_request_ux_shape_artifacts_are_persistent() {
+        // obligation: spec.mother-view-request-ux.mvru2-persist-request-artifacts
+        use crate::view_buffer::{
+            DisplayRequest, ViewRequirement, ViewShapeAdaptation, ViewShapeCreation,
+        };
+
+        let store = temp_store();
+        let request = DisplayRequest::pending(
+            "req_ux".to_string(),
+            "local-user".to_string(),
+            "pi".to_string(),
+            "show runtime summary".to_string(),
+            Utc::now(),
+        );
+        let adaptation = ViewShapeAdaptation::created_without_opening(
+            request.request_id.clone(),
+            "mother.status.default".to_string(),
+            "mother.status.default::adapted::test".to_string(),
+        );
+        let creation = ViewShapeCreation::created_without_opening(
+            request.request_id.clone(),
+            "initial::req_ux::test".to_string(),
+            vec![ViewRequirement {
+                fact_path: "mother.status.version".to_string(),
+                required: true,
+                purpose: "display Mother version".to_string(),
+            }],
+        );
+
+        store.save_view_display_request(&request).unwrap();
+        store.save_view_shape_adaptation(&adaptation).unwrap();
+        store.save_view_shape_creation(&creation).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(
+            reopened
+                .get_view_shape_adaptation(&request.request_id)
+                .unwrap(),
+            Some(adaptation)
+        );
+        assert_eq!(
+            reopened
+                .get_view_shape_creation(&request.request_id)
+                .unwrap(),
+            Some(creation)
+        );
+    }
+
+    #[test]
+    fn view_buffer_revision_records_are_persistent() {
+        // obligation: spec.mother-view-buffer-revision.mvbr5-persistence
+        use crate::view_buffer::{
+            Buffer, BufferState, ViewShapeRevision, ViewShapeRevisionOrigin,
+            ViewShapeRevisionState, ViewShapeScope,
+        };
+
+        let store = temp_store();
+        let shape = crate::view_buffer::mother_status_shape();
+        let mut previous_buffer = Buffer::live_from_shape("buf_1".to_string(), &shape, Utc::now());
+        previous_buffer.state = BufferState::Replaced;
+        previous_buffer.replaced_at = Some(Utc::now());
+        previous_buffer.replacement_buffer_id = Some("buf_2".to_string());
+        let revision = ViewShapeRevision {
+            revision_id: "rev_1".to_string(),
+            user_id: "local-user".to_string(),
+            agent_id: "pi".to_string(),
+            previous_shape_id: shape.shape_id.clone(),
+            revised_shape_id: "mother.status.default::revision::next".to_string(),
+            previous_buffer_id: Some(previous_buffer.buffer_id.clone()),
+            replacement_buffer_id: previous_buffer.replacement_buffer_id.clone(),
+            revision_scope: ViewShapeScope::MotherUser,
+            revision_origin: ViewShapeRevisionOrigin::UserCorrection,
+            revision_state: ViewShapeRevisionState::Applied,
+            reason: "show readiness first".to_string(),
+            created_at: Utc::now(),
+        };
+
+        store.save_view_buffer(&previous_buffer).unwrap();
+        store.save_view_shape_revision(&revision).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(
+            reopened
+                .get_view_shape_revision(&revision.revision_id)
+                .unwrap(),
+            Some(revision.clone())
+        );
+        assert_eq!(
+            reopened.list_view_shape_revisions().unwrap(),
+            vec![revision]
+        );
+        assert_eq!(
+            reopened
+                .list_view_buffers()
+                .unwrap()
+                .first()
+                .and_then(|buffer| buffer.replacement_buffer_id.as_deref()),
+            Some("buf_2")
+        );
+    }
+
+    #[test]
+    fn view_maturation_artifacts_and_events_are_persistent() {
+        // obligation: spec.mother-view-maturation.mvmat2-artifact-library
+        // obligation: spec.mother-view-maturation.mvmat5-observability-improvement-artifact
+        use crate::view_buffer::{
+            DisplayPattern, DisplayPatternKind, ObservabilityImprovementArtifact, ViewDerivation,
+            ViewMaturationEvent, ViewMaturationOrigin, ViewMaturationTargetKind, ViewShapeMaturity,
+        };
+
+        let store = temp_store();
+        let derivation = ViewDerivation {
+            derivation_id: "derivation_1".to_string(),
+            shape_id: crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string(),
+            label: "Memory Pressure Summary".to_string(),
+            expression_ref: "allium://views/mother/status/memory-pressure".to_string(),
+            input_fact_paths: vec!["mother.status.memory_pressure".to_string()],
+            maturity: ViewShapeMaturity::Candidate,
+        };
+        let pattern = DisplayPattern {
+            pattern_id: "pattern_1".to_string(),
+            shape_id: crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string(),
+            pattern_kind: DisplayPatternKind::Grouping,
+            maturity: ViewShapeMaturity::Exploratory,
+        };
+        let event = ViewMaturationEvent {
+            maturation_id: "maturation_1".to_string(),
+            target_kind: ViewMaturationTargetKind::Derivation,
+            shape_id: Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+            derivation_id: Some(derivation.derivation_id.clone()),
+            pattern_id: None,
+            origin: ViewMaturationOrigin::UserRequested,
+            from_maturity: ViewShapeMaturity::Candidate,
+            to_maturity: ViewShapeMaturity::Stable,
+            created_at: Utc::now(),
+        };
+        let artifact = ObservabilityImprovementArtifact {
+            artifact_id: "maturation_1::observability-improvement".to_string(),
+            source_gap_id: None,
+            source_maturation_id: Some(event.maturation_id.clone()),
+            desired_fact_path: "mother.status.memory_pressure.summary".to_string(),
+            reason: "stable derivation should become observable".to_string(),
+            created_at: Utc::now(),
+            work_item_created: false,
+        };
+
+        store.upsert_view_derivation(&derivation).unwrap();
+        store.upsert_view_display_pattern(&pattern).unwrap();
+        store.save_view_maturation_event(&event).unwrap();
+        store
+            .save_view_observability_improvement(&artifact)
+            .unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(
+            reopened
+                .get_view_derivation(&derivation.derivation_id)
+                .unwrap(),
+            Some(derivation.clone())
+        );
+        assert_eq!(reopened.list_view_derivations().unwrap(), vec![derivation]);
+        assert_eq!(
+            reopened
+                .get_view_display_pattern(&pattern.pattern_id)
+                .unwrap(),
+            Some(pattern.clone())
+        );
+        assert_eq!(
+            reopened.list_view_display_patterns().unwrap(),
+            vec![pattern]
+        );
+        assert_eq!(
+            reopened
+                .get_view_maturation_event(&event.maturation_id)
+                .unwrap(),
+            Some(event.clone())
+        );
+        assert_eq!(reopened.list_view_maturation_events().unwrap(), vec![event]);
+        assert_eq!(
+            reopened
+                .get_view_observability_improvement(&artifact.artifact_id)
+                .unwrap(),
+            Some(artifact.clone())
+        );
+        assert_eq!(
+            reopened.list_view_observability_improvements().unwrap(),
+            vec![artifact]
+        );
+    }
+
+    #[test]
+    fn view_shapes_and_requirements_are_persistent() {
+        // obligation: entity-state.ViewShape + entity-state.ViewRequirement
+        // obligation: spec.mother-view-shape-library.mvsl2-shape-persistence
+        use crate::view_buffer::{
+            MajorMode, MinorMode, PayloadContract, ViewRequirement, ViewShape, ViewShapeMaturity,
+            ViewShapeScope,
+        };
+
+        let store = temp_store();
+        let shape = ViewShape {
+            shape_id: "test.shape.default".to_string(),
+            title: "Test Shape".to_string(),
+            source_ref: "local-allium-view-library".to_string(),
+            scope: ViewShapeScope::Project,
+            version: 7,
+            active: true,
+            major_mode: MajorMode::Table,
+            minor_modes: vec![MinorMode::Pinned, MinorMode::Sorted],
+            maturity: ViewShapeMaturity::Candidate,
+            payload_contract: PayloadContract::FramedJson,
+            payload_version: 3,
+            vision_id: Some("vision-1".to_string()),
+            project_uid: Some("2bdc808e".to_string()),
+            replaced_by: Some("test.shape.v8".to_string()),
+            requirements: vec![
+                ViewRequirement {
+                    fact_path: "alpha.fact".to_string(),
+                    required: true,
+                    purpose: "required display fact".to_string(),
+                },
+                ViewRequirement {
+                    fact_path: "beta.fact".to_string(),
+                    required: false,
+                    purpose: "optional enrichment fact".to_string(),
+                },
+            ],
+        };
+
+        store.upsert_view_shape(&shape).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(
+            reopened.get_view_shape(&shape.shape_id).unwrap(),
+            Some(shape.clone())
+        );
+        assert_eq!(reopened.list_view_shapes().unwrap(), vec![shape.clone()]);
+
+        assert!(reopened.deactivate_view_shape(&shape.shape_id).unwrap());
+        let deactivated = reopened
+            .get_view_shape(&shape.shape_id)
+            .unwrap()
+            .expect("shape remains after deactivation");
+        assert!(!deactivated.active);
+        assert!(!reopened.deactivate_view_shape("missing.shape").unwrap());
+    }
+
+    #[test]
+    fn view_initial_shape_creation_persists_created_shape_metadata() {
+        // obligation: spec.mother-view-initial-shape-creation.mvisc4-persistence
+        // obligation: rule-success.CreateInitialShapeWhenNoShapeMatches
+        use crate::view_buffer::{
+            ComposeViewRequest, DataCatalog, MajorMode, MinorMode, MotherStatusFacts,
+            ProposedInitialShape, ProposedShapeMatch, ShapeMatchKind, ViewBufferService,
+            ViewRequirement, ViewShapeMaturity,
+        };
+
+        let store = temp_store();
+        let mut service =
+            ViewBufferService::with_catalog(DataCatalog::mother_status(MotherStatusFacts {
+                version: "0.70.1".to_string(),
+                uptime_secs: 42,
+                control_plane_ready: true,
+                registered_projects: 2,
+                children_ready_count: 1,
+                children_total: 2,
+                startup_profile: "full".to_string(),
+                memory_pressure: "ok".to_string(),
+                observed_at: Utc::now(),
+            }));
+        let requirements = vec![ViewRequirement {
+            fact_path: "mother.status.version".to_string(),
+            required: true,
+            purpose: "display Mother version".to_string(),
+        }];
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show runtime summary".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: None,
+                    match_kind: ShapeMatchKind::None,
+                    confidence: 0.0,
+                }),
+                proposed_initial_shape: Some(ProposedInitialShape {
+                    title: "Mother Runtime Summary".to_string(),
+                    major_mode: MajorMode::Table,
+                    minor_modes: vec![MinorMode::Pinned],
+                    requirements: requirements.clone(),
+                    vision_id: Some("vision-1".to_string()),
+                    project_uid: Some("2bdc808e".to_string()),
+                }),
+            })
+            .unwrap();
+        let created_shape = composed
+            .created_shape
+            .expect("no-match request should return created shape");
+
+        store.upsert_view_shape(&created_shape).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        let persisted = reopened
+            .get_view_shape(&created_shape.shape_id)
+            .unwrap()
+            .expect("created shape should persist");
+        assert_eq!(persisted, created_shape);
+        assert_eq!(persisted.maturity, ViewShapeMaturity::Exploratory);
+        assert_eq!(persisted.source_ref, "local-allium-view-library");
+        assert_eq!(persisted.major_mode, MajorMode::Table);
+        assert_eq!(persisted.minor_modes, vec![MinorMode::Pinned]);
+        assert_eq!(persisted.requirements, requirements);
+    }
+
+    #[test]
+    fn view_shape_adaptation_persists_adapted_shape_metadata() {
+        // obligation: spec.mother-view-shape-adaptation.mvsa3-adapted-shape-persistence
+        // obligation: rule-success.AdaptSimilarShapeWhenNoExactShapeExists
+        use crate::view_buffer::{
+            ComposeViewRequest, DataCatalog, MotherStatusFacts, ProposedShapeMatch, ShapeMatchKind,
+            ViewBufferService, ViewShapeMaturity, SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+        };
+
+        let store = temp_store();
+        let precedent = crate::view_buffer::mother_status_shape();
+        let mut service = ViewBufferService::with_catalog_and_shapes(
+            DataCatalog::mother_status(MotherStatusFacts {
+                version: "0.70.0".to_string(),
+                uptime_secs: 42,
+                control_plane_ready: true,
+                registered_projects: 2,
+                children_ready_count: 1,
+                children_total: 2,
+                startup_profile: "full".to_string(),
+                memory_pressure: "ok".to_string(),
+                observed_at: Utc::now(),
+            }),
+            vec![precedent.clone()],
+        );
+
+        let composed = service
+            .compose_request(ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show something like mother status".to_string(),
+                proposed_match: Some(ProposedShapeMatch {
+                    shape_id: Some(precedent.shape_id.clone()),
+                    match_kind: ShapeMatchKind::Similar,
+                    confidence: SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+                }),
+                proposed_initial_shape: None,
+            })
+            .unwrap();
+        let adapted_shape = composed
+            .adapted_shape
+            .expect("similar match should return adapted shape");
+
+        store.upsert_view_shape(&adapted_shape).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        let mut persisted = reopened
+            .get_view_shape(&adapted_shape.shape_id)
+            .unwrap()
+            .expect("adapted shape should persist");
+        let mut expected = adapted_shape;
+        persisted
+            .requirements
+            .sort_by(|left, right| left.fact_path.cmp(&right.fact_path));
+        expected
+            .requirements
+            .sort_by(|left, right| left.fact_path.cmp(&right.fact_path));
+        assert_eq!(persisted, expected);
+        assert_eq!(persisted.maturity, ViewShapeMaturity::Exploratory);
+        assert_eq!(persisted.source_ref, precedent.source_ref);
+        assert_eq!(persisted.scope, precedent.scope);
+        assert_eq!(persisted.major_mode, precedent.major_mode);
+        assert_eq!(persisted.minor_modes, precedent.minor_modes);
+        assert_eq!(persisted.payload_contract, precedent.payload_contract);
+        assert_eq!(persisted.payload_version, precedent.payload_version);
+        let mut expected_requirements = precedent.requirements;
+        expected_requirements.sort_by(|left, right| left.fact_path.cmp(&right.fact_path));
+        assert_eq!(persisted.requirements, expected_requirements);
+    }
+
+    #[test]
+    fn seed_view_shape_is_idempotent_and_preserves_existing_shape() {
+        // obligation: spec.mother-view-shape-library.mvsl5-proof-shapes-seeded
+        let store = temp_store();
+        let mut shape = crate::view_buffer::mother_status_shape();
+        shape
+            .requirements
+            .sort_by(|left, right| left.fact_path.cmp(&right.fact_path));
+
+        assert!(store.seed_view_shape(&shape).unwrap());
+        assert_eq!(
+            store.get_view_shape(&shape.shape_id).unwrap(),
+            Some(shape.clone())
+        );
+
+        shape.title = "User Edited Mother Status".to_string();
+        store.upsert_view_shape(&shape).unwrap();
+        assert!(!store
+            .seed_view_shape(&crate::view_buffer::mother_status_shape())
+            .unwrap());
+        assert_eq!(
+            store
+                .get_view_shape(&shape.shape_id)
+                .unwrap()
+                .expect("seeded shape should exist")
+                .title,
+            "User Edited Mother Status"
+        );
+    }
+
+    #[test]
+    fn view_observability_workflow_gap_links_and_resolution_persist() {
+        // obligation: spec.mother-view-observability-workflow.mvow4-persistence
+        use crate::view_buffer::{ObservabilityGap, ObservabilityGapStatus};
+
+        let store = temp_store();
+        let mut gap = ObservabilityGap::open(
+            "gap_1".to_string(),
+            Some(crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+            "mother.status.version".to_string(),
+            Some("mother.status".to_string()),
+            "missing version".to_string(),
+            Utc::now(),
+        );
+        gap.status = ObservabilityGapStatus::LinkedToWorkItem;
+        gap.linked_work_item_id = Some("work/MOTHER-123".to_string());
+        store.save_view_observability_gap(&gap).unwrap();
+
+        let reopened = MotherRuntimeStore::new_with_project(
+            store.path().clone(),
+            ProjectUid::new("2bdc808e").unwrap(),
+        );
+        assert_eq!(
+            reopened.get_view_observability_gap(&gap.gap_id).unwrap(),
+            Some(gap.clone())
+        );
+
+        gap.status = ObservabilityGapStatus::Resolved;
+        gap.resolved_at = Some(Utc::now());
+        reopened.save_view_observability_gap(&gap).unwrap();
+        assert_eq!(
+            reopened
+                .get_view_observability_gap(&gap.gap_id)
+                .unwrap()
+                .and_then(|gap| gap.linked_work_item_id),
+            Some("work/MOTHER-123".to_string())
+        );
+    }
+
+    #[test]
     fn view_buffer_records_are_persistent() {
         // obligation: entity-state.Buffer + entity-state.Frame + entity-state.Window
         // obligation: entity-state.ObservabilityGap
@@ -1944,6 +2668,7 @@ mod tests {
             missing_source_id: Some("mother.status".to_string()),
             reason: "test gap".to_string(),
             status: ObservabilityGapStatus::Open,
+            linked_work_item_id: None,
             created_at: now,
             resolved_at: None,
         };

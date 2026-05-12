@@ -1,13 +1,13 @@
 [package]
 name = "patina-sdk"
-version = "0.21.0"
+version = "0.22.0"
 edition = "2021"
 license = "MIT"
 description = "SDK for push-pure Patina WASM children"
 repository = "https://github.com/NicabarNimble/patina"
 keywords = ["patina", "wasm", "child", "component-model"]
 categories = ["development-tools", "wasm"]
-include = ["src/**", "wit/**", "Cargo.toml", "README.md", "LICENSE*"]
+include = ["src/**", "wit/**", "Cargo.toml", "README.md", "TOY_GOVERNANCE.md", "LICENSE*"]
 
 [dependencies]
 wit-bindgen = "0.41"

@@ -456,6 +456,12 @@ enum Commands {
         command: SetupCommands,
     },
 
+    /// Manage Slate work transactions
+    Slate {
+        #[command(subcommand)]
+        command: commands::slate::SlateCommands,
+    },
+
     /// Manage spec lifecycle (archive completed specs)
     Spec {
         /// Target Patina project path or project UID for cross-project spec operations
@@ -997,6 +1003,20 @@ enum ChildCommands {
         #[arg(long, requires = "build")]
         release: bool,
     },
+    /// Install a packaged child into the local Patina plugin directory
+    Install {
+        /// Path to child package directory containing child.toml
+        path: String,
+        /// Path to built component .wasm; if omitted, common target paths are probed
+        #[arg(long)]
+        wasm: Option<String>,
+        /// Overwrite an existing installed child
+        #[arg(long)]
+        force: bool,
+        /// Do not preserve local-only scope additions from an existing manifest
+        #[arg(long)]
+        no_preserve_local_scopes: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -1170,6 +1190,9 @@ fn main() -> Result<()> {
                 commands::setup::execute_grammars(options)?;
             }
         },
+        Some(Commands::Slate { command }) => {
+            commands::slate::execute(command)?;
+        }
         Some(Commands::Spec { project, command }) => {
             main_dispatch::spec::dispatch_spec(project, command)?;
         }

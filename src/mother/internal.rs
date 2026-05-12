@@ -154,6 +154,65 @@ impl Client {
             .with_context(|| "Failed to parse scry response")
     }
 
+    pub fn get_json(&self, path: &str) -> Result<Value> {
+        if self.try_uds {
+            if let Some((status, body)) = uds_request("GET", path, None) {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&body).with_context(|| {
+                        format!("Failed to parse Mother GET response from UDS for {}", path)
+                    });
+                }
+                let msg = String::from_utf8_lossy(&body).to_string();
+                anyhow::bail!("Mother GET failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = self.http.get(&url);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req
+            .send()
+            .with_context(|| format!("Failed to send Mother GET request to {}", self.base_url))?;
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("Mother GET failed ({}): {}", status, body);
+        }
+        serde_json::from_str(&body).with_context(|| "Failed to parse Mother GET response")
+    }
+
+    pub fn post_json(&self, path: &str, payload: &Value) -> Result<Value> {
+        if self.try_uds {
+            let body = serde_json::to_vec(payload)?;
+            if let Some((status, resp_body)) = uds_request("POST", path, Some(&body)) {
+                if (200..300).contains(&status) {
+                    return serde_json::from_slice(&resp_body).with_context(|| {
+                        format!("Failed to parse Mother POST response from UDS for {}", path)
+                    });
+                }
+                let msg = String::from_utf8_lossy(&resp_body).to_string();
+                anyhow::bail!("Mother POST failed ({}): {}", status, msg);
+            }
+        }
+
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = self.http.post(&url).json(payload);
+        if let Some(ref token) = self.token {
+            req = req.header("Authorization", format!("Bearer {}", token));
+        }
+        let response = req
+            .send()
+            .with_context(|| format!("Failed to send Mother POST request to {}", self.base_url))?;
+        let status = response.status();
+        let body = response.text().unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("Mother POST failed ({}): {}", status, body);
+        }
+        serde_json::from_str(&body).with_context(|| "Failed to parse Mother POST response")
+    }
+
     pub fn child_action(&self, child: &str, action: &str, payload: &Value) -> Result<Value> {
         let path = format!("/child/{}/{}", child, action);
 

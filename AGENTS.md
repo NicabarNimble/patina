@@ -8,6 +8,7 @@ Project-specific notes:
 - Vocabulary lock: use `child`/`kind` terminology for runtime manifests (`child.toml`, `child.kind`); reserve `world` for WIT component composition contexts.
 - WIT toy contracts live in `wit/toys/deps/` (per-interface packages). Child world composition lives in `wit/child/` and `wit/pipeline/` (per-kind).
 - SDK surface is `sdk/patina-sdk` (umbrella crate with inline toy types).
+- For Patina/Mother work, use the overarching project skill `.pi/skills/patina-mother-system/SKILL.md`; keep child-specific workflows in Mother-discoverable child skill packages, not in `AGENTS.md`.
 
 <!-- PATINA:START -->
 ## Patina

@@ -1,7 +1,6 @@
 use super::*;
 use crate::commands::mother::federation;
 use patina::mother::{Child, ChildHealth, ChildRequest, ChildResponse, MotherHost};
-use patina_ai_child_slate_manager as slate_manager_child;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -97,7 +96,6 @@ struct NotifyingChild {
 
 struct TypedDispatchChild;
 struct SlateDispatchChild;
-struct ParitySlateDispatchChild;
 struct ScaffoldSlateDispatchChild;
 
 fn spec_dispatch_request_with_route(
@@ -141,92 +139,6 @@ fn slate_call_project_value(request: &patina::mother::ChildCallRequest) -> serde
         .and_then(|row| row.get("project"))
         .cloned()
         .unwrap_or(serde_json::Value::Null)
-}
-
-fn slate_typed_call_to_dispatch_envelope(
-    request: &patina::mother::ChildCallRequest,
-) -> Result<String> {
-    let args = request
-        .args
-        .as_array()
-        .and_then(|values| values.first())
-        .and_then(|value| value.as_object())
-        .ok_or_else(|| anyhow::anyhow!("expected typed slate args[0] object"))?;
-
-    let command = match request.operation_id.as_str() {
-        "patina:slate/control@0.1.0.list-specs" => serde_json::json!({
-            "list": {
-                "status": args.get("status").cloned().unwrap_or(serde_json::Value::Null),
-                "target": args.get("target").cloned().unwrap_or(serde_json::Value::Null),
-                "json": true,
-            }
-        }),
-        "patina:slate/control@0.1.0.next-specs" => serde_json::json!({
-            "next": {
-                "json": true,
-            }
-        }),
-        "patina:slate/control@0.1.0.check-spec" => serde_json::json!({
-            "check": {
-                "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "json": true,
-            }
-        }),
-        "patina:slate/control@0.1.0.show-spec" => serde_json::json!({
-            "show": {
-                "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "handoff": false,
-                "json": true,
-            }
-        }),
-        "patina:slate/control@0.1.0.prompt-spec" => serde_json::json!({
-            "prompt": {
-                "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "json": true,
-            }
-        }),
-        "patina:slate/control@0.1.0.handoff-spec" => serde_json::json!({
-            "handoff": {
-                "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "json": true,
-            }
-        }),
-        "patina:slate/control@0.1.0.packet-spec" => serde_json::json!({
-            "packet": {
-                "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "json": true,
-            }
-        }),
-        "patina:slate/control@0.1.0.complete-spec" => serde_json::json!({
-            "complete": {
-                "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "major": args.get("major").cloned().unwrap_or(serde_json::Value::Bool(false)),
-                "force": args.get("force").cloned().unwrap_or(serde_json::Value::Bool(false)),
-                "json": true,
-            }
-        }),
-        "patina:slate/control@0.1.0.archive-spec" => serde_json::json!({
-            "archive": {
-                "id": args.get("id").cloned().unwrap_or(serde_json::Value::Null),
-                "stale": args.get("stale").cloned().unwrap_or(serde_json::Value::Bool(false)),
-                "dry_run": args.get("dry-run").cloned().unwrap_or(serde_json::Value::Bool(false)),
-            }
-        }),
-        other => {
-            return Err(anyhow::anyhow!(
-                "unexpected typed slate operation id: {}",
-                other
-            ));
-        }
-    };
-
-    let envelope = serde_json::json!({
-        "command": command,
-        "project": args.get("project").cloned().unwrap_or(serde_json::Value::Null),
-        "backend_mode": "execute",
-    });
-
-    Ok(envelope.to_string())
 }
 
 impl Child for TypedDispatchChild {
@@ -328,69 +240,6 @@ impl Child for SlateDispatchChild {
     }
 }
 
-impl Child for ParitySlateDispatchChild {
-    fn name(&self) -> &str {
-        "slate-manager"
-    }
-
-    fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
-        Ok(())
-    }
-
-    fn health(&self) -> ChildHealth {
-        ChildHealth::Healthy
-    }
-
-    fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
-        Ok(ChildResponse {
-            payload: serde_json::Value::Null,
-        })
-    }
-
-    fn call(&self, request: &patina::mother::ChildCallRequest) -> Result<ChildResponse> {
-        if !request
-            .operation_id
-            .starts_with("patina:slate/control@0.1.0.")
-        {
-            return Err(anyhow::anyhow!(
-                "unexpected operation_id: {}",
-                request.operation_id
-            ));
-        }
-
-        let command_json = if request.operation_id == "patina:slate/control@0.1.0.dispatch" {
-            request
-                .args
-                .as_array()
-                .and_then(|values| values.first())
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| anyhow::anyhow!("expected slate args[0] command JSON string"))?
-                .to_string()
-        } else {
-            slate_typed_call_to_dispatch_envelope(request)?
-        };
-
-        let payload = match slate_manager_child::dispatch_for_test(&command_json) {
-            Ok(data) => serde_json::json!({
-                "results": [
-                    {
-                        "ok": data,
-                    }
-                ]
-            }),
-            Err(error) => serde_json::json!({
-                "results": [
-                    {
-                        "err": error,
-                    }
-                ]
-            }),
-        };
-
-        Ok(ChildResponse { payload })
-    }
-}
-
 impl Child for ScaffoldSlateDispatchChild {
     fn name(&self) -> &str {
         "slate-manager"
@@ -466,6 +315,224 @@ fn daemon_options_default() {
     assert!(options.host.is_none());
     assert_eq!(options.profile, DaemonStartupProfile::Full);
     assert_eq!(options.rivet, RivetIntegrationProfile::Disabled);
+}
+
+#[test]
+fn daemon_view_request_compose_persists_adapted_shape() {
+    // obligation: spec.mother-view-shape-adaptation.mvsa3-adapted-shape-persistence
+    // obligation: spec.mother-view-shape-adaptation.mvsa4-compose-integration
+    with_temp_project(|project_root| {
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry: ChildRegistry::new(),
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let composed = <ServerState as mother_crate::http_api::ApiRuntime>::view_request_compose(
+            &state,
+            mother_crate::view_buffer::ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show something like mother status".to_string(),
+                proposed_match: Some(mother_crate::view_buffer::ProposedShapeMatch {
+                    shape_id: Some(mother_crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string()),
+                    match_kind: mother_crate::view_buffer::ShapeMatchKind::Similar,
+                    confidence: mother_crate::view_buffer::SHAPE_MATCH_CONFIDENCE_THRESHOLD,
+                }),
+                proposed_initial_shape: None,
+            },
+        )
+        .expect("compose should adapt similar shape");
+
+        let adapted_shape = composed
+            .adapted_shape
+            .expect("daemon compose should return adapted shape");
+        assert_eq!(
+            composed.request.outcome,
+            mother_crate::view_buffer::DisplayRequestOutcome::Unable
+        );
+        assert!(composed.open_outcome.is_none());
+        assert_eq!(runtime_store.list_view_buffers().unwrap().len(), 0);
+        assert_eq!(
+            runtime_store
+                .get_view_shape_match(&composed.request.request_id)
+                .unwrap()
+                .expect("shape match should persist")
+                .match_kind,
+            mother_crate::view_buffer::ShapeMatchKind::Similar
+        );
+        let persisted_shape = runtime_store
+            .get_view_shape(&adapted_shape.shape_id)
+            .unwrap()
+            .expect("adapted shape should persist through daemon");
+        assert_eq!(persisted_shape.shape_id, adapted_shape.shape_id);
+        assert_eq!(
+            persisted_shape.maturity,
+            mother_crate::view_buffer::ViewShapeMaturity::Exploratory
+        );
+    });
+}
+
+#[test]
+fn daemon_view_request_compose_persists_created_initial_shape() {
+    // obligation: spec.mother-view-initial-shape-creation.mvisc4-persistence
+    // obligation: spec.mother-view-initial-shape-creation.mvisc5-compose-integration
+    with_temp_project(|project_root| {
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry: ChildRegistry::new(),
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let composed = <ServerState as mother_crate::http_api::ApiRuntime>::view_request_compose(
+            &state,
+            mother_crate::view_buffer::ComposeViewRequest {
+                user_id: "local-user".to_string(),
+                agent_id: "pi".to_string(),
+                raw_request: "show runtime summary".to_string(),
+                proposed_match: Some(mother_crate::view_buffer::ProposedShapeMatch {
+                    shape_id: None,
+                    match_kind: mother_crate::view_buffer::ShapeMatchKind::None,
+                    confidence: 0.0,
+                }),
+                proposed_initial_shape: Some(mother_crate::view_buffer::ProposedInitialShape {
+                    title: "Mother Runtime Summary".to_string(),
+                    major_mode: mother_crate::view_buffer::MajorMode::Table,
+                    minor_modes: vec![mother_crate::view_buffer::MinorMode::Pinned],
+                    requirements: vec![mother_crate::view_buffer::ViewRequirement {
+                        fact_path: "mother.status.version".to_string(),
+                        required: true,
+                        purpose: "display Mother version".to_string(),
+                    }],
+                    vision_id: None,
+                    project_uid: None,
+                }),
+            },
+        )
+        .expect("compose should create initial shape");
+
+        let created_shape = composed
+            .created_shape
+            .expect("daemon compose should return created shape");
+        assert_eq!(
+            composed.request.outcome,
+            mother_crate::view_buffer::DisplayRequestOutcome::Unable
+        );
+        assert!(composed.open_outcome.is_none());
+        assert_eq!(runtime_store.list_view_buffers().unwrap().len(), 0);
+        assert_eq!(
+            runtime_store
+                .get_view_shape_match(&composed.request.request_id)
+                .unwrap()
+                .expect("shape match should persist")
+                .match_kind,
+            mother_crate::view_buffer::ShapeMatchKind::None
+        );
+        let persisted_shape = runtime_store
+            .get_view_shape(&created_shape.shape_id)
+            .unwrap()
+            .expect("created shape should persist through daemon");
+        assert_eq!(persisted_shape.shape_id, created_shape.shape_id);
+        assert_eq!(persisted_shape.title, "Mother Runtime Summary");
+        assert_eq!(
+            persisted_shape.maturity,
+            mother_crate::view_buffer::ViewShapeMaturity::Exploratory
+        );
+    });
+}
+
+#[test]
+fn daemon_view_maturation_persists_event_and_improvement_artifact() {
+    // obligation: spec.mother-view-maturation.mvmat6-api
+    // obligation: spec.mother-view-maturation.mvmat7-tests-and-trace
+    with_temp_project(|project_root| {
+        let runtime_store = patina::mother::MotherRuntimeStore::new(
+            project_root.join(".patina/local/data/mother-state.db"),
+        );
+        let state = ServerState::new(ServerStateInit {
+            token: "test-token".to_string(),
+            startup_profile: DaemonStartupProfile::Core,
+            rivet_integration: RivetIntegrationProfile::Disabled,
+            registry: ChildRegistry::new(),
+            runtime_store: runtime_store.clone(),
+            startup_store: runtime_store.clone(),
+            federation_runtime: federation::startup(&runtime_store),
+            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
+        });
+
+        let derivation = mother_crate::view_buffer::ViewDerivation {
+            derivation_id: "derivation_1".to_string(),
+            shape_id: mother_crate::view_buffer::MOTHER_STATUS_SHAPE_ID.to_string(),
+            label: "Memory Pressure Summary".to_string(),
+            expression_ref: "allium://views/mother/status/memory-pressure".to_string(),
+            input_fact_paths: vec!["mother.status.memory_pressure".to_string()],
+            maturity: mother_crate::view_buffer::ViewShapeMaturity::Candidate,
+        };
+        <ServerState as mother_crate::http_api::ApiRuntime>::view_derivation_upsert(
+            &state,
+            derivation.clone(),
+        )
+        .expect("derivation should persist");
+
+        let outcome = <ServerState as mother_crate::http_api::ApiRuntime>::view_maturation_record(
+            &state,
+            mother_crate::view_buffer::MatureViewArtifactRequest {
+                target_kind: mother_crate::view_buffer::ViewMaturationTargetKind::Derivation,
+                shape_id: None,
+                derivation_id: Some(derivation.derivation_id.clone()),
+                pattern_id: None,
+                origin: mother_crate::view_buffer::ViewMaturationOrigin::UserRequested,
+                to_maturity: mother_crate::view_buffer::ViewShapeMaturity::Stable,
+                observability_improvement: Some(
+                    mother_crate::view_buffer::ProposedObservabilityImprovement {
+                        desired_fact_path: "mother.status.memory_pressure.summary".to_string(),
+                        reason: "stable derivation should become observable".to_string(),
+                    },
+                ),
+            },
+        )
+        .expect("maturation should persist");
+
+        assert_eq!(
+            runtime_store
+                .get_view_derivation(&derivation.derivation_id)
+                .unwrap()
+                .expect("derivation persists")
+                .maturity,
+            mother_crate::view_buffer::ViewShapeMaturity::Stable
+        );
+        assert!(runtime_store
+            .get_view_maturation_event(&outcome.event.maturation_id)
+            .unwrap()
+            .is_some());
+        let artifact = outcome
+            .observability_improvement
+            .expect("observability improvement returned");
+        assert_eq!(artifact.work_item_created, false);
+        assert_eq!(
+            runtime_store
+                .get_view_observability_improvement(&artifact.artifact_id)
+                .unwrap()
+                .and_then(|artifact| artifact.source_maturation_id),
+            Some(outcome.event.maturation_id)
+        );
+    });
 }
 
 #[test]
@@ -1048,208 +1115,6 @@ allow = [
                 .and_then(|v| v.get("status")),
             Some(&serde_json::json!("from-slate"))
         );
-    });
-}
-
-#[test]
-fn builtin_spec_dispatch_observe_fixture_diff_harness_reports_builtin_and_probe_payloads() {
-    with_temp_project(|project_root| {
-        std::fs::create_dir_all(patina::paths::project::patina_dir(project_root))
-            .expect("create .patina");
-        std::fs::create_dir_all(project_root.join("layer")).expect("create layer");
-        patina::project::save(project_root, &patina::project::ProjectConfig::default())
-            .expect("write project config");
-        let spec_dir = project_root.join("layer/surface/build/feat/slate-observe-fixture");
-        std::fs::create_dir_all(&spec_dir).expect("create spec dir");
-
-        std::fs::write(
-            spec_dir.join("SPEC.md"),
-            r#"---
-type: feat
-id: slate-observe-fixture
-status: active
-target: "1"
-exit_criteria:
-  - id: fixture-pass
-    text: "Fixture criterion"
-    checked: true
----
-# Slate observe fixture
-
-## Goal
-Validate observe-mode diff harness plumbing.
-
-## Key Files
-```
-src/spec.rs
-children/slate-manager/src/lib.rs
-```
-
-## Implementation Order
-- Step one
-
-## Resolved Decisions
-- Decision one
-
-## Verification
-- Run command parity checks
-"#,
-        )
-        .expect("write SPEC.md");
-
-        std::fs::write(
-            spec_dir.join("DESIGN.md"),
-            r#"# Design
-
-## Direct Code Targets
-- src/spec.rs
-- children/slate-manager/src/lib.rs
-
-## Open Questions
-- None
-"#,
-        )
-        .expect("write DESIGN.md");
-
-        let runtime_store = patina::mother::MotherRuntimeStore::new(
-            project_root.join(".patina/local/data/mother-state.db"),
-        );
-
-        let manifest_path = project_root.join("slate-manager.toml");
-        std::fs::write(
-            &manifest_path,
-            r#"[child]
-name = "slate-manager"
-version = "0.1.0"
-world = "child"
-
-[child.ingress]
-mode = "hybrid"
-
-[child.contract]
-allow = [
-  "patina:slate/control@0.1.0.dispatch",
-  "patina:slate/control@0.1.0.list-specs",
-  "patina:slate/control@0.1.0.next-specs",
-  "patina:slate/control@0.1.0.check-spec",
-  "patina:slate/control@0.1.0.show-spec",
-  "patina:slate/control@0.1.0.prompt-spec",
-  "patina:slate/control@0.1.0.handoff-spec",
-  "patina:slate/control@0.1.0.packet-spec",
-  "patina:slate/control@0.1.0.complete-spec",
-  "patina:slate/control@0.1.0.archive-spec",
-]
-"#,
-        )
-        .expect("write manifest");
-
-        let registry = ChildRegistry::new();
-        registry
-            .register_knowledge_with_paths(
-                Box::new(ParitySlateDispatchChild),
-                std::path::PathBuf::new(),
-                manifest_path,
-            )
-            .expect("register slate child");
-
-        let state = ServerState::new(ServerStateInit {
-            token: "test-token".to_string(),
-            startup_profile: DaemonStartupProfile::Core,
-            rivet_integration: RivetIntegrationProfile::Disabled,
-            registry,
-            runtime_store: runtime_store.clone(),
-            startup_store: runtime_store.clone(),
-            federation_runtime: federation::startup(&runtime_store),
-            readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
-        });
-
-        let commands = vec![
-            (
-                "list",
-                patina::spec::SpecCommands::List {
-                    status: None,
-                    target: None,
-                    json: true,
-                },
-            ),
-            ("next", patina::spec::SpecCommands::Next { json: true }),
-            (
-                "show",
-                patina::spec::SpecCommands::Show {
-                    id: "slate-observe-fixture".to_string(),
-                    handoff: false,
-                    json: true,
-                },
-            ),
-            (
-                "check",
-                patina::spec::SpecCommands::Check {
-                    id: "slate-observe-fixture".to_string(),
-                    json: true,
-                },
-            ),
-            (
-                "prompt",
-                patina::spec::SpecCommands::Prompt {
-                    id: "slate-observe-fixture".to_string(),
-                    json: true,
-                },
-            ),
-            (
-                "handoff",
-                patina::spec::SpecCommands::Handoff {
-                    id: "slate-observe-fixture".to_string(),
-                    json: true,
-                },
-            ),
-            (
-                "packet",
-                patina::spec::SpecCommands::Packet {
-                    id: "slate-observe-fixture".to_string(),
-                    json: true,
-                },
-            ),
-        ];
-
-        let mut report = Vec::new();
-
-        for (name, command) in commands {
-            let request = spec_dispatch_request(command, Some("observe"));
-
-            let response =
-                <ServerState as mother_crate::http_api::ApiRuntime>::builtin_spec_dispatch(
-                    &state, request,
-                )
-                .expect("observe mode response");
-
-            let probe = response
-                .get("backend")
-                .and_then(|v| v.get("slate_probe"))
-                .cloned()
-                .expect("slate probe payload");
-
-            assert_eq!(probe.get("status").and_then(|v| v.as_str()), Some("called"));
-
-            let builtin_data = response.get("data").cloned().expect("builtin data payload");
-            let probe_data = probe.get("data").cloned().expect("probe data payload");
-
-            assert_eq!(
-                builtin_data, probe_data,
-                "observe parity mismatch for command '{}'",
-                name
-            );
-
-            report.push(serde_json::json!({
-                "command": name,
-                "parity": "equal",
-            }));
-        }
-
-        assert_eq!(report.len(), 7);
-        for row in report {
-            assert!(row.get("command").is_some());
-            assert_eq!(row.get("parity").and_then(|v| v.as_str()), Some("equal"));
-        }
     });
 }
 

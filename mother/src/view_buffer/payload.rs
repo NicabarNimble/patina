@@ -42,7 +42,9 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::view_buffer::{MajorMode, MinorMode, ViewRequirement, ViewShapeScope};
+    use crate::view_buffer::{
+        MajorMode, MinorMode, ViewRequirement, ViewShapeMaturity, ViewShapeScope,
+    };
 
     #[test]
     fn framed_json_payload_uses_stable_wit_style_envelope() {
@@ -50,13 +52,18 @@ mod tests {
         let shape = ViewShape {
             shape_id: "mother.status.default".to_string(),
             title: "Mother Status".to_string(),
+            source_ref: "local-allium-view-library".to_string(),
             scope: ViewShapeScope::MotherUser,
             version: 3,
             active: true,
             major_mode: MajorMode::Table,
             minor_modes: vec![MinorMode::Pinned],
+            maturity: ViewShapeMaturity::Stable,
             payload_contract: PayloadContract::FramedJson,
             payload_version: 2,
+            vision_id: None,
+            project_uid: None,
+            replaced_by: None,
             requirements: vec![ViewRequirement {
                 fact_path: "mother.status.version".to_string(),
                 required: true,

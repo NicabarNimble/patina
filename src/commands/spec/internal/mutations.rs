@@ -771,14 +771,19 @@ pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResu
         "blocked_by",
         "freshness_scope",
     ];
-    const SCALAR_FIELDS: &[&str] = &["target", "validated_against_commit", "last_freshness_check"];
+    const SCALAR_FIELDS: &[&str] = &[
+        "target",
+        "release_bump",
+        "validated_against_commit",
+        "last_freshness_check",
+    ];
 
     let is_vec = VEC_FIELDS.contains(&field);
     let is_scalar = SCALAR_FIELDS.contains(&field);
 
     if !is_vec && !is_scalar {
         anyhow::bail!(
-            "Cannot set field '{}'. Supported fields: beliefs, related, references, blocked_by, freshness_scope, target, validated_against_commit, last_freshness_check",
+            "Cannot set field '{}'. Supported fields: beliefs, related, references, blocked_by, freshness_scope, target, release_bump, validated_against_commit, last_freshness_check",
             field
         );
     }
@@ -811,6 +816,13 @@ pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResu
             "freshness_scope" => apply_list_mutation(&mut fm.freshness_scope, action, &clean_value),
             "target" => {
                 fm.target = if clean_value.is_empty() {
+                    None
+                } else {
+                    Some(clean_value)
+                };
+            }
+            "release_bump" => {
+                fm.release_bump = if clean_value.is_empty() {
                     None
                 } else {
                     Some(clean_value)
@@ -857,8 +869,29 @@ pub fn set_spec_value(id: &str, field: &str, value: &str) -> Result<MutationResu
     })
 }
 
+fn bump_from_release_bump(value: &str) -> Result<Option<BumpType>> {
+    match value {
+        "patch" => Ok(Some(BumpType::Patch)),
+        "minor" => Ok(Some(BumpType::Minor)),
+        "major" => Ok(Some(BumpType::Major)),
+        "none" | "skip" => Ok(None),
+        other => anyhow::bail!(
+            "Invalid release_bump '{}'. Expected one of: patch, minor, major, none",
+            other
+        ),
+    }
+}
+
 /// Complete an active spec and return structured result (for MCP).
-pub fn complete_spec_value(id: &str, major: bool, force: bool) -> Result<MutationResult> {
+pub fn complete_spec_value(
+    id: &str,
+    major: bool,
+    patch: bool,
+    force: bool,
+) -> Result<MutationResult> {
+    if major && patch {
+        anyhow::bail!("Cannot use --major and --patch together");
+    }
     // 1. Load spec and validate status
     let loaded = load_spec(id)?;
     match loaded.status {
@@ -902,6 +935,10 @@ pub fn complete_spec_value(id: &str, major: bool, force: bool) -> Result<Mutatio
     // Compute bump type before mutation (type doesn't change)
     let bump = if major {
         Some(BumpType::Major)
+    } else if patch {
+        Some(BumpType::Patch)
+    } else if let Some(release_bump) = loaded.frontmatter.release_bump.as_deref() {
+        bump_from_release_bump(release_bump)?
     } else {
         BumpType::from_spec_type(&loaded.frontmatter.r#type)
     };
@@ -1384,4 +1421,28 @@ pub fn reopen_spec_value(id: &str) -> Result<MutationResult> {
             previous_status: status.to_string(),
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn release_bump_frontmatter_values_map_to_bump_types() {
+        assert_eq!(
+            bump_from_release_bump("patch").unwrap(),
+            Some(BumpType::Patch)
+        );
+        assert_eq!(
+            bump_from_release_bump("minor").unwrap(),
+            Some(BumpType::Minor)
+        );
+        assert_eq!(
+            bump_from_release_bump("major").unwrap(),
+            Some(BumpType::Major)
+        );
+        assert_eq!(bump_from_release_bump("none").unwrap(), None);
+        assert_eq!(bump_from_release_bump("skip").unwrap(), None);
+        assert!(bump_from_release_bump("feature").is_err());
+    }
 }

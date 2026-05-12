@@ -87,6 +87,9 @@ pub enum SpecCommands {
         id: String,
         #[arg(long)]
         major: bool,
+        /// Force a patch release for child/slice specs under a parent feature.
+        #[arg(long)]
+        patch: bool,
         #[arg(long)]
         force: bool,
         #[arg(long)]
@@ -637,10 +640,14 @@ fn execute_local_spec_command(
             serde_json::to_value(internal::promote_spec_value(&id, force)?).ok(),
         )),
         SpecCommands::Complete {
-            id, major, force, ..
+            id,
+            major,
+            patch,
+            force,
+            ..
         } => Ok((
             None,
-            serde_json::to_value(internal::complete_spec_value(&id, major, force)?).ok(),
+            serde_json::to_value(internal::complete_spec_value(&id, major, patch, force)?).ok(),
         )),
         SpecCommands::Abandon { id, reason, .. } => Ok((
             None,
@@ -883,9 +890,14 @@ pub struct SpecFrontmatter {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
 
-    /// Target version (e.g., "v0.12.0") — spec-as-work-item
+    /// Target version or parent product/feature id — spec-as-work-item
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+
+    /// Explicit release bump override: patch, minor, major, or none.
+    /// Use `patch` for child/slice specs under a parent feature.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub release_bump: Option<String>,
 
     /// Specs that block this one — spec-as-work-item
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1178,6 +1190,7 @@ type: feat
 id: test-spec
 status: ready
 target: v0.12.0
+release_bump: patch
 blocked_by:
   - other-spec
 blocks: []
@@ -1192,6 +1205,7 @@ Body content here.
         assert_eq!(frontmatter.id, "test-spec");
         assert_eq!(frontmatter.status, Some(SpecStatus::Ready));
         assert_eq!(frontmatter.target, Some("v0.12.0".to_string()));
+        assert_eq!(frontmatter.release_bump, Some("patch".to_string()));
         assert_eq!(frontmatter.blocked_by, vec!["other-spec"]);
         assert!(body.contains("# Test Spec"));
 

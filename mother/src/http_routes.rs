@@ -26,13 +26,41 @@ pub struct RouteTable {
     pub post_interface_call: RouteHandler,
     pub post_rivet_dispatch: RouteHandler,
     pub post_inspector_typed_calls: RouteHandler,
+    pub get_view_shapes: RouteHandler,
+    pub get_view_shape: RouteHandler,
+    pub post_view_shape_upsert: RouteHandler,
+    pub post_view_shape_deactivate: RouteHandler,
+    pub get_view_shape_revisions: RouteHandler,
+    pub get_view_shape_revision: RouteHandler,
+    pub post_view_shape_revise: RouteHandler,
+    pub get_view_derivations: RouteHandler,
+    pub get_view_derivation: RouteHandler,
+    pub post_view_derivation_upsert: RouteHandler,
+    pub get_view_patterns: RouteHandler,
+    pub get_view_pattern: RouteHandler,
+    pub post_view_pattern_upsert: RouteHandler,
+    pub get_view_maturation_events: RouteHandler,
+    pub get_view_maturation_event: RouteHandler,
+    pub post_view_maturation_record: RouteHandler,
+    pub get_view_observability_improvements: RouteHandler,
+    pub get_view_observability_improvement: RouteHandler,
+    pub get_view_requests: RouteHandler,
+    pub get_view_request: RouteHandler,
+    pub get_view_request_details: RouteHandler,
+    pub get_view_request_detail: RouteHandler,
+    pub post_view_request_compose: RouteHandler,
+    pub post_view_request_open_shape: RouteHandler,
     pub get_view_buffers: RouteHandler,
+    pub get_view_buffer_payload: RouteHandler,
     pub post_view_buffer_open: RouteHandler,
     pub post_view_buffer_connect: RouteHandler,
     pub post_view_buffer_disconnect: RouteHandler,
     pub post_view_buffer_kill: RouteHandler,
     pub get_view_buffer_windows: RouteHandler,
     pub get_view_buffer_gaps: RouteHandler,
+    pub get_view_buffer_gap: RouteHandler,
+    pub post_view_buffer_gap_link_work_item: RouteHandler,
+    pub post_view_buffer_gap_resolve: RouteHandler,
     pub child_request: RouteHandler,
 }
 
@@ -175,11 +203,190 @@ impl Router {
                     (self.routes.post_inspector_typed_calls)(request)
                 }
             }
+            ("GET", "/api/view-shapes") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_shapes)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-shapes/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_shape)(request)
+                }
+            }
+            ("POST", "/api/view-shapes/upsert") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_shape_upsert)(request)
+                }
+            }
+            ("POST", "/api/view-shapes/deactivate") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_shape_deactivate)(request)
+                }
+            }
+            ("POST", "/api/view-shapes/revise") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_shape_revise)(request)
+                }
+            }
+            ("GET", "/api/view-shape-revisions") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_shape_revisions)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-shape-revisions/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_shape_revision)(request)
+                }
+            }
+            ("GET", "/api/view-derivations") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_derivations)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-derivations/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_derivation)(request)
+                }
+            }
+            ("POST", "/api/view-derivations/upsert") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_derivation_upsert)(request)
+                }
+            }
+            ("GET", "/api/view-patterns") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_patterns)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-patterns/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_pattern)(request)
+                }
+            }
+            ("POST", "/api/view-patterns/upsert") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_pattern_upsert)(request)
+                }
+            }
+            ("GET", "/api/view-maturation-events") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_maturation_events)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-maturation-events/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_maturation_event)(request)
+                }
+            }
+            ("POST", "/api/view-maturation-events/record") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_maturation_record)(request)
+                }
+            }
+            ("GET", "/api/view-observability-improvements") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_observability_improvements)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-observability-improvements/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_observability_improvement)(request)
+                }
+            }
+            ("GET", "/api/view-requests") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_requests)(request)
+                }
+            }
+            ("GET", "/api/view-requests/details") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_request_details)(request)
+                }
+            }
+            ("GET", path)
+                if path.starts_with("/api/view-requests/") && path.ends_with("/detail") =>
+            {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_request_detail)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-requests/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_request)(request)
+                }
+            }
+            ("POST", "/api/view-requests/compose") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_request_compose)(request)
+                }
+            }
+            ("POST", "/api/view-requests/open-shape") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_request_open_shape)(request)
+                }
+            }
             ("GET", "/api/view-buffers") => {
                 if self.require_auth && !self.check_auth(request) {
                     json_error(401, "Unauthorized")
                 } else {
                     (self.routes.get_view_buffers)(request)
+                }
+            }
+            ("GET", path)
+                if path.starts_with("/api/view-buffers/") && path.ends_with("/payload") =>
+            {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_buffer_payload)(request)
                 }
             }
             ("POST", "/api/view-buffers/open") => {
@@ -222,6 +429,27 @@ impl Router {
                     json_error(401, "Unauthorized")
                 } else {
                     (self.routes.get_view_buffer_gaps)(request)
+                }
+            }
+            ("GET", path) if path.starts_with("/api/view-buffers/gaps/") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.get_view_buffer_gap)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/gaps/link-work-item") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_gap_link_work_item)(request)
+                }
+            }
+            ("POST", "/api/view-buffers/gaps/resolve") => {
+                if self.require_auth && !self.check_auth(request) {
+                    json_error(401, "Unauthorized")
+                } else {
+                    (self.routes.post_view_buffer_gap_resolve)(request)
                 }
             }
             _ if request.path.starts_with("/child/") => {
@@ -276,13 +504,41 @@ mod tests {
             post_interface_call: Arc::new(|_| ok_json()),
             post_rivet_dispatch: Arc::new(|_| ok_json()),
             post_inspector_typed_calls: Arc::new(|_| ok_json()),
+            get_view_shapes: Arc::new(|_| ok_json()),
+            get_view_shape: Arc::new(|_| ok_json()),
+            post_view_shape_upsert: Arc::new(|_| ok_json()),
+            post_view_shape_deactivate: Arc::new(|_| ok_json()),
+            get_view_shape_revisions: Arc::new(|_| ok_json()),
+            get_view_shape_revision: Arc::new(|_| ok_json()),
+            post_view_shape_revise: Arc::new(|_| ok_json()),
+            get_view_derivations: Arc::new(|_| ok_json()),
+            get_view_derivation: Arc::new(|_| ok_json()),
+            post_view_derivation_upsert: Arc::new(|_| ok_json()),
+            get_view_patterns: Arc::new(|_| ok_json()),
+            get_view_pattern: Arc::new(|_| ok_json()),
+            post_view_pattern_upsert: Arc::new(|_| ok_json()),
+            get_view_maturation_events: Arc::new(|_| ok_json()),
+            get_view_maturation_event: Arc::new(|_| ok_json()),
+            post_view_maturation_record: Arc::new(|_| ok_json()),
+            get_view_observability_improvements: Arc::new(|_| ok_json()),
+            get_view_observability_improvement: Arc::new(|_| ok_json()),
+            get_view_requests: Arc::new(|_| ok_json()),
+            get_view_request: Arc::new(|_| ok_json()),
+            get_view_request_details: Arc::new(|_| ok_json()),
+            get_view_request_detail: Arc::new(|_| ok_json()),
+            post_view_request_compose: Arc::new(|_| ok_json()),
+            post_view_request_open_shape: Arc::new(|_| ok_json()),
             get_view_buffers: Arc::new(|_| ok_json()),
+            get_view_buffer_payload: Arc::new(|_| ok_json()),
             post_view_buffer_open: Arc::new(|_| ok_json()),
             post_view_buffer_connect: Arc::new(|_| ok_json()),
             post_view_buffer_disconnect: Arc::new(|_| ok_json()),
             post_view_buffer_kill: Arc::new(|_| ok_json()),
             get_view_buffer_windows: Arc::new(|_| ok_json()),
             get_view_buffer_gaps: Arc::new(|_| ok_json()),
+            get_view_buffer_gap: Arc::new(|_| ok_json()),
+            post_view_buffer_gap_link_work_item: Arc::new(|_| ok_json()),
+            post_view_buffer_gap_resolve: Arc::new(|_| ok_json()),
             child_request: Arc::new(|_| ok_json()),
         }
     }
@@ -324,13 +580,41 @@ mod tests {
         assert_eq!(unauthorized.status, 401);
 
         for (method, path) in [
+            ("GET", "/api/view-shapes"),
+            ("GET", "/api/view-shapes/mother.status.default"),
+            ("POST", "/api/view-shapes/upsert"),
+            ("POST", "/api/view-shapes/deactivate"),
+            ("POST", "/api/view-shapes/revise"),
+            ("GET", "/api/view-shape-revisions"),
+            ("GET", "/api/view-shape-revisions/rev_1"),
+            ("GET", "/api/view-derivations"),
+            ("GET", "/api/view-derivations/derivation_1"),
+            ("POST", "/api/view-derivations/upsert"),
+            ("GET", "/api/view-patterns"),
+            ("GET", "/api/view-patterns/pattern_1"),
+            ("POST", "/api/view-patterns/upsert"),
+            ("GET", "/api/view-maturation-events"),
+            ("GET", "/api/view-maturation-events/maturation_1"),
+            ("POST", "/api/view-maturation-events/record"),
+            ("GET", "/api/view-observability-improvements"),
+            ("GET", "/api/view-observability-improvements/artifact_1"),
+            ("GET", "/api/view-requests"),
+            ("GET", "/api/view-requests/req_1"),
+            ("GET", "/api/view-requests/details"),
+            ("GET", "/api/view-requests/req_1/detail"),
+            ("POST", "/api/view-requests/compose"),
+            ("POST", "/api/view-requests/open-shape"),
             ("GET", "/api/view-buffers"),
+            ("GET", "/api/view-buffers/buf_1/payload"),
             ("POST", "/api/view-buffers/open"),
             ("POST", "/api/view-buffers/connect"),
             ("POST", "/api/view-buffers/disconnect"),
             ("POST", "/api/view-buffers/kill"),
             ("GET", "/api/view-buffers/windows"),
             ("GET", "/api/view-buffers/gaps"),
+            ("GET", "/api/view-buffers/gaps/gap_1"),
+            ("POST", "/api/view-buffers/gaps/link-work-item"),
+            ("POST", "/api/view-buffers/gaps/resolve"),
         ] {
             let authorized = router.route(&request(method, path, Some("Bearer token-123")));
             assert_eq!(authorized.status, 200, "{method} {path} should route");

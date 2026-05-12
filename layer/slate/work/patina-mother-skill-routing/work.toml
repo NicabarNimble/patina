@@ -1,0 +1,25 @@
+id = "patina-mother-skill-routing"
+title = "Mother child skill routing"
+kind = "build"
+status = "complete"
+human_request = "Replace the AGENTS.md per-child Slate guardrail with an overarching Patina/Mother skill-system pointer and capture the desired Mother-owned child skill discovery model."
+allium_anchors = []
+user_alignment = "User rejected using AGENTS.md for more than pointing at an overarching Patina/Mother skill system and described Mother as the place to ask for active child skills, with Slate exposing a package of skills and commands like --help."
+belief_refs = []
+proof_plan = [
+    "[x] AGENTS.md only points to an overarching Patina/Mother skill-system entrypoint, not Slate-specific workflow details.",
+    "[x] A project skill entrypoint exists for Patina/Mother skill routing and documents the desired Mother-owned child skill discovery model.",
+    "[x] Slate remains represented as a child-provided skill package with commands/help semantics, not as permanent AGENTS.md policy.",
+]
+closure_evidence = [
+    "Replaced the AGENTS.md Slate-specific guardrail with a pointer to `.pi/skills/patina-mother-system/SKILL.md` and a rule that child-specific workflows belong in Mother-discoverable child skill packages.",
+    "Created `.pi/skills/patina-mother-system/SKILL.md` as the top-level project skill router, describing the desired Mother-owned skill broker and `patina mother skills ...` command shape.",
+    "Kept `.pi/skills/patina-slate-code/SKILL.md` as a current bridge child skill package for Slate until Mother exposes first-class child skill discovery.",
+    "Created belief `layer/surface/epistemic/beliefs/mother-brokers-child-skills.md`; `patina belief audit` lists [[mother-brokers-child-skills]].",
+]
+blocked_by = []
+implementation_plan = ["Create/update a top-level Patina/Mother skill entrypoint and make AGENTS.md point only there."]
+belief_harvest_decision = "created [[mother-brokers-child-skills]] to record that Mother should broker child skills and AGENTS.md should only route to the overarching Patina/Mother skill system"
+created_at = "1778588504"
+updated_at = "1778588789"
+closed_at = "1778588610"

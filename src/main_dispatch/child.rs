@@ -1,5 +1,6 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default, Deserialize)]
 struct ContextQueryParams {
@@ -191,6 +192,178 @@ mod tests {
     }
 }
 
+fn install_child_package(
+    package_path: &Path,
+    wasm_arg: Option<&str>,
+    force: bool,
+    preserve_local_scopes: bool,
+) -> Result<()> {
+    let package_path = package_path
+        .canonicalize()
+        .with_context(|| format!("resolve child package path {}", package_path.display()))?;
+    let child_toml = package_path.join("child.toml");
+    if !child_toml.exists() {
+        anyhow::bail!(
+            "child package missing child.toml at {}",
+            child_toml.display()
+        );
+    }
+
+    let manifest = patina::child::engine::ChildManifest::from_path(&child_toml)
+        .with_context(|| format!("load child manifest {}", child_toml.display()))?;
+    let wasm_path = resolve_child_wasm(&package_path, &manifest.name, wasm_arg)?;
+
+    let install_dir = patina::paths::child::command_children_dir();
+    std::fs::create_dir_all(&install_dir)?;
+    let child_dir = install_dir.join(&manifest.name);
+    let dest_wasm = install_dir.join(format!("{}.wasm", manifest.name));
+    let dest_toml = install_dir.join(format!("{}.toml", manifest.name));
+
+    if !force && (dest_wasm.exists() || dest_toml.exists() || child_dir.exists()) {
+        anyhow::bail!(
+            "child '{}' is already installed; rerun with --force to overwrite",
+            manifest.name
+        );
+    }
+
+    std::fs::copy(&wasm_path, &dest_wasm).with_context(|| {
+        format!(
+            "copy component {} -> {}",
+            wasm_path.display(),
+            dest_wasm.display()
+        )
+    })?;
+
+    let manifest_text = if preserve_local_scopes && dest_toml.exists() {
+        preserve_existing_scope_additions(&std::fs::read_to_string(&child_toml)?, &dest_toml)?
+    } else {
+        std::fs::read_to_string(&child_toml)?
+    };
+    std::fs::write(&dest_toml, manifest_text)
+        .with_context(|| format!("write installed manifest {}", dest_toml.display()))?;
+
+    if child_dir.exists() {
+        std::fs::remove_dir_all(&child_dir)
+            .with_context(|| format!("remove existing {}", child_dir.display()))?;
+    }
+    std::fs::create_dir_all(&child_dir)?;
+    copy_optional_child_dir(&package_path, &child_dir, "skills")?;
+    copy_optional_child_dir(&package_path, &child_dir, "wit")?;
+    copy_optional_child_dir(&package_path, &child_dir, "wit-contract")?;
+
+    println!("Installed child '{}':", manifest.name);
+    println!("  wasm:     {}", dest_wasm.display());
+    println!("  manifest: {}", dest_toml.display());
+    println!("  package:  {}", child_dir.display());
+    Ok(())
+}
+
+fn resolve_child_wasm(
+    package_path: &Path,
+    child_name: &str,
+    wasm_arg: Option<&str>,
+) -> Result<PathBuf> {
+    if let Some(path) = wasm_arg {
+        let path = PathBuf::from(path);
+        if path.exists() {
+            return Ok(path);
+        }
+        anyhow::bail!("component wasm not found at {}", path.display());
+    }
+
+    let artifact_name = format!("{}.wasm", child_name.replace('-', "_"));
+    let candidates = [
+        package_path
+            .join("target/wasm32-wasip1/release")
+            .join(&artifact_name),
+        package_path
+            .join("target/wasm32-wasip2/release")
+            .join(&artifact_name),
+        std::env::current_dir()?
+            .join("target/wasm32-wasip1/release")
+            .join(&artifact_name),
+        std::env::current_dir()?
+            .join("target/wasm32-wasip2/release")
+            .join(&artifact_name),
+    ];
+    for candidate in candidates {
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    anyhow::bail!(
+        "could not find built component for '{}'; pass --wasm <path>",
+        child_name
+    );
+}
+
+fn copy_optional_child_dir(package_path: &Path, child_dir: &Path, name: &str) -> Result<()> {
+    let source = package_path.join(name);
+    if source.exists() {
+        copy_dir_recursive(&source, &child_dir.join(name))?;
+    }
+    Ok(())
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
+    std::fs::create_dir_all(destination)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let dest = destination.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_recursive(&entry.path(), &dest)?;
+        } else if file_type.is_file() {
+            std::fs::copy(entry.path(), dest)?;
+        }
+    }
+    Ok(())
+}
+
+fn preserve_existing_scope_additions(
+    new_manifest: &str,
+    existing_manifest_path: &Path,
+) -> Result<String> {
+    let mut new_value: toml::Value = new_manifest.parse()?;
+    let existing_manifest = std::fs::read_to_string(existing_manifest_path)?;
+    let existing_value: toml::Value = existing_manifest.parse()?;
+
+    if let Some(existing_scopes) = existing_value
+        .get("needs")
+        .and_then(|needs| needs.get("scopes"))
+        .and_then(|scopes| scopes.as_table())
+    {
+        let new_scopes = new_value
+            .as_table_mut()
+            .and_then(|root| root.get_mut("needs"))
+            .and_then(|needs| needs.as_table_mut())
+            .and_then(|needs| needs.get_mut("scopes"))
+            .and_then(|scopes| scopes.as_table_mut());
+        if let Some(new_scopes) = new_scopes {
+            merge_missing_tables(new_scopes, existing_scopes);
+        }
+    }
+
+    Ok(toml::to_string_pretty(&new_value)?)
+}
+
+fn merge_missing_tables(
+    target: &mut toml::map::Map<String, toml::Value>,
+    source: &toml::map::Map<String, toml::Value>,
+) {
+    for (key, source_value) in source {
+        match (target.get_mut(key), source_value.as_table()) {
+            (Some(toml::Value::Table(target_table)), Some(source_table)) => {
+                merge_missing_tables(target_table, source_table);
+            }
+            (None, _) => {
+                target.insert(key.clone(), source_value.clone());
+            }
+            _ => {}
+        }
+    }
+}
+
 pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
     match command {
         crate::ChildCommands::List => crate::commands::child::execute_list()?,
@@ -281,6 +454,19 @@ pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
                     }
                 }
             }
+        }
+        crate::ChildCommands::Install {
+            path,
+            wasm,
+            force,
+            no_preserve_local_scopes,
+        } => {
+            install_child_package(
+                Path::new(&path),
+                wasm.as_deref(),
+                force,
+                !no_preserve_local_scopes,
+            )?;
         }
         crate::ChildCommands::Run { name, args } => {
             let command_children_dir = patina::paths::child::command_children_dir();
@@ -442,4 +628,42 @@ pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod child_install_tests {
+    use super::*;
+
+    #[test]
+    fn merge_missing_tables_preserves_local_nested_scope() {
+        let mut new_scopes: toml::map::Map<String, toml::Value> = toml::toml! {
+            [filesystem]
+            path = "/"
+        };
+        let existing_scopes: toml::map::Map<String, toml::Value> = toml::toml! {
+            [filesystem]
+            path = "/"
+            [filesystem.project]
+            path = "/repo"
+            mode = "read-write"
+        };
+
+        merge_missing_tables(&mut new_scopes, &existing_scopes);
+        assert_eq!(
+            new_scopes
+                .get("filesystem")
+                .and_then(|v| v.get("project"))
+                .and_then(|v| v.get("mode"))
+                .and_then(|v| v.as_str()),
+            Some("read-write")
+        );
+    }
+
+    #[test]
+    fn resolve_child_wasm_requires_artifact_when_missing() {
+        let temp = tempfile::tempdir().unwrap();
+        let error = resolve_child_wasm(temp.path(), "demo-child", None)
+            .expect_err("missing component should fail closed");
+        assert!(error.to_string().contains("could not find built component"));
+    }
 }
