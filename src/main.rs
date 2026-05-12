@@ -1003,6 +1003,20 @@ enum ChildCommands {
         #[arg(long, requires = "build")]
         release: bool,
     },
+    /// Install a packaged child into the local Patina plugin directory
+    Install {
+        /// Path to child package directory containing child.toml
+        path: String,
+        /// Path to built component .wasm; if omitted, common target paths are probed
+        #[arg(long)]
+        wasm: Option<String>,
+        /// Overwrite an existing installed child
+        #[arg(long)]
+        force: bool,
+        /// Do not preserve local-only scope additions from an existing manifest
+        #[arg(long)]
+        no_preserve_local_scopes: bool,
+    },
 }
 
 fn main() -> Result<()> {

@@ -15,7 +15,7 @@ proof_plan = [
     "[x] `patina-sdk` is consumable by an external child crate without `path = ../../sdk/patina-sdk`; v0.22.0 is published on crates.io.",
     "[x] Stable WIT toy contracts required by Slate are present in the external child package and declared as cargo-component target dependencies.",
     "[x] External Slate child build works through `cargo component build -p patina-ai-child-slate-manager --release`, including the previously failing `wasi:logging@0.1.0` dependency story.",
-    "[ ] First-class package/install command installs Slate child `.wasm`, `child.toml`, skills, and WIT metadata into Patina/Mother without manual copy steps.",
+    "[x] First-class `patina child install` command installs Slate child `.wasm`, `child.toml`, skills, and WIT metadata into Patina/Mother without manual copy steps.",
     "[ ] `patina mother skills show slate-manager` or equivalent lists Slate child skill packages and command/help surfaces.",
     "[ ] A standalone Slate child repo/package smoke test can create/show/check work through `patina slate ...` after installation.",
 ]
@@ -26,6 +26,8 @@ closure_evidence = [
     'Published `patina-sdk` v0.22.0 to crates.io; verified with `cargo search patina-sdk --limit 1` showing `patina-sdk = "0.22.0"`.',
     'Updated `children/slate-manager` to depend on published `patina-sdk = "0.22.0"` instead of a monorepo path dependency; `cargo tree -p patina-ai-child-slate-manager --depth 2` shows crates.io `patina-sdk v0.22.0`.',
     "Fixed the `cargo component build -p patina-ai-child-slate-manager --release` WIT dependency resolution by declaring `[package.metadata.component.target.dependencies]` for `wasi:logging`, `patina:git`, `patina:measure`, and `patina:slate`, and arranging local WIT deps in package directories.",
+    "Added `patina child install <path> --wasm <component> --force`, which installs `.wasm`, `child.toml`, `skills/`, `wit/`, and `wit-contract/` into `~/.patina/plugins/<child>/` while preserving existing local filesystem scope additions by default.",
+    "Live-smoked `cargo run -q -- child install children/slate-manager --wasm target/wasm32-wasip1/release/patina_ai_child_slate_manager.wasm --force`; install preserved local `/project` read-write mount and `cargo run -q -- slate show slate-external-child-packaging` succeeded through the installed child.",
 ]
 blocked_by = []
 target = "Standalone app-like WIT/WASI Slate child outside Patina monorepo"
@@ -38,4 +40,4 @@ implementation_plan = [
     "Prove Slate can be extracted by creating or simulating an external Slate child package that builds and installs without relying on monorepo-relative paths.",
 ]
 created_at = "1778600907"
-updated_at = "1778604067"
+updated_at = "1778604593"
