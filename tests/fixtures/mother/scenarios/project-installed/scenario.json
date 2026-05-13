@@ -1,0 +1,7 @@
+{
+  "name": "project-installed",
+  "description": "A project-scope projection is already installed and in sync.",
+  "child": "fixture-skill-app",
+  "scope": "project",
+  "state": "installed"
+}

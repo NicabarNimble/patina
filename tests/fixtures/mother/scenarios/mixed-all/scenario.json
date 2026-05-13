@@ -1,0 +1,7 @@
+{
+  "name": "mixed-all",
+  "description": "Multiple tuple states are present for broad status and sync testing.",
+  "child": "fixture-skill-app",
+  "scope": "both",
+  "state": "mixed"
+}

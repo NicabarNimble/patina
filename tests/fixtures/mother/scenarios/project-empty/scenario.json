@@ -1,0 +1,7 @@
+{
+  "name": "project-empty",
+  "description": "No Mother projection manifest or HITL skill files are present.",
+  "child": "fixture-skill-app",
+  "scope": "project",
+  "state": "absent"
+}

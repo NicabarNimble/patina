@@ -1,0 +1,6 @@
+{
+  "schema": "patina.mother.skills.sync-plan.v1",
+  "scenario": "project-stale",
+  "dry_run": true,
+  "actions": []
+}

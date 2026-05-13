@@ -1,0 +1,3 @@
+hitl = "pi"
+project_roots = [".pi/skills", ".agents/skills"]
+global_roots = ["~/.pi/agent/skills", "~/.agents/skills"]

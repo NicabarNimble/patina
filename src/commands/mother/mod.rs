@@ -49,6 +49,7 @@ pub(crate) mod federation;
 pub(crate) mod graph;
 pub(crate) mod integrity;
 pub(crate) mod loader;
+pub(crate) mod skills_sandbox;
 pub(crate) mod toys;
 
 // Moved to mother crate — re-export for daemon.rs
@@ -217,6 +218,10 @@ pub enum SkillsCommands {
         /// Skill package name, e.g. slate-code
         skill: String,
     },
+
+    /// Create and manage isolated Mother skill sandboxes for MCT harness development
+    #[command(subcommand)]
+    Sandbox(skills_sandbox::SandboxCommands),
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -851,6 +856,7 @@ fn execute_skills(command: SkillsCommands) -> Result<()> {
             println!("{}", std::fs::read_to_string(path)?);
             Ok(())
         }
+        SkillsCommands::Sandbox(command) => skills_sandbox::execute(command),
     }
 }
 
@@ -2864,6 +2870,11 @@ mod tests {
             dry_run: true,
         });
         assert!(matches!(projects_prune, MotherCommands::Projects(_)));
+
+        let skills_sandbox = MotherCommands::Skills(SkillsCommands::Sandbox(
+            skills_sandbox::SandboxCommands::List { json: true },
+        ));
+        assert!(matches!(skills_sandbox, MotherCommands::Skills(_)));
     }
 
     #[test]

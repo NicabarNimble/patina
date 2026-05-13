@@ -1,0 +1,3 @@
+hitl = "claude"
+project_roots = [".claude/skills"]
+global_roots = ["~/.claude/skills"]
