@@ -295,34 +295,32 @@ fn materialize_scenario(metadata: &SandboxMetadata) -> Result<()> {
             )?;
         }
         "project-installed" | "project-stale" | "mixed-all" => {
-            let installed = metadata
-                .project_root
-                .join(".gemini/skills/fixture-skill-app/hello/SKILL.md");
-            if let Some(parent) = installed.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::copy(
-                metadata
-                    .child_store_root
-                    .join("fixture-skill-app/skills/hello/SKILL.md"),
-                installed,
-            )?;
+            copy_fixture_skills_to_root(metadata, &metadata.project_root.join(".gemini/skills"))?;
         }
         "global-installed" => {
-            let installed = metadata
-                .home_root
-                .join(".gemini/skills/fixture-skill-app/hello/SKILL.md");
-            if let Some(parent) = installed.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::copy(
-                metadata
-                    .child_store_root
-                    .join("fixture-skill-app/skills/hello/SKILL.md"),
-                installed,
-            )?;
+            copy_fixture_skills_to_root(metadata, &metadata.home_root.join(".gemini/skills"))?;
         }
         _ => {}
+    }
+    Ok(())
+}
+
+fn copy_fixture_skills_to_root(metadata: &SandboxMetadata, root: &Path) -> Result<()> {
+    let source_root = metadata.child_store_root.join("fixture-skill-app/skills");
+    for entry in fs::read_dir(source_root)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let skill_name = entry.file_name();
+        let dst = root
+            .join("fixture-skill-app")
+            .join(&skill_name)
+            .join("SKILL.md");
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(entry.path().join("SKILL.md"), dst)?;
     }
     Ok(())
 }
@@ -350,7 +348,7 @@ fn write_metadata(metadata: &SandboxMetadata) -> Result<()> {
     Ok(())
 }
 
-fn read_metadata(id: &str) -> Result<SandboxMetadata> {
+pub fn read_metadata(id: &str) -> Result<SandboxMetadata> {
     let path = metadata_path(id);
     let text = fs::read_to_string(&path)
         .with_context(|| format!("reading sandbox metadata {}", path.display()))?;
@@ -412,11 +410,23 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn find_enclosing_sandbox(start: &Path) -> Result<Option<SandboxMetadata>> {
+    for ancestor in start.ancestors() {
+        let metadata = ancestor.join("sandbox.json");
+        if metadata.exists() {
+            let text = fs::read_to_string(&metadata)
+                .with_context(|| format!("reading sandbox metadata {}", metadata.display()))?;
+            return Ok(Some(serde_json::from_str(&text)?));
+        }
+    }
+    Ok(None)
+}
+
 fn metadata_path(id: &str) -> PathBuf {
     sandboxes_dir().join(id).join("sandbox.json")
 }
 
-fn sandboxes_dir() -> PathBuf {
+pub fn sandboxes_dir() -> PathBuf {
     paths::patina_home().join("local/dev/mother-skill-sandboxes")
 }
 

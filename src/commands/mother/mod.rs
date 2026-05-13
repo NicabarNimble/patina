@@ -49,6 +49,7 @@ pub(crate) mod federation;
 pub(crate) mod graph;
 pub(crate) mod integrity;
 pub(crate) mod loader;
+pub(crate) mod skills_lifecycle;
 pub(crate) mod skills_sandbox;
 pub(crate) mod toys;
 
@@ -204,6 +205,20 @@ pub enum MotherCommands {
 pub enum SkillsCommands {
     /// List installed children with skill packages
     List,
+
+    /// Report child skill projection status for the selected/inferred HITL
+    Status {
+        /// Optional child name; omitted means all fixture children in the selected scope
+        child: Option<String>,
+
+        /// Check global/user HITL scope instead of project/workspace scope
+        #[arg(long)]
+        global: bool,
+
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
 
     /// Show skill packages for one child
     Show {
@@ -709,7 +724,7 @@ pub enum QueryCommands {
 }
 
 /// Execute mother command from CLI
-pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
+pub fn execute_cli(command: Option<MotherCommands>, interface: Option<String>) -> Result<()> {
     match command {
         None => {
             // Bare `patina mother` — show status (or help for now)
@@ -808,12 +823,12 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
         Some(MotherCommands::Children(command)) => children::execute_children(command),
         Some(MotherCommands::Lifecycle(command)) => execute_lifecycle(command),
         Some(MotherCommands::Projects(command)) => execute_projects(command),
-        Some(MotherCommands::Skills(command)) => execute_skills(command),
+        Some(MotherCommands::Skills(command)) => execute_skills(command, interface.as_deref()),
         Some(MotherCommands::View(command)) => execute_view(command),
     }
 }
 
-fn execute_skills(command: SkillsCommands) -> Result<()> {
+fn execute_skills(command: SkillsCommands, interface: Option<&str>) -> Result<()> {
     match command {
         SkillsCommands::List => {
             let rows = installed_child_skill_rows()?;
@@ -831,6 +846,11 @@ fn execute_skills(command: SkillsCommands) -> Result<()> {
             }
             Ok(())
         }
+        SkillsCommands::Status {
+            child,
+            global,
+            json,
+        } => skills_lifecycle::status(child.as_deref(), interface, global, json),
         SkillsCommands::Show { child } => {
             let skills = child_skills(&child)?;
             if skills.is_empty() {

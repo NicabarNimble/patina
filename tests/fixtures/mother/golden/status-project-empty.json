@@ -1,5 +1,22 @@
 {
   "schema": "patina.mother.skills.status.v1",
   "scenario": "project-empty",
-  "tuples": []
+  "hitl": "gemini",
+  "scope": "project",
+  "tuples": [
+    {
+      "child": "fixture-skill-app",
+      "skill": "hello",
+      "state": "absent",
+      "projection_path": "$SANDBOX/project/.gemini/skills/fixture-skill-app/hello/SKILL.md",
+      "source_path": "$SANDBOX/child-store/fixture-skill-app/skills/hello/SKILL.md"
+    },
+    {
+      "child": "fixture-skill-app",
+      "skill": "review",
+      "state": "absent",
+      "projection_path": "$SANDBOX/project/.gemini/skills/fixture-skill-app/review/SKILL.md",
+      "source_path": "$SANDBOX/child-store/fixture-skill-app/skills/review/SKILL.md"
+    }
+  ]
 }
