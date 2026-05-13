@@ -1,0 +1,4155 @@
+{
+  "obligations": [
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on HitlInterface are present with correct types",
+      "detail": {
+        "fields": [
+          "name",
+          "supports_project_scope",
+          "supports_global_scope",
+          "precedence_model",
+          "reload_hint",
+          "reload_command"
+        ]
+      },
+      "id": "entity-fields.HitlInterface",
+      "source_construct": "HitlInterface",
+      "source_span": {
+        "end": 1022,
+        "start": 655
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field HitlInterface.reload_command accepts null and non-null values",
+      "id": "entity-optional.HitlInterface.reload_command",
+      "source_construct": "HitlInterface.reload_command",
+      "source_span": {
+        "end": 1022,
+        "start": 655
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on HitlScopeCapability are present with correct types",
+      "detail": {
+        "fields": [
+          "hitl_name",
+          "scope",
+          "supported",
+          "primary_root",
+          "alias_root",
+          "secondary_root",
+          "supports_nested_skill_dirs",
+          "requires_folder_trust",
+          "requires_skills_enabled",
+          "may_be_disabled_by_runtime_flag"
+        ]
+      },
+      "id": "entity-fields.HitlScopeCapability",
+      "source_construct": "HitlScopeCapability",
+      "source_span": {
+        "end": 1388,
+        "start": 1024
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field HitlScopeCapability.alias_root accepts null and non-null values",
+      "id": "entity-optional.HitlScopeCapability.alias_root",
+      "source_construct": "HitlScopeCapability.alias_root",
+      "source_span": {
+        "end": 1388,
+        "start": 1024
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field HitlScopeCapability.secondary_root accepts null and non-null values",
+      "id": "entity-optional.HitlScopeCapability.secondary_root",
+      "source_construct": "HitlScopeCapability.secondary_root",
+      "source_span": {
+        "end": 1388,
+        "start": 1024
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on RuntimeObservation are present with correct types",
+      "detail": {
+        "fields": [
+          "hitl_name",
+          "project_root",
+          "folder_trusted",
+          "skills_enabled",
+          "admin_skills_enabled",
+          "project_config_enabled",
+          "external_skills_enabled",
+          "anomaly_warning"
+        ]
+      },
+      "id": "entity-fields.RuntimeObservation",
+      "source_construct": "RuntimeObservation",
+      "source_span": {
+        "end": 1691,
+        "start": 1390
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field RuntimeObservation.project_root accepts null and non-null values",
+      "id": "entity-optional.RuntimeObservation.project_root",
+      "source_construct": "RuntimeObservation.project_root",
+      "source_span": {
+        "end": 1691,
+        "start": 1390
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field RuntimeObservation.folder_trusted accepts null and non-null values",
+      "id": "entity-optional.RuntimeObservation.folder_trusted",
+      "source_construct": "RuntimeObservation.folder_trusted",
+      "source_span": {
+        "end": 1691,
+        "start": 1390
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field RuntimeObservation.skills_enabled accepts null and non-null values",
+      "id": "entity-optional.RuntimeObservation.skills_enabled",
+      "source_construct": "RuntimeObservation.skills_enabled",
+      "source_span": {
+        "end": 1691,
+        "start": 1390
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field RuntimeObservation.admin_skills_enabled accepts null and non-null values",
+      "id": "entity-optional.RuntimeObservation.admin_skills_enabled",
+      "source_construct": "RuntimeObservation.admin_skills_enabled",
+      "source_span": {
+        "end": 1691,
+        "start": 1390
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field RuntimeObservation.project_config_enabled accepts null and non-null values",
+      "id": "entity-optional.RuntimeObservation.project_config_enabled",
+      "source_construct": "RuntimeObservation.project_config_enabled",
+      "source_span": {
+        "end": 1691,
+        "start": 1390
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field RuntimeObservation.external_skills_enabled accepts null and non-null values",
+      "id": "entity-optional.RuntimeObservation.external_skills_enabled",
+      "source_construct": "RuntimeObservation.external_skills_enabled",
+      "source_span": {
+        "end": 1691,
+        "start": 1390
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field RuntimeObservation.anomaly_warning accepts null and non-null values",
+      "id": "entity-optional.RuntimeObservation.anomaly_warning",
+      "source_construct": "RuntimeObservation.anomaly_warning",
+      "source_span": {
+        "end": 1691,
+        "start": 1390
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on ChildSkillSource are present with correct types",
+      "detail": {
+        "fields": [
+          "child_name",
+          "child_hash",
+          "trusted",
+          "assigned_to_project",
+          "source_exists"
+        ]
+      },
+      "id": "entity-fields.ChildSkillSource",
+      "source_construct": "ChildSkillSource",
+      "source_span": {
+        "end": 1847,
+        "start": 1693
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on ProjectionManifest are present with correct types",
+      "detail": {
+        "fields": [
+          "child_name",
+          "hitl_name",
+          "scope",
+          "exists",
+          "valid",
+          "manifest_path",
+          "projection_root",
+          "namespace_path",
+          "managed_projection_hash",
+          "source_projection_hash",
+          "source_child_hash",
+          "pin_mode",
+          "pinned_child_hash"
+        ]
+      },
+      "id": "entity-fields.ProjectionManifest",
+      "source_construct": "ProjectionManifest",
+      "source_span": {
+        "end": 2260,
+        "start": 1849
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ProjectionManifest.managed_projection_hash accepts null and non-null values",
+      "id": "entity-optional.ProjectionManifest.managed_projection_hash",
+      "source_construct": "ProjectionManifest.managed_projection_hash",
+      "source_span": {
+        "end": 2260,
+        "start": 1849
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ProjectionManifest.source_projection_hash accepts null and non-null values",
+      "id": "entity-optional.ProjectionManifest.source_projection_hash",
+      "source_construct": "ProjectionManifest.source_projection_hash",
+      "source_span": {
+        "end": 2260,
+        "start": 1849
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ProjectionManifest.source_child_hash accepts null and non-null values",
+      "id": "entity-optional.ProjectionManifest.source_child_hash",
+      "source_construct": "ProjectionManifest.source_child_hash",
+      "source_span": {
+        "end": 2260,
+        "start": 1849
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ProjectionManifest.pinned_child_hash accepts null and non-null values",
+      "id": "entity-optional.ProjectionManifest.pinned_child_hash",
+      "source_construct": "ProjectionManifest.pinned_child_hash",
+      "source_span": {
+        "end": 2260,
+        "start": 1849
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on ManagedProjectionFile are present with correct types",
+      "detail": {
+        "fields": [
+          "manifest_path",
+          "relative_path",
+          "expected_hash",
+          "actual_hash",
+          "exists",
+          "managed_marker_present",
+          "executable"
+        ]
+      },
+      "id": "entity-fields.ManagedProjectionFile",
+      "source_construct": "ManagedProjectionFile",
+      "source_span": {
+        "end": 2479,
+        "start": 2262
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ManagedProjectionFile.expected_hash accepts null and non-null values",
+      "id": "entity-optional.ManagedProjectionFile.expected_hash",
+      "source_construct": "ManagedProjectionFile.expected_hash",
+      "source_span": {
+        "end": 2479,
+        "start": 2262
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ManagedProjectionFile.actual_hash accepts null and non-null values",
+      "id": "entity-optional.ManagedProjectionFile.actual_hash",
+      "source_construct": "ManagedProjectionFile.actual_hash",
+      "source_span": {
+        "end": 2479,
+        "start": 2262
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on SkillProjectionTuple are present with correct types",
+      "detail": {
+        "fields": [
+          "child_name",
+          "hitl",
+          "scope",
+          "state",
+          "pin_mode",
+          "pinned_child_hash",
+          "managed_projection_hash",
+          "source_projection_hash",
+          "conflict_reason",
+          "block_reason",
+          "last_error",
+          "auto_sync_enabled"
+        ]
+      },
+      "id": "entity-fields.SkillProjectionTuple",
+      "source_construct": "SkillProjectionTuple",
+      "source_span": {
+        "end": 3235,
+        "start": 2481
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field SkillProjectionTuple.pinned_child_hash accepts null and non-null values",
+      "id": "entity-optional.SkillProjectionTuple.pinned_child_hash",
+      "source_construct": "SkillProjectionTuple.pinned_child_hash",
+      "source_span": {
+        "end": 3235,
+        "start": 2481
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field SkillProjectionTuple.managed_projection_hash accepts null and non-null values",
+      "id": "entity-optional.SkillProjectionTuple.managed_projection_hash",
+      "source_construct": "SkillProjectionTuple.managed_projection_hash",
+      "source_span": {
+        "end": 3235,
+        "start": 2481
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field SkillProjectionTuple.source_projection_hash accepts null and non-null values",
+      "id": "entity-optional.SkillProjectionTuple.source_projection_hash",
+      "source_construct": "SkillProjectionTuple.source_projection_hash",
+      "source_span": {
+        "end": 3235,
+        "start": 2481
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field SkillProjectionTuple.last_error accepts null and non-null values",
+      "id": "entity-optional.SkillProjectionTuple.last_error",
+      "source_construct": "SkillProjectionTuple.last_error",
+      "source_span": {
+        "end": 3235,
+        "start": 2481
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on MotherSkillsCommand are present with correct types",
+      "detail": {
+        "fields": [
+          "verb",
+          "child_name",
+          "hitl_name",
+          "requested_scope",
+          "global_requested",
+          "dry_run",
+          "force"
+        ]
+      },
+      "id": "entity-fields.MotherSkillsCommand",
+      "source_construct": "MotherSkillsCommand",
+      "source_span": {
+        "end": 3505,
+        "start": 3237
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field MotherSkillsCommand.child_name accepts null and non-null values",
+      "id": "entity-optional.MotherSkillsCommand.child_name",
+      "source_construct": "MotherSkillsCommand.child_name",
+      "source_span": {
+        "end": 3505,
+        "start": 3237
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on MotherSkillHandshakeRequest are present with correct types",
+      "detail": {
+        "fields": [
+          "version",
+          "interface_name",
+          "project_root",
+          "session_id",
+          "skills_check",
+          "scope_mode",
+          "child_filter",
+          "auto_sync_mode",
+          "allow_force"
+        ]
+      },
+      "id": "entity-fields.MotherSkillHandshakeRequest",
+      "source_construct": "MotherSkillHandshakeRequest",
+      "source_span": {
+        "end": 3831,
+        "start": 3507
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field MotherSkillHandshakeRequest.project_root accepts null and non-null values",
+      "id": "entity-optional.MotherSkillHandshakeRequest.project_root",
+      "source_construct": "MotherSkillHandshakeRequest.project_root",
+      "source_span": {
+        "end": 3831,
+        "start": 3507
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field MotherSkillHandshakeRequest.session_id accepts null and non-null values",
+      "id": "entity-optional.MotherSkillHandshakeRequest.session_id",
+      "source_construct": "MotherSkillHandshakeRequest.session_id",
+      "source_span": {
+        "end": 3831,
+        "start": 3507
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field MotherSkillHandshakeRequest.child_filter accepts null and non-null values",
+      "id": "entity-optional.MotherSkillHandshakeRequest.child_filter",
+      "source_construct": "MotherSkillHandshakeRequest.child_filter",
+      "source_span": {
+        "end": 3831,
+        "start": 3507
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on MotherSkillHandshakeResponse are present with correct types",
+      "detail": {
+        "fields": [
+          "version",
+          "interface_name",
+          "project_root",
+          "project_scope_supported",
+          "global_scope_supported",
+          "reload_hint",
+          "reload_command",
+          "safe_to_apply"
+        ]
+      },
+      "id": "entity-fields.MotherSkillHandshakeResponse",
+      "source_construct": "MotherSkillHandshakeResponse",
+      "source_span": {
+        "end": 4150,
+        "start": 3833
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field MotherSkillHandshakeResponse.project_root accepts null and non-null values",
+      "id": "entity-optional.MotherSkillHandshakeResponse.project_root",
+      "source_construct": "MotherSkillHandshakeResponse.project_root",
+      "source_span": {
+        "end": 4150,
+        "start": 3833
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field MotherSkillHandshakeResponse.reload_command accepts null and non-null values",
+      "id": "entity-optional.MotherSkillHandshakeResponse.reload_command",
+      "source_construct": "MotherSkillHandshakeResponse.reload_command",
+      "source_span": {
+        "end": 4150,
+        "start": 3833
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on SkillProjectionActionPlan are present with correct types",
+      "detail": {
+        "fields": [
+          "child_name",
+          "hitl_name",
+          "scope",
+          "action",
+          "reason",
+          "dry_run",
+          "force",
+          "requires_force",
+          "safe_to_apply",
+          "writes_count",
+          "removes_count"
+        ]
+      },
+      "id": "entity-fields.SkillProjectionActionPlan",
+      "source_construct": "SkillProjectionActionPlan",
+      "source_span": {
+        "end": 4575,
+        "start": 4152
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on SkillProjectionAuditEvent are present with correct types",
+      "detail": {
+        "fields": [
+          "child_name",
+          "hitl_name",
+          "scope",
+          "action",
+          "result",
+          "forced",
+          "dry_run",
+          "manifest_path",
+          "projection_root",
+          "before_hash",
+          "after_hash",
+          "reason"
+        ]
+      },
+      "id": "entity-fields.SkillProjectionAuditEvent",
+      "source_construct": "SkillProjectionAuditEvent",
+      "source_span": {
+        "end": 5002,
+        "start": 4577
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field SkillProjectionAuditEvent.manifest_path accepts null and non-null values",
+      "id": "entity-optional.SkillProjectionAuditEvent.manifest_path",
+      "source_construct": "SkillProjectionAuditEvent.manifest_path",
+      "source_span": {
+        "end": 5002,
+        "start": 4577
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field SkillProjectionAuditEvent.projection_root accepts null and non-null values",
+      "id": "entity-optional.SkillProjectionAuditEvent.projection_root",
+      "source_construct": "SkillProjectionAuditEvent.projection_root",
+      "source_span": {
+        "end": 5002,
+        "start": 4577
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field SkillProjectionAuditEvent.before_hash accepts null and non-null values",
+      "id": "entity-optional.SkillProjectionAuditEvent.before_hash",
+      "source_construct": "SkillProjectionAuditEvent.before_hash",
+      "source_span": {
+        "end": 5002,
+        "start": 4577
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field SkillProjectionAuditEvent.after_hash accepts null and non-null values",
+      "id": "entity-optional.SkillProjectionAuditEvent.after_hash",
+      "source_construct": "SkillProjectionAuditEvent.after_hash",
+      "source_span": {
+        "end": 5002,
+        "start": 4577
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field SkillProjectionAuditEvent.reason accepts null and non-null values",
+      "id": "entity-optional.SkillProjectionAuditEvent.reason",
+      "source_construct": "SkillProjectionAuditEvent.reason",
+      "source_span": {
+        "end": 5002,
+        "start": 4577
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "HitlScopeCapabilityDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule PiScopeCapabilities succeeds when all preconditions are met",
+      "id": "rule-success.PiScopeCapabilities",
+      "source_construct": "PiScopeCapabilities",
+      "source_span": {
+        "end": 5588,
+        "start": 5032
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "HitlScopeCapabilityDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule PiScopeCapabilities is rejected when requires clause fails",
+      "id": "rule-failure.PiScopeCapabilities.1",
+      "source_construct": "PiScopeCapabilities",
+      "source_span": {
+        "end": 5124,
+        "start": 5100
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "HitlScopeCapabilityDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ClaudeScopeCapabilities succeeds when all preconditions are met",
+      "id": "rule-success.ClaudeScopeCapabilities",
+      "source_construct": "ClaudeScopeCapabilities",
+      "source_span": {
+        "end": 6149,
+        "start": 5590
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "HitlScopeCapabilityDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ClaudeScopeCapabilities is rejected when requires clause fails",
+      "id": "rule-failure.ClaudeScopeCapabilities.1",
+      "source_construct": "ClaudeScopeCapabilities",
+      "source_span": {
+        "end": 5690,
+        "start": 5662
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "HitlScopeCapabilityDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule OpenCodeScopeCapabilities succeeds when all preconditions are met",
+      "id": "rule-success.OpenCodeScopeCapabilities",
+      "source_construct": "OpenCodeScopeCapabilities",
+      "source_span": {
+        "end": 6750,
+        "start": 6151
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "HitlScopeCapabilityDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule OpenCodeScopeCapabilities is rejected when requires clause fails",
+      "id": "rule-failure.OpenCodeScopeCapabilities.1",
+      "source_construct": "OpenCodeScopeCapabilities",
+      "source_span": {
+        "end": 6255,
+        "start": 6225
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "HitlScopeCapabilityDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule GeminiScopeCapabilities succeeds when all preconditions are met",
+      "id": "rule-success.GeminiScopeCapabilities",
+      "source_construct": "GeminiScopeCapabilities",
+      "source_span": {
+        "end": 7397,
+        "start": 6752
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "HitlScopeCapabilityDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule GeminiScopeCapabilities is rejected when requires clause fails",
+      "id": "rule-failure.GeminiScopeCapabilities.1",
+      "source_construct": "GeminiScopeCapabilities",
+      "source_span": {
+        "end": 6852,
+        "start": 6824
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSkillsCommandResolved"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule CommandDefaultsToProjectScope succeeds when all preconditions are met",
+      "id": "rule-success.CommandDefaultsToProjectScope",
+      "source_construct": "CommandDefaultsToProjectScope",
+      "source_span": {
+        "end": 7691,
+        "start": 7443
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSkillsCommandResolved"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule CommandDefaultsToProjectScope is rejected when requires clause fails",
+      "id": "rule-failure.CommandDefaultsToProjectScope.1",
+      "source_construct": "CommandDefaultsToProjectScope",
+      "source_span": {
+        "end": 7571,
+        "start": 7531
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSkillsCommandResolved"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule CommandDefaultsToProjectScope is rejected when requires clause fails",
+      "id": "rule-failure.CommandDefaultsToProjectScope.2",
+      "source_construct": "CommandDefaultsToProjectScope",
+      "source_span": {
+        "end": 7614,
+        "start": 7576
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSkillsCommandResolved"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule GlobalFlagSelectsGlobalScope succeeds when all preconditions are met",
+      "id": "rule-success.GlobalFlagSelectsGlobalScope",
+      "source_construct": "GlobalFlagSelectsGlobalScope",
+      "source_span": {
+        "end": 7890,
+        "start": 7693
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSkillsCommandResolved"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule GlobalFlagSelectsGlobalScope is rejected when requires clause fails",
+      "id": "rule-failure.GlobalFlagSelectsGlobalScope.1",
+      "source_construct": "GlobalFlagSelectsGlobalScope",
+      "source_span": {
+        "end": 7814,
+        "start": 7780
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillProjectionAuditEventRecorded",
+          "SkillTupleEvaluationRequested"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StatusEvaluatesWithoutWrites succeeds when all preconditions are met",
+      "id": "rule-success.StatusEvaluatesWithoutWrites",
+      "source_construct": "StatusEvaluatesWithoutWrites",
+      "source_span": {
+        "end": 8311,
+        "start": 7892
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillProjectionAuditEventRecorded",
+          "SkillTupleEvaluationRequested"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StatusEvaluatesWithoutWrites is rejected when requires clause fails",
+      "id": "rule-failure.StatusEvaluatesWithoutWrites.1",
+      "source_construct": "StatusEvaluatesWithoutWrites",
+      "source_span": {
+        "end": 8017,
+        "start": 7986
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkUnsupportedWhenGlobalNotSupported succeeds when all preconditions are met",
+      "id": "rule-success.MarkUnsupportedWhenGlobalNotSupported",
+      "source_construct": "MarkUnsupportedWhenGlobalNotSupported",
+      "source_span": {
+        "end": 8684,
+        "start": 8334
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkUnsupportedWhenGlobalNotSupported is rejected when requires clause fails",
+      "id": "rule-failure.MarkUnsupportedWhenGlobalNotSupported.1",
+      "source_construct": "MarkUnsupportedWhenGlobalNotSupported",
+      "source_span": {
+        "end": 8460,
+        "start": 8430
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkUnsupportedWhenGlobalNotSupported is rejected when requires clause fails",
+      "id": "rule-failure.MarkUnsupportedWhenGlobalNotSupported.2",
+      "source_construct": "MarkUnsupportedWhenGlobalNotSupported",
+      "source_span": {
+        "end": 8511,
+        "start": 8465
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkUnsupportedWhenProjectNotSupported succeeds when all preconditions are met",
+      "id": "rule-success.MarkUnsupportedWhenProjectNotSupported",
+      "source_construct": "MarkUnsupportedWhenProjectNotSupported",
+      "source_span": {
+        "end": 9040,
+        "start": 8686
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkUnsupportedWhenProjectNotSupported is rejected when requires clause fails",
+      "id": "rule-failure.MarkUnsupportedWhenProjectNotSupported.1",
+      "source_construct": "MarkUnsupportedWhenProjectNotSupported",
+      "source_span": {
+        "end": 8814,
+        "start": 8783
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkUnsupportedWhenProjectNotSupported is rejected when requires clause fails",
+      "id": "rule-failure.MarkUnsupportedWhenProjectNotSupported.2",
+      "source_construct": "MarkUnsupportedWhenProjectNotSupported",
+      "source_span": {
+        "end": 8866,
+        "start": 8819
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenChildSourceMissing succeeds when all preconditions are met",
+      "id": "rule-success.MarkBlockedWhenChildSourceMissing",
+      "source_construct": "MarkBlockedWhenChildSourceMissing",
+      "source_span": {
+        "end": 9428,
+        "start": 9042
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenChildSourceMissing is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenChildSourceMissing.1",
+      "source_construct": "MarkBlockedWhenChildSourceMissing",
+      "source_span": {
+        "end": 9214,
+        "start": 9134
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenChildSourceNotTrusted succeeds when all preconditions are met",
+      "id": "rule-success.MarkBlockedWhenChildSourceNotTrusted",
+      "source_construct": "MarkBlockedWhenChildSourceNotTrusted",
+      "source_span": {
+        "end": 9817,
+        "start": 9430
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenChildSourceNotTrusted is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenChildSourceNotTrusted.1",
+      "source_construct": "MarkBlockedWhenChildSourceNotTrusted",
+      "source_span": {
+        "end": 9599,
+        "start": 9525
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenChildNotAssignedToProjectScope succeeds when all preconditions are met",
+      "id": "rule-success.MarkBlockedWhenChildNotAssignedToProjectScope",
+      "source_construct": "MarkBlockedWhenChildNotAssignedToProjectScope",
+      "source_span": {
+        "end": 10277,
+        "start": 9819
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenChildNotAssignedToProjectScope is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenChildNotAssignedToProjectScope.1",
+      "source_construct": "MarkBlockedWhenChildNotAssignedToProjectScope",
+      "source_span": {
+        "end": 9954,
+        "start": 9923
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenChildNotAssignedToProjectScope is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenChildNotAssignedToProjectScope.2",
+      "source_construct": "MarkBlockedWhenChildNotAssignedToProjectScope",
+      "source_span": {
+        "end": 10045,
+        "start": 9959
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenGeminiWorkspaceNotTrusted succeeds when all preconditions are met",
+      "id": "rule-success.MarkBlockedWhenGeminiWorkspaceNotTrusted",
+      "source_construct": "MarkBlockedWhenGeminiWorkspaceNotTrusted",
+      "source_span": {
+        "end": 10749,
+        "start": 10279
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenGeminiWorkspaceNotTrusted is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenGeminiWorkspaceNotTrusted.1",
+      "source_construct": "MarkBlockedWhenGeminiWorkspaceNotTrusted",
+      "source_span": {
+        "end": 10412,
+        "start": 10378
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenGeminiWorkspaceNotTrusted is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenGeminiWorkspaceNotTrusted.2",
+      "source_construct": "MarkBlockedWhenGeminiWorkspaceNotTrusted",
+      "source_span": {
+        "end": 10448,
+        "start": 10417
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenGeminiWorkspaceNotTrusted is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenGeminiWorkspaceNotTrusted.3",
+      "source_construct": "MarkBlockedWhenGeminiWorkspaceNotTrusted",
+      "source_span": {
+        "end": 10529,
+        "start": 10453
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenSkillsDisabled succeeds when all preconditions are met",
+      "id": "rule-success.MarkBlockedWhenSkillsDisabled",
+      "source_construct": "MarkBlockedWhenSkillsDisabled",
+      "source_span": {
+        "end": 11128,
+        "start": 10751
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenSkillsDisabled is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenSkillsDisabled.1",
+      "source_construct": "MarkBlockedWhenSkillsDisabled",
+      "source_span": {
+        "end": 10924,
+        "start": 10839
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenAdminDisablesSkills succeeds when all preconditions are met",
+      "id": "rule-success.MarkBlockedWhenAdminDisablesSkills",
+      "source_construct": "MarkBlockedWhenAdminDisablesSkills",
+      "source_span": {
+        "end": 11530,
+        "start": 11130
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenAdminDisablesSkills is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenAdminDisablesSkills.1",
+      "source_construct": "MarkBlockedWhenAdminDisablesSkills",
+      "source_span": {
+        "end": 11314,
+        "start": 11223
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenOpenCodeProjectConfigDisabled succeeds when all preconditions are met",
+      "id": "rule-success.MarkBlockedWhenOpenCodeProjectConfigDisabled",
+      "source_construct": "MarkBlockedWhenOpenCodeProjectConfigDisabled",
+      "source_span": {
+        "end": 12027,
+        "start": 11532
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenOpenCodeProjectConfigDisabled is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenOpenCodeProjectConfigDisabled.1",
+      "source_construct": "MarkBlockedWhenOpenCodeProjectConfigDisabled",
+      "source_span": {
+        "end": 11671,
+        "start": 11635
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenOpenCodeProjectConfigDisabled is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenOpenCodeProjectConfigDisabled.2",
+      "source_construct": "MarkBlockedWhenOpenCodeProjectConfigDisabled",
+      "source_span": {
+        "end": 11707,
+        "start": 11676
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkBlockedWhenOpenCodeProjectConfigDisabled is rejected when requires clause fails",
+      "id": "rule-failure.MarkBlockedWhenOpenCodeProjectConfigDisabled.3",
+      "source_construct": "MarkBlockedWhenOpenCodeProjectConfigDisabled",
+      "source_span": {
+        "end": 11798,
+        "start": 11712
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkAbsentWhenManifestDoesNotExist succeeds when all preconditions are met",
+      "id": "rule-success.MarkAbsentWhenManifestDoesNotExist",
+      "source_construct": "MarkAbsentWhenManifestDoesNotExist",
+      "source_span": {
+        "end": 12517,
+        "start": 12029
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkAbsentWhenManifestDoesNotExist is rejected when requires clause fails",
+      "id": "rule-failure.MarkAbsentWhenManifestDoesNotExist.1",
+      "source_construct": "MarkAbsentWhenManifestDoesNotExist",
+      "source_span": {
+        "end": 12247,
+        "start": 12122
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkErrorWhenManifestInvalid succeeds when all preconditions are met",
+      "id": "rule-success.MarkErrorWhenManifestInvalid",
+      "source_construct": "MarkErrorWhenManifestInvalid",
+      "source_span": {
+        "end": 13072,
+        "start": 12519
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkErrorWhenManifestInvalid is rejected when requires clause fails",
+      "id": "rule-failure.MarkErrorWhenManifestInvalid.1",
+      "source_construct": "MarkErrorWhenManifestInvalid",
+      "source_span": {
+        "end": 12727,
+        "start": 12606
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkErrorWhenManifestInvalid is rejected when requires clause fails",
+      "id": "rule-failure.MarkErrorWhenManifestInvalid.2",
+      "source_construct": "MarkErrorWhenManifestInvalid",
+      "source_span": {
+        "end": 12856,
+        "start": 12732
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkInstalledWhenManifestValidAndHashesMatch succeeds when all preconditions are met",
+      "id": "rule-success.MarkInstalledWhenManifestValidAndHashesMatch",
+      "source_construct": "MarkInstalledWhenManifestValidAndHashesMatch",
+      "source_span": {
+        "end": 14040,
+        "start": 13074
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkInstalledWhenManifestValidAndHashesMatch is rejected when requires clause fails",
+      "id": "rule-failure.MarkInstalledWhenManifestValidAndHashesMatch.1",
+      "source_construct": "MarkInstalledWhenManifestValidAndHashesMatch",
+      "source_span": {
+        "end": 13298,
+        "start": 13177
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkInstalledWhenManifestValidAndHashesMatch is rejected when requires clause fails",
+      "id": "rule-failure.MarkInstalledWhenManifestValidAndHashesMatch.2",
+      "source_construct": "MarkInstalledWhenManifestValidAndHashesMatch",
+      "source_span": {
+        "end": 13423,
+        "start": 13303
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkInstalledWhenManifestValidAndHashesMatch is rejected when requires clause fails",
+      "id": "rule-failure.MarkInstalledWhenManifestValidAndHashesMatch.3",
+      "source_construct": "MarkInstalledWhenManifestValidAndHashesMatch",
+      "source_span": {
+        "end": 13696,
+        "start": 13428
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkInstalledWhenManifestValidAndHashesMatch is rejected when requires clause fails",
+      "id": "rule-failure.MarkInstalledWhenManifestValidAndHashesMatch.4",
+      "source_construct": "MarkInstalledWhenManifestValidAndHashesMatch",
+      "source_span": {
+        "end": 13750,
+        "start": 13701
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkInstalledWhenManifestValidAndHashesMatch is rejected when requires clause fails",
+      "id": "rule-failure.MarkInstalledWhenManifestValidAndHashesMatch.5",
+      "source_construct": "MarkInstalledWhenManifestValidAndHashesMatch",
+      "source_span": {
+        "end": 13814,
+        "start": 13755
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkStaleWhenChildHashChanged succeeds when all preconditions are met",
+      "id": "rule-success.MarkStaleWhenChildHashChanged",
+      "source_construct": "MarkStaleWhenChildHashChanged",
+      "source_span": {
+        "end": 14377,
+        "start": 14042
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkStaleWhenChildHashChanged is rejected when requires clause fails",
+      "id": "rule-failure.MarkStaleWhenChildHashChanged.1",
+      "source_construct": "MarkStaleWhenChildHashChanged",
+      "source_span": {
+        "end": 14163,
+        "start": 14130
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkStaleWhenChildHashChanged is rejected when requires clause fails",
+      "id": "rule-failure.MarkStaleWhenChildHashChanged.2",
+      "source_construct": "MarkStaleWhenChildHashChanged",
+      "source_span": {
+        "end": 14201,
+        "start": 14168
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkStaleWhenChildHashChanged is rejected when requires clause fails",
+      "id": "rule-failure.MarkStaleWhenChildHashChanged.3",
+      "source_construct": "MarkStaleWhenChildHashChanged",
+      "source_span": {
+        "end": 14277,
+        "start": 14206
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkStaleWhenManagedFileMissing succeeds when all preconditions are met",
+      "id": "rule-success.MarkStaleWhenManagedFileMissing",
+      "source_construct": "MarkStaleWhenManagedFileMissing",
+      "source_span": {
+        "end": 14693,
+        "start": 14379
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkStaleWhenManagedFileMissing is rejected when requires clause fails",
+      "id": "rule-failure.MarkStaleWhenManagedFileMissing.1",
+      "source_construct": "MarkStaleWhenManagedFileMissing",
+      "source_span": {
+        "end": 14514,
+        "start": 14469
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkStaleWhenManagedFileDriftKeepsMarker succeeds when all preconditions are met",
+      "id": "rule-success.MarkStaleWhenManagedFileDriftKeepsMarker",
+      "source_construct": "MarkStaleWhenManagedFileDriftKeepsMarker",
+      "source_span": {
+        "end": 15085,
+        "start": 14695
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkStaleWhenManagedFileDriftKeepsMarker is rejected when requires clause fails",
+      "id": "rule-failure.MarkStaleWhenManagedFileDriftKeepsMarker.1",
+      "source_construct": "MarkStaleWhenManagedFileDriftKeepsMarker",
+      "source_span": {
+        "end": 14849,
+        "start": 14794
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkStaleWhenManagedFileDriftKeepsMarker is rejected when requires clause fails",
+      "id": "rule-failure.MarkStaleWhenManagedFileDriftKeepsMarker.2",
+      "source_construct": "MarkStaleWhenManagedFileDriftKeepsMarker",
+      "source_span": {
+        "end": 14905,
+        "start": 14854
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkConflictedWhenManagedFileDriftLosesMarker succeeds when all preconditions are met",
+      "id": "rule-success.MarkConflictedWhenManagedFileDriftLosesMarker",
+      "source_construct": "MarkConflictedWhenManagedFileDriftLosesMarker",
+      "source_span": {
+        "end": 15572,
+        "start": 15087
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkConflictedWhenManagedFileDriftLosesMarker is rejected when requires clause fails",
+      "id": "rule-failure.MarkConflictedWhenManagedFileDriftLosesMarker.1",
+      "source_construct": "MarkConflictedWhenManagedFileDriftLosesMarker",
+      "source_span": {
+        "end": 15246,
+        "start": 15191
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule MarkConflictedWhenManagedFileDriftLosesMarker is rejected when requires clause fails",
+      "id": "rule-failure.MarkConflictedWhenManagedFileDriftLosesMarker.2",
+      "source_construct": "MarkConflictedWhenManagedFileDriftLosesMarker",
+      "source_span": {
+        "end": 15306,
+        "start": 15251
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule KeepStaleWhenPinnedAndSourceMoved succeeds when all preconditions are met",
+      "id": "rule-success.KeepStaleWhenPinnedAndSourceMoved",
+      "source_construct": "KeepStaleWhenPinnedAndSourceMoved",
+      "source_span": {
+        "end": 15908,
+        "start": 15574
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule KeepStaleWhenPinnedAndSourceMoved is rejected when requires clause fails",
+      "id": "rule-failure.KeepStaleWhenPinnedAndSourceMoved.1",
+      "source_construct": "KeepStaleWhenPinnedAndSourceMoved",
+      "source_span": {
+        "end": 15696,
+        "start": 15666
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillTupleEvaluated"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule KeepStaleWhenPinnedAndSourceMoved is rejected when requires clause fails",
+      "id": "rule-failure.KeepStaleWhenPinnedAndSourceMoved.2",
+      "source_construct": "KeepStaleWhenPinnedAndSourceMoved",
+      "source_span": {
+        "end": 15801,
+        "start": 15701
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallDryRunPlansNoWrites succeeds when all preconditions are met",
+      "id": "rule-success.InstallDryRunPlansNoWrites",
+      "source_construct": "InstallDryRunPlansNoWrites",
+      "source_span": {
+        "end": 16263,
+        "start": 15931
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallDryRunPlansNoWrites is rejected when requires clause fails",
+      "id": "rule-failure.InstallDryRunPlansNoWrites.1",
+      "source_construct": "InstallDryRunPlansNoWrites",
+      "source_span": {
+        "end": 16041,
+        "start": 16024
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallIntoProjectByDefault succeeds when all preconditions are met",
+      "id": "rule-success.InstallIntoProjectByDefault",
+      "source_construct": "InstallIntoProjectByDefault",
+      "source_span": {
+        "end": 16839,
+        "start": 16265
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallIntoProjectByDefault is rejected when requires clause fails",
+      "id": "rule-failure.InstallIntoProjectByDefault.1",
+      "source_construct": "InstallIntoProjectByDefault",
+      "source_span": {
+        "end": 16380,
+        "start": 16359
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallIntoProjectByDefault is rejected when requires clause fails",
+      "id": "rule-failure.InstallIntoProjectByDefault.2",
+      "source_construct": "InstallIntoProjectByDefault",
+      "source_span": {
+        "end": 16416,
+        "start": 16385
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallIntoProjectByDefault is rejected when requires clause fails",
+      "id": "rule-failure.InstallIntoProjectByDefault.3",
+      "source_construct": "InstallIntoProjectByDefault",
+      "source_span": {
+        "end": 16451,
+        "start": 16421
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallIntoProjectByDefault is rejected when requires clause fails",
+      "id": "rule-failure.InstallIntoProjectByDefault.4",
+      "source_construct": "InstallIntoProjectByDefault",
+      "source_span": {
+        "end": 16499,
+        "start": 16456
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallIntoProjectByDefault is rejected when requires clause fails",
+      "id": "rule-failure.InstallIntoProjectByDefault.5",
+      "source_construct": "InstallIntoProjectByDefault",
+      "source_span": {
+        "end": 16574,
+        "start": 16504
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ChildSkillSource"
+        ],
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallIntoProjectByDefault is rejected when requires clause fails",
+      "id": "rule-failure.InstallIntoProjectByDefault.6",
+      "source_construct": "InstallIntoProjectByDefault",
+      "source_span": {
+        "end": 16632,
+        "start": 16579
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallGlobalRequiresCapability succeeds when all preconditions are met",
+      "id": "rule-success.InstallGlobalRequiresCapability",
+      "source_construct": "InstallGlobalRequiresCapability",
+      "source_span": {
+        "end": 17198,
+        "start": 16841
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallGlobalRequiresCapability is rejected when requires clause fails",
+      "id": "rule-failure.InstallGlobalRequiresCapability.1",
+      "source_construct": "InstallGlobalRequiresCapability",
+      "source_span": {
+        "end": 16965,
+        "start": 16935
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallGlobalRequiresCapability is rejected when requires clause fails",
+      "id": "rule-failure.InstallGlobalRequiresCapability.2",
+      "source_construct": "InstallGlobalRequiresCapability",
+      "source_span": {
+        "end": 17016,
+        "start": 16970
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromAbsentBecomesConflictedOnCollision succeeds when all preconditions are met",
+      "id": "rule-success.InstallFromAbsentBecomesConflictedOnCollision",
+      "source_construct": "InstallFromAbsentBecomesConflictedOnCollision",
+      "source_span": {
+        "end": 17679,
+        "start": 17200
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromAbsentBecomesConflictedOnCollision is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromAbsentBecomesConflictedOnCollision.1",
+      "source_construct": "InstallFromAbsentBecomesConflictedOnCollision",
+      "source_span": {
+        "end": 17333,
+        "start": 17312
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromAbsentBecomesConflictedOnCollision is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromAbsentBecomesConflictedOnCollision.2",
+      "source_construct": "InstallFromAbsentBecomesConflictedOnCollision",
+      "source_span": {
+        "end": 17368,
+        "start": 17338
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromAbsentBecomesConflictedOnCollision is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromAbsentBecomesConflictedOnCollision.3",
+      "source_construct": "InstallFromAbsentBecomesConflictedOnCollision",
+      "source_span": {
+        "end": 17392,
+        "start": 17373
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromAbsentBecomesConflictedOnCollision is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromAbsentBecomesConflictedOnCollision.4",
+      "source_construct": "InstallFromAbsentBecomesConflictedOnCollision",
+      "source_span": {
+        "end": 17446,
+        "start": 17397
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromAbsentWithForceOverwritesPlannedCollisions succeeds when all preconditions are met",
+      "id": "rule-success.InstallFromAbsentWithForceOverwritesPlannedCollisions",
+      "source_construct": "InstallFromAbsentWithForceOverwritesPlannedCollisions",
+      "source_span": {
+        "end": 18179,
+        "start": 17681
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromAbsentWithForceOverwritesPlannedCollisions is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromAbsentWithForceOverwritesPlannedCollisions.1",
+      "source_construct": "InstallFromAbsentWithForceOverwritesPlannedCollisions",
+      "source_span": {
+        "end": 17822,
+        "start": 17801
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromAbsentWithForceOverwritesPlannedCollisions is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromAbsentWithForceOverwritesPlannedCollisions.2",
+      "source_construct": "InstallFromAbsentWithForceOverwritesPlannedCollisions",
+      "source_span": {
+        "end": 17857,
+        "start": 17827
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromAbsentWithForceOverwritesPlannedCollisions is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromAbsentWithForceOverwritesPlannedCollisions.3",
+      "source_construct": "InstallFromAbsentWithForceOverwritesPlannedCollisions",
+      "source_span": {
+        "end": 17877,
+        "start": 17862
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromAbsentWithForceOverwritesPlannedCollisions is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromAbsentWithForceOverwritesPlannedCollisions.4",
+      "source_construct": "InstallFromAbsentWithForceOverwritesPlannedCollisions",
+      "source_span": {
+        "end": 17931,
+        "start": 17882
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromConflictedWithoutForceStaysConflicted succeeds when all preconditions are met",
+      "id": "rule-success.InstallFromConflictedWithoutForceStaysConflicted",
+      "source_construct": "InstallFromConflictedWithoutForceStaysConflicted",
+      "source_span": {
+        "end": 18609,
+        "start": 18181
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromConflictedWithoutForceStaysConflicted is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromConflictedWithoutForceStaysConflicted.1",
+      "source_construct": "InstallFromConflictedWithoutForceStaysConflicted",
+      "source_span": {
+        "end": 18317,
+        "start": 18296
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromConflictedWithoutForceStaysConflicted is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromConflictedWithoutForceStaysConflicted.2",
+      "source_construct": "InstallFromConflictedWithoutForceStaysConflicted",
+      "source_span": {
+        "end": 18356,
+        "start": 18322
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromConflictedWithoutForceStaysConflicted is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromConflictedWithoutForceStaysConflicted.3",
+      "source_construct": "InstallFromConflictedWithoutForceStaysConflicted",
+      "source_span": {
+        "end": 18380,
+        "start": 18361
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillInstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromConflictedWithoutForceStaysConflicted is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromConflictedWithoutForceStaysConflicted.4",
+      "source_construct": "InstallFromConflictedWithoutForceStaysConflicted",
+      "source_span": {
+        "end": 18434,
+        "start": 18385
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromConflictedWithForce succeeds when all preconditions are met",
+      "id": "rule-success.InstallFromConflictedWithForce",
+      "source_construct": "InstallFromConflictedWithForce",
+      "source_span": {
+        "end": 19037,
+        "start": 18611
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromConflictedWithForce is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromConflictedWithForce.1",
+      "source_construct": "InstallFromConflictedWithForce",
+      "source_span": {
+        "end": 18729,
+        "start": 18708
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromConflictedWithForce is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromConflictedWithForce.2",
+      "source_construct": "InstallFromConflictedWithForce",
+      "source_span": {
+        "end": 18768,
+        "start": 18734
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillInstallApplied",
+          "SkillProjectionChanged"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InstallFromConflictedWithForce is rejected when requires clause fails",
+      "id": "rule-failure.InstallFromConflictedWithForce.3",
+      "source_construct": "InstallFromConflictedWithForce",
+      "source_span": {
+        "end": 18788,
+        "start": 18773
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncDryRunPlansNoWrites succeeds when all preconditions are met",
+      "id": "rule-success.SyncDryRunPlansNoWrites",
+      "source_construct": "SyncDryRunPlansNoWrites",
+      "source_span": {
+        "end": 19377,
+        "start": 19057
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncDryRunPlansNoWrites is rejected when requires clause fails",
+      "id": "rule-failure.SyncDryRunPlansNoWrites.1",
+      "source_construct": "SyncDryRunPlansNoWrites",
+      "source_span": {
+        "end": 19161,
+        "start": 19144
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncRejectedUnlessStateIsStaleOrConflicted succeeds when all preconditions are met",
+      "id": "rule-success.SyncRejectedUnlessStateIsStaleOrConflicted",
+      "source_construct": "SyncRejectedUnlessStateIsStaleOrConflicted",
+      "source_span": {
+        "end": 19728,
+        "start": 19379
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncRejectedUnlessStateIsStaleOrConflicted is rejected when requires clause fails",
+      "id": "rule-failure.SyncRejectedUnlessStateIsStaleOrConflicted.1",
+      "source_construct": "SyncRejectedUnlessStateIsStaleOrConflicted",
+      "source_span": {
+        "end": 19506,
+        "start": 19485
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncRejectedUnlessStateIsStaleOrConflicted is rejected when requires clause fails",
+      "id": "rule-failure.SyncRejectedUnlessStateIsStaleOrConflicted.2",
+      "source_construct": "SyncRejectedUnlessStateIsStaleOrConflicted",
+      "source_span": {
+        "end": 19541,
+        "start": 19511
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncRejectedUnlessStateIsStaleOrConflicted is rejected when requires clause fails",
+      "id": "rule-failure.SyncRejectedUnlessStateIsStaleOrConflicted.3",
+      "source_construct": "SyncRejectedUnlessStateIsStaleOrConflicted",
+      "source_span": {
+        "end": 19581,
+        "start": 19546
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleToInstalled succeeds when all preconditions are met",
+      "id": "rule-success.SyncFromStaleToInstalled",
+      "source_construct": "SyncFromStaleToInstalled",
+      "source_span": {
+        "end": 20132,
+        "start": 19730
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleToInstalled is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleToInstalled.1",
+      "source_construct": "SyncFromStaleToInstalled",
+      "source_span": {
+        "end": 19839,
+        "start": 19818
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleToInstalled is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleToInstalled.2",
+      "source_construct": "SyncFromStaleToInstalled",
+      "source_span": {
+        "end": 19873,
+        "start": 19844
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleToInstalled is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleToInstalled.3",
+      "source_construct": "SyncFromStaleToInstalled",
+      "source_span": {
+        "end": 19931,
+        "start": 19878
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleToConflictedOnCollision succeeds when all preconditions are met",
+      "id": "rule-success.SyncFromStaleToConflictedOnCollision",
+      "source_construct": "SyncFromStaleToConflictedOnCollision",
+      "source_span": {
+        "end": 20597,
+        "start": 20134
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleToConflictedOnCollision is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleToConflictedOnCollision.1",
+      "source_construct": "SyncFromStaleToConflictedOnCollision",
+      "source_span": {
+        "end": 20255,
+        "start": 20234
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleToConflictedOnCollision is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleToConflictedOnCollision.2",
+      "source_construct": "SyncFromStaleToConflictedOnCollision",
+      "source_span": {
+        "end": 20289,
+        "start": 20260
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleToConflictedOnCollision is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleToConflictedOnCollision.3",
+      "source_construct": "SyncFromStaleToConflictedOnCollision",
+      "source_span": {
+        "end": 20313,
+        "start": 20294
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleToConflictedOnCollision is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleToConflictedOnCollision.4",
+      "source_construct": "SyncFromStaleToConflictedOnCollision",
+      "source_span": {
+        "end": 20367,
+        "start": 20318
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleWithForceOverwritesPlannedCollisions succeeds when all preconditions are met",
+      "id": "rule-success.SyncFromStaleWithForceOverwritesPlannedCollisions",
+      "source_construct": "SyncFromStaleWithForceOverwritesPlannedCollisions",
+      "source_span": {
+        "end": 21083,
+        "start": 20599
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleWithForceOverwritesPlannedCollisions is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleWithForceOverwritesPlannedCollisions.1",
+      "source_construct": "SyncFromStaleWithForceOverwritesPlannedCollisions",
+      "source_span": {
+        "end": 20733,
+        "start": 20712
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleWithForceOverwritesPlannedCollisions is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleWithForceOverwritesPlannedCollisions.2",
+      "source_construct": "SyncFromStaleWithForceOverwritesPlannedCollisions",
+      "source_span": {
+        "end": 20767,
+        "start": 20738
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleWithForceOverwritesPlannedCollisions is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleWithForceOverwritesPlannedCollisions.3",
+      "source_construct": "SyncFromStaleWithForceOverwritesPlannedCollisions",
+      "source_span": {
+        "end": 20787,
+        "start": 20772
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromStaleWithForceOverwritesPlannedCollisions is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromStaleWithForceOverwritesPlannedCollisions.4",
+      "source_construct": "SyncFromStaleWithForceOverwritesPlannedCollisions",
+      "source_span": {
+        "end": 20841,
+        "start": 20792
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromConflictedWithoutForceStaysConflicted succeeds when all preconditions are met",
+      "id": "rule-success.SyncFromConflictedWithoutForceStaysConflicted",
+      "source_construct": "SyncFromConflictedWithoutForceStaysConflicted",
+      "source_span": {
+        "end": 21504,
+        "start": 21085
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromConflictedWithoutForceStaysConflicted is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromConflictedWithoutForceStaysConflicted.1",
+      "source_construct": "SyncFromConflictedWithoutForceStaysConflicted",
+      "source_span": {
+        "end": 21215,
+        "start": 21194
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromConflictedWithoutForceStaysConflicted is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromConflictedWithoutForceStaysConflicted.2",
+      "source_construct": "SyncFromConflictedWithoutForceStaysConflicted",
+      "source_span": {
+        "end": 21254,
+        "start": 21220
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromConflictedWithoutForceStaysConflicted is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromConflictedWithoutForceStaysConflicted.3",
+      "source_construct": "SyncFromConflictedWithoutForceStaysConflicted",
+      "source_span": {
+        "end": 21278,
+        "start": 21259
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillSyncRejected"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromConflictedWithoutForceStaysConflicted is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromConflictedWithoutForceStaysConflicted.4",
+      "source_construct": "SyncFromConflictedWithoutForceStaysConflicted",
+      "source_span": {
+        "end": 21332,
+        "start": 21283
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromConflictedWithForce succeeds when all preconditions are met",
+      "id": "rule-success.SyncFromConflictedWithForce",
+      "source_construct": "SyncFromConflictedWithForce",
+      "source_span": {
+        "end": 21920,
+        "start": 21506
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromConflictedWithForce is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromConflictedWithForce.1",
+      "source_construct": "SyncFromConflictedWithForce",
+      "source_span": {
+        "end": 21618,
+        "start": 21597
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromConflictedWithForce is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromConflictedWithForce.2",
+      "source_construct": "SyncFromConflictedWithForce",
+      "source_span": {
+        "end": 21657,
+        "start": 21623
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillSyncApplied"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule SyncFromConflictedWithForce is rejected when requires clause fails",
+      "id": "rule-failure.SyncFromConflictedWithForce.3",
+      "source_construct": "SyncFromConflictedWithForce",
+      "source_span": {
+        "end": 21677,
+        "start": 21662
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallDryRunPlansNoWrites succeeds when all preconditions are met",
+      "id": "rule-success.UninstallDryRunPlansNoWrites",
+      "source_construct": "UninstallDryRunPlansNoWrites",
+      "source_span": {
+        "end": 22289,
+        "start": 21945
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallDryRunPlansNoWrites is rejected when requires clause fails",
+      "id": "rule-failure.UninstallDryRunPlansNoWrites.1",
+      "source_construct": "UninstallDryRunPlansNoWrites",
+      "source_span": {
+        "end": 22063,
+        "start": 22046
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillUninstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallRejectedWhenAdminRemovalLockedWithoutAck succeeds when all preconditions are met",
+      "id": "rule-success.UninstallRejectedWhenAdminRemovalLockedWithoutAck",
+      "source_construct": "UninstallRejectedWhenAdminRemovalLockedWithoutAck",
+      "source_span": {
+        "end": 22690,
+        "start": 22291
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillUninstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallRejectedWhenAdminRemovalLockedWithoutAck is rejected when requires clause fails",
+      "id": "rule-failure.UninstallRejectedWhenAdminRemovalLockedWithoutAck.1",
+      "source_construct": "UninstallRejectedWhenAdminRemovalLockedWithoutAck",
+      "source_span": {
+        "end": 22434,
+        "start": 22413
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillUninstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallRejectedWhenAdminRemovalLockedWithoutAck is rejected when requires clause fails",
+      "id": "rule-failure.UninstallRejectedWhenAdminRemovalLockedWithoutAck.2",
+      "source_construct": "UninstallRejectedWhenAdminRemovalLockedWithoutAck",
+      "source_span": {
+        "end": 22490,
+        "start": 22439
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillUninstallRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallRejectedWhenAdminRemovalLockedWithoutAck is rejected when requires clause fails",
+      "id": "rule-failure.UninstallRejectedWhenAdminRemovalLockedWithoutAck.3",
+      "source_construct": "UninstallRejectedWhenAdminRemovalLockedWithoutAck",
+      "source_span": {
+        "end": 22518,
+        "start": 22495
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillUninstallApplied"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallReturnsTupleToAbsent succeeds when all preconditions are met",
+      "id": "rule-success.UninstallReturnsTupleToAbsent",
+      "source_construct": "UninstallReturnsTupleToAbsent",
+      "source_span": {
+        "end": 23285,
+        "start": 22692
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillUninstallApplied"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallReturnsTupleToAbsent is rejected when requires clause fails",
+      "id": "rule-failure.UninstallReturnsTupleToAbsent.1",
+      "source_construct": "UninstallReturnsTupleToAbsent",
+      "source_span": {
+        "end": 22815,
+        "start": 22794
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillUninstallApplied"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallReturnsTupleToAbsent is rejected when requires clause fails",
+      "id": "rule-failure.UninstallReturnsTupleToAbsent.2",
+      "source_construct": "UninstallReturnsTupleToAbsent",
+      "source_span": {
+        "end": 22904,
+        "start": 22820
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillUninstallApplied"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallReturnsTupleToAbsent is rejected when requires clause fails",
+      "id": "rule-failure.UninstallReturnsTupleToAbsent.3",
+      "source_construct": "UninstallReturnsTupleToAbsent",
+      "source_span": {
+        "end": 22961,
+        "start": 22909
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillUninstallApplied"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallWithAdminAckReturnsTupleToAbsent succeeds when all preconditions are met",
+      "id": "rule-success.UninstallWithAdminAckReturnsTupleToAbsent",
+      "source_construct": "UninstallWithAdminAckReturnsTupleToAbsent",
+      "source_span": {
+        "end": 23862,
+        "start": 23287
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillUninstallApplied"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallWithAdminAckReturnsTupleToAbsent is rejected when requires clause fails",
+      "id": "rule-failure.UninstallWithAdminAckReturnsTupleToAbsent.1",
+      "source_construct": "UninstallWithAdminAckReturnsTupleToAbsent",
+      "source_span": {
+        "end": 23422,
+        "start": 23401
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillUninstallApplied"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallWithAdminAckReturnsTupleToAbsent is rejected when requires clause fails",
+      "id": "rule-failure.UninstallWithAdminAckReturnsTupleToAbsent.2",
+      "source_construct": "UninstallWithAdminAckReturnsTupleToAbsent",
+      "source_span": {
+        "end": 23458,
+        "start": 23427
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillUninstallApplied"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallWithAdminAckReturnsTupleToAbsent is rejected when requires clause fails",
+      "id": "rule-failure.UninstallWithAdminAckReturnsTupleToAbsent.3",
+      "source_construct": "UninstallWithAdminAckReturnsTupleToAbsent",
+      "source_span": {
+        "end": 23514,
+        "start": 23463
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SkillProjectionChanged",
+          "SkillUninstallApplied"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UninstallWithAdminAckReturnsTupleToAbsent is rejected when requires clause fails",
+      "id": "rule-failure.UninstallWithAdminAckReturnsTupleToAbsent.4",
+      "source_construct": "UninstallWithAdminAckReturnsTupleToAbsent",
+      "source_span": {
+        "end": 23538,
+        "start": 23519
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "InterfaceHandshakeRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2RequiresVersionTwo succeeds when all preconditions are met",
+      "id": "rule-success.HandshakeV2RequiresVersionTwo",
+      "source_construct": "HandshakeV2RequiresVersionTwo",
+      "source_span": {
+        "end": 24127,
+        "start": 23881
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "InterfaceHandshakeRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2RequiresVersionTwo is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2RequiresVersionTwo.1",
+      "source_construct": "HandshakeV2RequiresVersionTwo",
+      "source_span": {
+        "end": 23999,
+        "start": 23969
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "InterfaceHandshakeRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2RequiresVersionTwo is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2RequiresVersionTwo.2",
+      "source_construct": "HandshakeV2RequiresVersionTwo",
+      "source_span": {
+        "end": 24034,
+        "start": 24004
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "InterfaceHandshakeEvaluated",
+          "MotherSkillHandshakeResponseCreated",
+          "SkillTupleEvaluationRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2EvaluatesSkillTuples succeeds when all preconditions are met",
+      "id": "rule-success.HandshakeV2EvaluatesSkillTuples",
+      "source_construct": "HandshakeV2EvaluatesSkillTuples",
+      "source_span": {
+        "end": 24483,
+        "start": 24129
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "InterfaceHandshakeEvaluated",
+          "MotherSkillHandshakeResponseCreated",
+          "SkillTupleEvaluationRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2EvaluatesSkillTuples is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2EvaluatesSkillTuples.1",
+      "source_construct": "HandshakeV2EvaluatesSkillTuples",
+      "source_span": {
+        "end": 24248,
+        "start": 24219
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "InterfaceHandshakeEvaluated",
+          "MotherSkillHandshakeResponseCreated",
+          "SkillTupleEvaluationRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2EvaluatesSkillTuples is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2EvaluatesSkillTuples.2",
+      "source_construct": "HandshakeV2EvaluatesSkillTuples",
+      "source_span": {
+        "end": 24283,
+        "start": 24253
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_written": [
+          "MotherSkillHandshakeResponse"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule HandshakeV2ReportsCapabilities succeeds when all preconditions are met",
+      "id": "rule-success.HandshakeV2ReportsCapabilities",
+      "source_construct": "HandshakeV2ReportsCapabilities",
+      "source_span": {
+        "end": 25237,
+        "start": 24485
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncPlanned"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2PlansAutoSyncWhenSafe succeeds when all preconditions are met",
+      "id": "rule-success.HandshakeV2PlansAutoSyncWhenSafe",
+      "source_construct": "HandshakeV2PlansAutoSyncWhenSafe",
+      "source_span": {
+        "end": 25902,
+        "start": 25239
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncPlanned"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2PlansAutoSyncWhenSafe is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2PlansAutoSyncWhenSafe.1",
+      "source_construct": "HandshakeV2PlansAutoSyncWhenSafe",
+      "source_span": {
+        "end": 25359,
+        "start": 25330
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncPlanned"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2PlansAutoSyncWhenSafe is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2PlansAutoSyncWhenSafe.2",
+      "source_construct": "HandshakeV2PlansAutoSyncWhenSafe",
+      "source_span": {
+        "end": 25394,
+        "start": 25364
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncPlanned"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2PlansAutoSyncWhenSafe is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2PlansAutoSyncWhenSafe.3",
+      "source_construct": "HandshakeV2PlansAutoSyncWhenSafe",
+      "source_span": {
+        "end": 25453,
+        "start": 25399
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncPlanned"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2PlansAutoSyncWhenSafe is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2PlansAutoSyncWhenSafe.4",
+      "source_construct": "HandshakeV2PlansAutoSyncWhenSafe",
+      "source_span": {
+        "end": 25502,
+        "start": 25458
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncPlanned"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2PlansAutoSyncWhenSafe is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2PlansAutoSyncWhenSafe.5",
+      "source_construct": "HandshakeV2PlansAutoSyncWhenSafe",
+      "source_span": {
+        "end": 25555,
+        "start": 25507
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncPlanned"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2PlansAutoSyncWhenSafe is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2PlansAutoSyncWhenSafe.6",
+      "source_construct": "HandshakeV2PlansAutoSyncWhenSafe",
+      "source_span": {
+        "end": 25628,
+        "start": 25560
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncPlanned"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2PlansAutoSyncWhenSafe is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2PlansAutoSyncWhenSafe.7",
+      "source_construct": "HandshakeV2PlansAutoSyncWhenSafe",
+      "source_span": {
+        "end": 25681,
+        "start": 25633
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2SkipsAutoSyncOnPinnedTuple succeeds when all preconditions are met",
+      "id": "rule-success.HandshakeV2SkipsAutoSyncOnPinnedTuple",
+      "source_construct": "HandshakeV2SkipsAutoSyncOnPinnedTuple",
+      "source_span": {
+        "end": 26301,
+        "start": 25904
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2SkipsAutoSyncOnPinnedTuple is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2SkipsAutoSyncOnPinnedTuple.1",
+      "source_construct": "HandshakeV2SkipsAutoSyncOnPinnedTuple",
+      "source_span": {
+        "end": 26029,
+        "start": 26000
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2SkipsAutoSyncOnPinnedTuple is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2SkipsAutoSyncOnPinnedTuple.2",
+      "source_construct": "HandshakeV2SkipsAutoSyncOnPinnedTuple",
+      "source_span": {
+        "end": 26064,
+        "start": 26034
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2SkipsAutoSyncOnPinnedTuple is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2SkipsAutoSyncOnPinnedTuple.3",
+      "source_construct": "HandshakeV2SkipsAutoSyncOnPinnedTuple",
+      "source_span": {
+        "end": 26123,
+        "start": 26069
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2SkipsAutoSyncOnPinnedTuple is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2SkipsAutoSyncOnPinnedTuple.4",
+      "source_construct": "HandshakeV2SkipsAutoSyncOnPinnedTuple",
+      "source_span": {
+        "end": 26172,
+        "start": 26128
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2SkipsAutoSyncOnPinnedTuple is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2SkipsAutoSyncOnPinnedTuple.5",
+      "source_construct": "HandshakeV2SkipsAutoSyncOnPinnedTuple",
+      "source_span": {
+        "end": 26222,
+        "start": 26177
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2NeverForceSyncsAutomatically succeeds when all preconditions are met",
+      "id": "rule-success.HandshakeV2NeverForceSyncsAutomatically",
+      "source_construct": "HandshakeV2NeverForceSyncsAutomatically",
+      "source_span": {
+        "end": 26804,
+        "start": 26303
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2NeverForceSyncsAutomatically is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2NeverForceSyncsAutomatically.1",
+      "source_construct": "HandshakeV2NeverForceSyncsAutomatically",
+      "source_span": {
+        "end": 26430,
+        "start": 26401
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2NeverForceSyncsAutomatically is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2NeverForceSyncsAutomatically.2",
+      "source_construct": "HandshakeV2NeverForceSyncsAutomatically",
+      "source_span": {
+        "end": 26465,
+        "start": 26435
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2NeverForceSyncsAutomatically is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2NeverForceSyncsAutomatically.3",
+      "source_construct": "HandshakeV2NeverForceSyncsAutomatically",
+      "source_span": {
+        "end": 26515,
+        "start": 26470
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionTuple"
+        ],
+        "trigger_emissions": [
+          "SkillProjectionActionPlanCreated",
+          "SkillSyncSkipped"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2NeverForceSyncsAutomatically is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2NeverForceSyncsAutomatically.4",
+      "source_construct": "HandshakeV2NeverForceSyncsAutomatically",
+      "source_span": {
+        "end": 26584,
+        "start": 26520
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionActionPlan"
+        ],
+        "trigger_emissions": [
+          "SkillSyncRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2AppliesOnlySafePlans succeeds when all preconditions are met",
+      "id": "rule-success.HandshakeV2AppliesOnlySafePlans",
+      "source_construct": "HandshakeV2AppliesOnlySafePlans",
+      "source_span": {
+        "end": 27181,
+        "start": 26806
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionActionPlan"
+        ],
+        "trigger_emissions": [
+          "SkillSyncRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2AppliesOnlySafePlans is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2AppliesOnlySafePlans.1",
+      "source_construct": "HandshakeV2AppliesOnlySafePlans",
+      "source_span": {
+        "end": 26925,
+        "start": 26896
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionActionPlan"
+        ],
+        "trigger_emissions": [
+          "SkillSyncRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2AppliesOnlySafePlans is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2AppliesOnlySafePlans.2",
+      "source_construct": "HandshakeV2AppliesOnlySafePlans",
+      "source_span": {
+        "end": 26975,
+        "start": 26930
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionActionPlan"
+        ],
+        "trigger_emissions": [
+          "SkillSyncRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2AppliesOnlySafePlans is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2AppliesOnlySafePlans.3",
+      "source_construct": "HandshakeV2AppliesOnlySafePlans",
+      "source_span": {
+        "end": 27029,
+        "start": 26980
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "SkillProjectionActionPlan"
+        ],
+        "trigger_emissions": [
+          "SkillSyncRequested"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HandshakeV2AppliesOnlySafePlans is rejected when requires clause fails",
+      "id": "rule-failure.HandshakeV2AppliesOnlySafePlans.4",
+      "source_construct": "HandshakeV2AppliesOnlySafePlans",
+      "source_span": {
+        "end": 27088,
+        "start": 27034
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "EffectiveSkillWinnerReported",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StatusReportsEffectiveWinnerSourceForPrecedenceModels succeeds when all preconditions are met",
+      "id": "rule-success.StatusReportsEffectiveWinnerSourceForPrecedenceModels",
+      "source_construct": "StatusReportsEffectiveWinnerSourceForPrecedenceModels",
+      "source_span": {
+        "end": 27614,
+        "start": 27225
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "EffectiveSkillWinnerReported",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StatusReportsEffectiveWinnerSourceForPrecedenceModels is rejected when requires clause fails",
+      "id": "rule-failure.StatusReportsEffectiveWinnerSourceForPrecedenceModels.1",
+      "source_construct": "StatusReportsEffectiveWinnerSourceForPrecedenceModels",
+      "source_span": {
+        "end": 27375,
+        "start": 27344
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "EffectiveSkillWinnerReported",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StatusReportsEffectiveWinnerSourceForPrecedenceModels is rejected when requires clause fails",
+      "id": "rule-failure.StatusReportsEffectiveWinnerSourceForPrecedenceModels.2",
+      "source_construct": "StatusReportsEffectiveWinnerSourceForPrecedenceModels",
+      "source_span": {
+        "end": 27423,
+        "start": 27380
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "RuntimeAnomalyReported"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StatusReportsRuntimeAnomalies succeeds when all preconditions are met",
+      "id": "rule-success.StatusReportsRuntimeAnomalies",
+      "source_construct": "StatusReportsRuntimeAnomalies",
+      "source_span": {
+        "end": 27921,
+        "start": 27616
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "RuntimeObservation"
+        ],
+        "trigger_emissions": [
+          "RuntimeAnomalyReported"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule StatusReportsRuntimeAnomalies is rejected when requires clause fails",
+      "id": "rule-failure.StatusReportsRuntimeAnomalies.1",
+      "source_construct": "StatusReportsRuntimeAnomalies",
+      "source_span": {
+        "end": 27790,
+        "start": 27704
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "MotherSkillEventLogged",
+          "ProjectSkillEventLogged",
+          "ProjectionManifestUpdated",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule ProjectionChangesWriteManifestAndEvents succeeds when all preconditions are met",
+      "id": "rule-success.ProjectionChangesWriteManifestAndEvents",
+      "source_construct": "ProjectionChangesWriteManifestAndEvents",
+      "source_span": {
+        "end": 28347,
+        "start": 27953
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "NoProjectionWritesPerformed",
+          "SkillProjectionAuditEventRecorded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule RejectedMutationsEmitAuditEvents succeeds when all preconditions are met",
+      "id": "rule-success.RejectedMutationsEmitAuditEvents",
+      "source_construct": "RejectedMutationsEmitAuditEvents",
+      "source_span": {
+        "end": 28605,
+        "start": 28349
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "OnlyManagedProjectionFilesRemoved",
+          "UnmanagedFilesPreserved"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule UninstallRemovesOnlyManifestTrackedFiles succeeds when all preconditions are met",
+      "id": "rule-success.UninstallRemovesOnlyManifestTrackedFiles",
+      "source_construct": "UninstallRemovesOnlyManifestTrackedFiles",
+      "source_span": {
+        "end": 28933,
+        "start": 28607
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "entities_read": [
+          "ProjectionManifest"
+        ],
+        "trigger_emissions": [
+          "OnlyManagedProjectionFilesRemoved",
+          "UnmanagedFilesPreserved"
+        ],
+        "trigger_source": "chained"
+      },
+      "description": "Verify rule UninstallRemovesOnlyManifestTrackedFiles is rejected when requires clause fails",
+      "id": "rule-failure.UninstallRemovesOnlyManifestTrackedFiles.1",
+      "source_construct": "UninstallRemovesOnlyManifestTrackedFiles",
+      "source_span": {
+        "end": 28819,
+        "start": 28698
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface MotherSkillsLifecycleCLI is accessible only to the specified actor",
+      "id": "surface-actor.MotherSkillsLifecycleCLI",
+      "source_construct": "MotherSkillsLifecycleCLI",
+      "source_span": {
+        "end": 29766,
+        "start": 28935
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on MotherSkillsLifecycleCLI is accessible",
+      "detail": {
+        "items": [
+          "verb",
+          "hitl_name",
+          "requested_scope",
+          "global_requested",
+          "dry_run",
+          "force",
+          "child_name",
+          "name",
+          "scope",
+          "state",
+          "pin_mode",
+          "pinned_child_hash",
+          "managed_projection_hash",
+          "source_projection_hash",
+          "conflict_reason",
+          "block_reason",
+          "last_error"
+        ],
+        "surface": "MotherSkillsLifecycleCLI"
+      },
+      "id": "surface-exposure.MotherSkillsLifecycleCLI",
+      "source_construct": "MotherSkillsLifecycleCLI",
+      "source_span": {
+        "end": 29551,
+        "start": 29084
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on MotherSkillsLifecycleCLI appear/hide based on when conditions",
+      "id": "surface-provides.MotherSkillsLifecycleCLI",
+      "source_construct": "MotherSkillsLifecycleCLI",
+      "source_span": {
+        "end": 29764,
+        "start": 29557
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface MotherHitlHandshakeV2API is accessible only to the specified actor",
+      "id": "surface-actor.MotherHitlHandshakeV2API",
+      "source_construct": "MotherHitlHandshakeV2API",
+      "source_span": {
+        "end": 30434,
+        "start": 29768
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on MotherHitlHandshakeV2API is accessible",
+      "detail": {
+        "items": [
+          "version",
+          "interface_name",
+          "project_root",
+          "session_id",
+          "skills_check",
+          "scope_mode",
+          "child_filter",
+          "auto_sync_mode",
+          "allow_force",
+          "project_scope_supported",
+          "global_scope_supported",
+          "reload_hint",
+          "reload_command",
+          "safe_to_apply"
+        ],
+        "surface": "MotherHitlHandshakeV2API"
+      },
+      "id": "surface-exposure.MotherHitlHandshakeV2API",
+      "source_construct": "MotherHitlHandshakeV2API",
+      "source_span": {
+        "end": 30372,
+        "start": 29936
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on MotherHitlHandshakeV2API appear/hide based on when conditions",
+      "id": "surface-provides.MotherHitlHandshakeV2API",
+      "source_construct": "MotherHitlHandshakeV2API",
+      "source_span": {
+        "end": 30432,
+        "start": 30378
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface MotherProjectionManifestStore is accessible only to the specified actor",
+      "id": "surface-actor.MotherProjectionManifestStore",
+      "source_construct": "MotherProjectionManifestStore",
+      "source_span": {
+        "end": 31046,
+        "start": 30436
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on MotherProjectionManifestStore is accessible",
+      "detail": {
+        "items": [
+          "manifest_path",
+          "projection_root",
+          "namespace_path",
+          "managed_projection_hash",
+          "source_projection_hash",
+          "source_child_hash",
+          "pin_mode",
+          "relative_path",
+          "expected_hash",
+          "actual_hash",
+          "managed_marker_present",
+          "executable"
+        ],
+        "surface": "MotherProjectionManifestStore"
+      },
+      "id": "surface-exposure.MotherProjectionManifestStore",
+      "source_construct": "MotherProjectionManifestStore",
+      "source_span": {
+        "end": 30980,
+        "start": 30595
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on MotherProjectionManifestStore appear/hide based on when conditions",
+      "id": "surface-provides.MotherProjectionManifestStore",
+      "source_construct": "MotherProjectionManifestStore",
+      "source_span": {
+        "end": 31044,
+        "start": 30986
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface MotherCapabilityMatrixStore is accessible only to the specified actor",
+      "id": "surface-actor.MotherCapabilityMatrixStore",
+      "source_construct": "MotherCapabilityMatrixStore",
+      "source_span": {
+        "end": 31788,
+        "start": 31049
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on MotherCapabilityMatrixStore is accessible",
+      "detail": {
+        "items": [
+          "name",
+          "supports_project_scope",
+          "supports_global_scope",
+          "precedence_model",
+          "reload_hint",
+          "reload_command",
+          "hitl_name",
+          "scope",
+          "supported",
+          "primary_root",
+          "alias_root",
+          "secondary_root",
+          "supports_nested_skill_dirs",
+          "requires_folder_trust",
+          "requires_skills_enabled",
+          "may_be_disabled_by_runtime_flag"
+        ],
+        "surface": "MotherCapabilityMatrixStore"
+      },
+      "id": "surface-exposure.MotherCapabilityMatrixStore",
+      "source_construct": "MotherCapabilityMatrixStore",
+      "source_span": {
+        "end": 31736,
+        "start": 31196
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on MotherCapabilityMatrixStore appear/hide based on when conditions",
+      "id": "surface-provides.MotherCapabilityMatrixStore",
+      "source_construct": "MotherCapabilityMatrixStore",
+      "source_span": {
+        "end": 31786,
+        "start": 31742
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface MotherSkillsCommandIngress is accessible only to the specified actor",
+      "id": "surface-actor.MotherSkillsCommandIngress",
+      "source_construct": "MotherSkillsCommandIngress",
+      "source_span": {
+        "end": 32162,
+        "start": 31790
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on MotherSkillsCommandIngress is accessible",
+      "detail": {
+        "items": [
+          "verb",
+          "child_name",
+          "hitl_name",
+          "requested_scope",
+          "global_requested",
+          "dry_run",
+          "force"
+        ],
+        "surface": "MotherSkillsCommandIngress"
+      },
+      "id": "surface-exposure.MotherSkillsCommandIngress",
+      "source_construct": "MotherSkillsCommandIngress",
+      "source_span": {
+        "end": 32100,
+        "start": 31907
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on MotherSkillsCommandIngress appear/hide based on when conditions",
+      "id": "surface-provides.MotherSkillsCommandIngress",
+      "source_construct": "MotherSkillsCommandIngress",
+      "source_span": {
+        "end": 32160,
+        "start": 32106
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface MotherRuntimeObservationIngress is accessible only to the specified actor",
+      "id": "surface-actor.MotherRuntimeObservationIngress",
+      "source_construct": "MotherRuntimeObservationIngress",
+      "source_span": {
+        "end": 32595,
+        "start": 32164
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on MotherRuntimeObservationIngress is accessible",
+      "detail": {
+        "items": [
+          "hitl_name",
+          "project_root",
+          "folder_trusted",
+          "skills_enabled",
+          "admin_skills_enabled",
+          "project_config_enabled",
+          "external_skills_enabled",
+          "anomaly_warning"
+        ],
+        "surface": "MotherRuntimeObservationIngress"
+      },
+      "id": "surface-exposure.MotherRuntimeObservationIngress",
+      "source_construct": "MotherRuntimeObservationIngress",
+      "source_span": {
+        "end": 32593,
+        "start": 32288
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface MotherProjectionActionPlanView is accessible only to the specified actor",
+      "id": "surface-actor.MotherProjectionActionPlanView",
+      "source_construct": "MotherProjectionActionPlanView",
+      "source_span": {
+        "end": 32991,
+        "start": 32597
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on MotherProjectionActionPlanView is accessible",
+      "detail": {
+        "items": [
+          "child_name",
+          "hitl_name",
+          "scope",
+          "action",
+          "reason",
+          "dry_run",
+          "force",
+          "requires_force",
+          "safe_to_apply",
+          "writes_count",
+          "removes_count"
+        ],
+        "surface": "MotherProjectionActionPlanView"
+      },
+      "id": "surface-exposure.MotherProjectionActionPlanView",
+      "source_construct": "MotherProjectionActionPlanView",
+      "source_span": {
+        "end": 32989,
+        "start": 32727
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface MotherProjectionAuditLog is accessible only to the specified actor",
+      "id": "surface-actor.MotherProjectionAuditLog",
+      "source_construct": "MotherProjectionAuditLog",
+      "source_span": {
+        "end": 33518,
+        "start": 32993
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on MotherProjectionAuditLog is accessible",
+      "detail": {
+        "items": [
+          "child_name",
+          "hitl_name",
+          "scope",
+          "action",
+          "result",
+          "forced",
+          "dry_run",
+          "manifest_path",
+          "projection_root",
+          "before_hash",
+          "after_hash",
+          "reason"
+        ],
+        "surface": "MotherProjectionAuditLog"
+      },
+      "id": "surface-exposure.MotherProjectionAuditLog",
+      "source_construct": "MotherProjectionAuditLog",
+      "source_span": {
+        "end": 33450,
+        "start": 33158
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on MotherProjectionAuditLog appear/hide based on when conditions",
+      "id": "surface-provides.MotherProjectionAuditLog",
+      "source_construct": "MotherProjectionAuditLog",
+      "source_span": {
+        "end": 33516,
+        "start": 33456
+      }
+    }
+  ],
+  "version": 3
+}

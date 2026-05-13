@@ -1,0 +1,52 @@
+id = "mother-child-skill-bundle-projection"
+title = "Build Mother child skill bundle management surface"
+kind = "build"
+status = "active"
+human_request = "Implement Mother-managed child skill bundle lifecycle commands so children remain Mother/node-installed while skills are projected per HITL scope (project by default, optional global when supported), with deterministic state tracking and safe sync/install/uninstall operations."
+allium_anchors = ["layer/allium/mother/mother-child-toy-orchestration.allium", "layer/allium/mother/mother-hitl-skill-lifecycle.allium", "layer/allium/mother/mother-mct-test-harness.allium"]
+user_alignment = "User clarified architecture boundaries: children install into Mother, not projects; skills install into project HITL surfaces; and add `--global` for HITLs that support user-level projections."
+belief_refs = []
+proof_plan = [
+    """
+[ ] A capability matrix exists for each HITL and is used at runtime to resolve scope paths and behavior (project/global support, projection roots, conflict/override, marker/update, executable handling).
+[ ] `patina mother skills status` reports child source state and projection state per scope (project/global) deterministically for at least one installed child.
+[ ] Project-scope install writes only expected Mother-managed files into chosen HITL/project path and records them in scope lock state.
+[ ] Global install (`--global`) succeeds only for HITLs that declare support; unsupported HITLs fail with actionable error and zero writes.
+[ ] `patina mother skills sync <child>` is idempotent in both project and global scopes (second run no-op when source unchanged).
+[ ] `patina mother skills uninstall <child>` removes only tracked Mother-managed artifacts for selected scope and preserves unmanaged/user files.
+[ ] Conflict behavior is safe: `--dry-run` previews exact actions; non-dry-run fails closed with no partial writes when collisions are disallowed.
+[ ] Automated tests include parser/dispatch coverage plus at least one filesystem roundtrip for project scope and one for global-scope capability gating.""",
+    "[ ] Handshake v2 returns deterministic per-tuple skill lifecycle evaluation (`absent|installed|stale|conflicted|unsupported|blocked|error`) and enforces `--global` support gating fail-closed, with project/mother event logging for any planned/applied projection updates.",
+]
+closure_evidence = [
+    "PI HITL discovery captured from Patina code: managed path `.pi/`; project skill source path `.patina/skills/pi/`; project overrides path `.patina/interfaces/pi/overrides/`; marker-based managed updates for markdown/toml and direct executable writes.",
+    "PI should be treated as its own HITL surface (command `pi`, managed path `.pi/`) in capability docs; implementation may share internals with OpenCode, but matrix semantics remain PI-native.",
+    "PI upstream repo research (`~/.patina/cache/repos/earendil-works/pi-mono`) confirms native project/global skill model and precedence: project settings > project auto > user settings > user auto > package; skill locations include `.pi/skills` + `.agents/skills` (project) and `~/.pi/agent/skills` + `~/.agents/skills` (global).",
+    "Claude capability research (official docs summary provided by user): skill locations support project `.claude/skills` + global `~/.claude/skills` + enterprise scope; documented precedence is enterprise > personal(global) > project; skill beats slash command name; live reload is supported except creating a new top-level skills dir requires restart; known runtime caveats reported for sub-agent/project-vs-global visibility should be modeled as anomaly signals in status output.",
+    "Added Allium slice `layer/allium/mother/mother-hitl-skill-lifecycle.allium` capturing agreed tuple lifecycle states (`absent|installed|stale|conflicted|unsupported|blocked|error`), project-default scope with optional global gating, sync/install/conflict/force semantics, handshake v2 evaluation/planning, and projection audit event expectations; validated clean with `allium check`.",
+    "OpenCode upstream repo research (`~/.patina/cache/repos/anomalyco/opencode/packages/opencode`) confirms skill discovery sources and merge behavior: global roots `~/.config/opencode` + `~/.opencode`, project roots from ancestor `.opencode`, external skills from `.agents/skills` and optional `.claude/skills` at global+project levels, and opt-in `skills.paths` / `skills.urls`; duplicate skill names warn and resolve by last discovered entry (later scan source overrides earlier).",
+    "Gemini CLI upstream repo research (`~/.patina/cache/repos/google-gemini/gemini-cli`) confirms native skill support with user/global roots `~/.gemini/skills` plus `~/.agents/skills` alias, workspace/project roots `.gemini/skills` plus `.agents/skills` alias, extension-bundled skills, and precedence built-in < extension < user < workspace with `.agents` overriding `.gemini` within a tier; `/skills reload|refresh` re-discovers skills, while workspace skills are gated by folder trust and skills can be disabled by user/admin settings.",
+    "Added capability matrix artifact `layer/slate/work/mother-child-skill-bundle-projection/hitl-capability-matrix.md` covering PI, Claude, OpenCode, and Gemini projection roots, scope support, precedence/conflict behavior, reload semantics, and Mother projection policy derived from runtime research.",
+    "Added handshake/state artifact `layer/slate/work/mother-child-skill-bundle-projection/handshake-v2-and-state-transitions.md` drafting handshake v2 request/response shape, tuple evaluation order, command behavior contract, state meanings, and transition table for install/sync/uninstall/status.",
+    "Expanded Allium lifecycle spec `layer/allium/mother/mother-hitl-skill-lifecycle.allium` to model HITL capability records, runtime observations, projection manifests/files, dry-run/status semantics, richer handshake v2 request/response, effective winner reporting, admin-ack blocked uninstall policy, and audit payload expectations; `allium check` is clean and plan artifact generated at `layer/allium/mother/mother-hitl-skill-lifecycle.plan.json`.",
+    "Added broader MCT harness Allium spec `layer/allium/mother/mother-mct-test-harness.allium` with generated plan `layer/allium/mother/mother-mct-test-harness.plan.json`, covering durable fixtures, fixture children/skills, toy/WIT and SDK conformance, HITL roots, projection scenarios, sandbox materialization, and JSON golden evidence; `allium check` is clean.",
+    "Started MCT harness implementation with durable fixture tree under `tests/fixtures/mother/` (fixture child app, hello/review skills, scenario metadata, capability fixtures, initial status/sync JSON goldens) and real CLI skeleton `patina mother skills sandbox {create,list,path,reset,remove}` backed by global ephemeral state under `PATINA_HOME/local/dev/mother-skill-sandboxes`; verified cargo check and sandbox create/list/path/reset/remove JSON flow with isolated `PATINA_HOME`.",
+]
+blocked_by = []
+implementation_plan = [
+    """
+[ ] Define command contract for `patina mother skills {status,sync,install,uninstall}` with flags: `--interface`, optional `--global`, and `--dry-run` (project scope is default when `--global` is absent).
+[ ] Build a per-HITL capability matrix covering: project/global support, project/global projection roots, conflict/override rules, marker/update strategy, and executable handling.
+[ ] Implement scope resolver from the capability matrix and gate `--global` fail-closed with actionable errors when unsupported by a HITL.
+[ ] Codify architecture boundary in code/docs: child install lifecycle is Mother/node-scoped; skill lifecycle is projection-scoped (project HITL default, global HITL optional).
+[ ] Implement source vs projection model: source from installed child skill bundles; projection outputs materialized into scope-specific HITL paths.
+[ ] Add projection lock/manifest per scope to track Mother-managed files and enable deterministic status/sync/uninstall without touching unmanaged files.
+[ ] Implement namespace and conflict policy using `<child>/<skill>` default layout, collision diagnostics, and atomic write strategy (no partial apply on failure).
+[ ] Wire CLI handlers + tests for parser/dispatch, scope behavior, idempotent sync/install/uninstall, global-support gating, and conflict dry-run vs apply semantics.
+[ ] Document migration from discovery-only (`list/show/help`) to managed lifecycle commands with examples for project and global scopes.""",
+    "[ ] Design and implement Mother interface handshake v2 for HITL launch with child-skill verification inputs/outputs (capability matrix resolution, per-(child,hitl,scope) state evaluation, optional auto-sync planning, and actionable conflict/unsupported reporting).",
+    "[ ] Add repo-discovery UX slice: improve `patina repo list` discoverability for HITL-source repos with search/filter/json/alias support so PI/mother-related source repos (e.g. pi-mono) are easy to locate during capability-matrix research.",
+    "[x] Complete authoritative HITL capability research for Claude, OpenCode, and Gemini (project/global paths, precedence, reload semantics, and conflict caveats), then lock matrix entries before implementing status/sync/install/uninstall logic.",
+]
+created_at = "1778623287"
+updated_at = "1778636534"

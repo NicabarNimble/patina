@@ -1,0 +1,908 @@
+-- allium: 3
+-- mother-hitl-skill-lifecycle.allium
+
+-- Scope: Mother-managed child skill lifecycle across HITL interfaces
+-- Includes: per-(child,hitl,scope) lifecycle states, project-default install semantics,
+--   optional global scope gating, handshake v2 evaluation, sync/install/uninstall/status
+--   behavior, dry-run/force semantics, manifest-tracked projection safety, runtime gating,
+--   pinning, capability matrix facts, and audit event expectations.
+-- Excludes:
+--   - child execution runtime semantics
+--   - non-skill Mother graph/source routing behavior
+--   - enterprise provisioning internals beyond precedence/effective-source signals
+
+entity HitlInterface {
+    name: pi | claude | opencode | gemini
+    supports_project_scope: Boolean
+    supports_global_scope: Boolean
+
+    precedence_model: pi_project_user_package | claude_enterprise_personal_project | opencode_last_discovered | gemini_workspace_user_extension_builtin
+    reload_hint: none | live | command | restart
+    reload_command: String?
+}
+
+entity HitlScopeCapability {
+    hitl_name: pi | claude | opencode | gemini
+    scope: project | global
+    supported: Boolean
+
+    primary_root: String
+    alias_root: String?
+    secondary_root: String?
+
+    supports_nested_skill_dirs: Boolean
+    requires_folder_trust: Boolean
+    requires_skills_enabled: Boolean
+    may_be_disabled_by_runtime_flag: Boolean
+}
+
+entity RuntimeObservation {
+    hitl_name: pi | claude | opencode | gemini
+    project_root: String?
+
+    folder_trusted: Boolean?
+    skills_enabled: Boolean?
+    admin_skills_enabled: Boolean?
+    project_config_enabled: Boolean?
+    external_skills_enabled: Boolean?
+
+    anomaly_warning: String?
+}
+
+entity ChildSkillSource {
+    child_name: String
+    child_hash: String
+    trusted: Boolean
+    assigned_to_project: Boolean
+    source_exists: Boolean
+}
+
+entity ProjectionManifest {
+    child_name: String
+    hitl_name: pi | claude | opencode | gemini
+    scope: project | global
+
+    exists: Boolean
+    valid: Boolean
+    manifest_path: String
+    projection_root: String
+    namespace_path: String
+
+    managed_projection_hash: String?
+    source_projection_hash: String?
+    source_child_hash: String?
+    pin_mode: latest | pin
+    pinned_child_hash: String?
+}
+
+entity ManagedProjectionFile {
+    manifest_path: String
+    relative_path: String
+    expected_hash: String?
+    actual_hash: String?
+
+    exists: Boolean
+    managed_marker_present: Boolean
+    executable: Boolean
+}
+
+entity SkillProjectionTuple {
+    child_name: String
+    hitl: HitlInterface
+    scope: project | global
+
+    state: absent | installed | stale | conflicted | unsupported | blocked | error
+
+    pin_mode: latest | pin
+    pinned_child_hash: String?
+
+    managed_projection_hash: String?
+    source_projection_hash: String?
+
+    conflict_reason: none | projection_collision | unmanaged_file_present | managed_file_modified_without_marker | manifest_invalid
+    block_reason: none | child_source_untrusted | child_not_assigned_to_project | child_source_missing | folder_not_trusted | skills_disabled | admin_skills_disabled | project_config_disabled | external_skills_disabled | admin_removal_locked
+    last_error: String?
+
+    auto_sync_enabled: Boolean
+}
+
+entity MotherSkillsCommand {
+    verb: status | install | sync | uninstall
+    child_name: String?
+    hitl_name: pi | claude | opencode | gemini | all
+    requested_scope: project | global | none
+    global_requested: Boolean
+    dry_run: Boolean
+    force: Boolean
+}
+
+entity MotherSkillHandshakeRequest {
+    version: Integer
+    interface_name: pi | claude | opencode | gemini
+    project_root: String?
+    session_id: String?
+
+    skills_check: Boolean
+    scope_mode: project | global | both
+    child_filter: String?
+
+    auto_sync_mode: off | plan | apply_safe
+    allow_force: Boolean
+}
+
+entity MotherSkillHandshakeResponse {
+    version: Integer
+    interface_name: pi | claude | opencode | gemini
+    project_root: String?
+
+    project_scope_supported: Boolean
+    global_scope_supported: Boolean
+    reload_hint: none | live | command | restart
+    reload_command: String?
+
+    safe_to_apply: Boolean
+}
+
+entity SkillProjectionActionPlan {
+    child_name: String
+    hitl_name: pi | claude | opencode | gemini
+    scope: project | global
+
+    action: none | install | sync | uninstall
+    reason: absent | stale | conflicted | unsupported | blocked | auto_sync_safe | requested
+    dry_run: Boolean
+    force: Boolean
+    requires_force: Boolean
+    safe_to_apply: Boolean
+
+    writes_count: Integer
+    removes_count: Integer
+}
+
+entity SkillProjectionAuditEvent {
+    child_name: String
+    hitl_name: pi | claude | opencode | gemini
+    scope: project | global
+
+    action: status | install | sync | uninstall | evaluate | plan
+    result: planned | applied | rejected | no_op | error
+    forced: Boolean
+    dry_run: Boolean
+
+    manifest_path: String?
+    projection_root: String?
+    before_hash: String?
+    after_hash: String?
+    reason: String?
+}
+
+-- Capability matrix facts
+
+rule PiScopeCapabilities {
+    when: HitlCapabilityLoaded(hitl)
+    requires: hitl.name = pi
+    ensures: hitl.supports_project_scope = true
+    ensures: hitl.supports_global_scope = true
+    ensures: hitl.precedence_model = pi_project_user_package
+    ensures: hitl.reload_hint = none
+    ensures: HitlScopeCapabilityDeclared(hitl_name: pi, scope: project, primary_root: ".pi/skills", alias_root: ".agents/skills")
+    ensures: HitlScopeCapabilityDeclared(hitl_name: pi, scope: global, primary_root: "~/.pi/agent/skills", alias_root: "~/.agents/skills")
+}
+
+rule ClaudeScopeCapabilities {
+    when: HitlCapabilityLoaded(hitl)
+    requires: hitl.name = claude
+    ensures: hitl.supports_project_scope = true
+    ensures: hitl.supports_global_scope = true
+    ensures: hitl.precedence_model = claude_enterprise_personal_project
+    ensures: hitl.reload_hint = live
+    ensures: HitlScopeCapabilityDeclared(hitl_name: claude, scope: project, primary_root: ".claude/skills", alias_root: none)
+    ensures: HitlScopeCapabilityDeclared(hitl_name: claude, scope: global, primary_root: "~/.claude/skills", alias_root: none)
+}
+
+rule OpenCodeScopeCapabilities {
+    when: HitlCapabilityLoaded(hitl)
+    requires: hitl.name = opencode
+    ensures: hitl.supports_project_scope = true
+    ensures: hitl.supports_global_scope = true
+    ensures: hitl.precedence_model = opencode_last_discovered
+    ensures: hitl.reload_hint = restart
+    ensures: HitlScopeCapabilityDeclared(hitl_name: opencode, scope: project, primary_root: ".opencode/skills", alias_root: ".agents/skills")
+    ensures: HitlScopeCapabilityDeclared(hitl_name: opencode, scope: global, primary_root: "~/.config/opencode/skills", alias_root: "~/.opencode/skills")
+}
+
+rule GeminiScopeCapabilities {
+    when: HitlCapabilityLoaded(hitl)
+    requires: hitl.name = gemini
+    ensures: hitl.supports_project_scope = true
+    ensures: hitl.supports_global_scope = true
+    ensures: hitl.precedence_model = gemini_workspace_user_extension_builtin
+    ensures: hitl.reload_hint = command
+    ensures: hitl.reload_command = "/skills reload"
+    ensures: HitlScopeCapabilityDeclared(hitl_name: gemini, scope: project, primary_root: ".gemini/skills", alias_root: ".agents/skills")
+    ensures: HitlScopeCapabilityDeclared(hitl_name: gemini, scope: global, primary_root: "~/.gemini/skills", alias_root: "~/.agents/skills")
+}
+
+-- Command resolution and status semantics
+
+rule CommandDefaultsToProjectScope {
+    when: MotherSkillsCommandReceived(command)
+    requires: command.requested_scope = none
+    requires: not command.global_requested
+    ensures: MotherSkillsCommandResolved(command: command, scope: project)
+}
+
+rule GlobalFlagSelectsGlobalScope {
+    when: MotherSkillsCommandReceived(command)
+    requires: command.global_requested
+    ensures: MotherSkillsCommandResolved(command: command, scope: global)
+}
+
+rule StatusEvaluatesWithoutWrites {
+    when: MotherSkillsCommandResolved(command, tuple)
+    requires: command.verb = status
+    ensures: SkillTupleEvaluationRequested(tuple: tuple)
+    ensures: SkillProjectionActionPlanCreated(tuple: tuple, action: none, writes_count: 0, removes_count: 0, dry_run: true)
+    ensures: SkillProjectionAuditEventRecorded(tuple: tuple, action: "status", result: "no_op", dry_run: true)
+}
+
+-- Tuple evaluation
+
+rule MarkUnsupportedWhenGlobalNotSupported {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: tuple.scope = global
+    requires: not tuple.hitl.supports_global_scope
+    ensures: tuple.state = unsupported
+    ensures: tuple.last_error = "global_scope_not_supported"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "unsupported")
+}
+
+rule MarkUnsupportedWhenProjectNotSupported {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: tuple.scope = project
+    requires: not tuple.hitl.supports_project_scope
+    ensures: tuple.state = unsupported
+    ensures: tuple.last_error = "project_scope_not_supported"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "unsupported")
+}
+
+rule MarkBlockedWhenChildSourceMissing {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: not ChildSkillSource.find(child_name = tuple.child_name).source_exists
+    ensures: tuple.state = blocked
+    ensures: tuple.block_reason = child_source_missing
+    ensures: tuple.last_error = "child_source_missing"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "blocked")
+}
+
+rule MarkBlockedWhenChildSourceNotTrusted {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: not ChildSkillSource.find(child_name = tuple.child_name).trusted
+    ensures: tuple.state = blocked
+    ensures: tuple.block_reason = child_source_untrusted
+    ensures: tuple.last_error = "child_source_untrusted"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "blocked")
+}
+
+rule MarkBlockedWhenChildNotAssignedToProjectScope {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: tuple.scope = project
+    requires: not ChildSkillSource.find(child_name = tuple.child_name).assigned_to_project
+    ensures: tuple.state = blocked
+    ensures: tuple.block_reason = child_not_assigned_to_project
+    ensures: tuple.last_error = "child_not_assigned_to_project"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "blocked")
+}
+
+rule MarkBlockedWhenGeminiWorkspaceNotTrusted {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: tuple.hitl.name = gemini
+    requires: tuple.scope = project
+    requires: RuntimeObservation.find(hitl_name = gemini).folder_trusted = false
+    ensures: tuple.state = blocked
+    ensures: tuple.block_reason = folder_not_trusted
+    ensures: tuple.last_error = "gemini_workspace_not_trusted"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "blocked")
+}
+
+rule MarkBlockedWhenSkillsDisabled {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: RuntimeObservation.find(hitl_name = tuple.hitl.name).skills_enabled = false
+    ensures: tuple.state = blocked
+    ensures: tuple.block_reason = skills_disabled
+    ensures: tuple.last_error = "skills_disabled"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "blocked")
+}
+
+rule MarkBlockedWhenAdminDisablesSkills {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: RuntimeObservation.find(hitl_name = tuple.hitl.name).admin_skills_enabled = false
+    ensures: tuple.state = blocked
+    ensures: tuple.block_reason = admin_skills_disabled
+    ensures: tuple.last_error = "admin_skills_disabled"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "blocked")
+}
+
+rule MarkBlockedWhenOpenCodeProjectConfigDisabled {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: tuple.hitl.name = opencode
+    requires: tuple.scope = project
+    requires: RuntimeObservation.find(hitl_name = opencode).project_config_enabled = false
+    ensures: tuple.state = blocked
+    ensures: tuple.block_reason = project_config_disabled
+    ensures: tuple.last_error = "opencode_project_config_disabled"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "blocked")
+}
+
+rule MarkAbsentWhenManifestDoesNotExist {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: not ProjectionManifest.find(child_name = tuple.child_name, hitl_name = tuple.hitl.name, scope = tuple.scope).exists
+    ensures: tuple.state = absent
+    ensures: tuple.managed_projection_hash = none
+    ensures: tuple.conflict_reason = none
+    ensures: tuple.block_reason = none
+    ensures: tuple.last_error = none
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "absent")
+}
+
+rule MarkErrorWhenManifestInvalid {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: ProjectionManifest.find(child_name = tuple.child_name, hitl_name = tuple.hitl.name, scope = tuple.scope).exists
+    requires: not ProjectionManifest.find(child_name = tuple.child_name, hitl_name = tuple.hitl.name, scope = tuple.scope).valid
+    ensures: tuple.state = error
+    ensures: tuple.conflict_reason = manifest_invalid
+    ensures: tuple.last_error = "projection_manifest_invalid"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "error")
+}
+
+rule MarkInstalledWhenManifestValidAndHashesMatch {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: ProjectionManifest.find(child_name = tuple.child_name, hitl_name = tuple.hitl.name, scope = tuple.scope).exists
+    requires: ProjectionManifest.find(child_name = tuple.child_name, hitl_name = tuple.hitl.name, scope = tuple.scope).valid
+    requires: ProjectionManifest.find(child_name = tuple.child_name, hitl_name = tuple.hitl.name, scope = tuple.scope).source_projection_hash = ProjectionManifest.find(child_name = tuple.child_name, hitl_name = tuple.hitl.name, scope = tuple.scope).managed_projection_hash
+    requires: not ManagedProjectionFileMissing(tuple)
+    requires: not ManagedProjectionFileHashDriftDetected(tuple)
+    ensures: tuple.state = installed
+    ensures: tuple.conflict_reason = none
+    ensures: tuple.block_reason = none
+    ensures: tuple.last_error = none
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "installed")
+}
+
+rule MarkStaleWhenChildHashChanged {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: tuple.state = installed
+    requires: tuple.pin_mode = latest
+    requires: tuple.source_projection_hash != tuple.managed_projection_hash
+    ensures: tuple.state = stale
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "stale")
+}
+
+rule MarkStaleWhenManagedFileMissing {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: ManagedProjectionFileMissing(tuple)
+    ensures: tuple.state = stale
+    ensures: tuple.last_error = "managed_projection_file_missing"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "stale_missing_file")
+}
+
+rule MarkStaleWhenManagedFileDriftKeepsMarker {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: ManagedProjectionFileHashDriftDetected(tuple)
+    requires: ManagedProjectionFileMarkerPresent(tuple)
+    ensures: tuple.state = stale
+    ensures: tuple.last_error = "managed_projection_file_hash_drift"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "stale_file_drift")
+}
+
+rule MarkConflictedWhenManagedFileDriftLosesMarker {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: ManagedProjectionFileHashDriftDetected(tuple)
+    requires: not ManagedProjectionFileMarkerPresent(tuple)
+    ensures: tuple.state = conflicted
+    ensures: tuple.conflict_reason = managed_file_modified_without_marker
+    ensures: tuple.last_error = "managed_projection_file_modified_without_marker"
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "conflicted")
+}
+
+rule KeepStaleWhenPinnedAndSourceMoved {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: tuple.pin_mode = pin
+    requires: tuple.pinned_child_hash != ChildSkillSource.find(child_name = tuple.child_name).child_hash
+    ensures: tuple.state = stale
+    ensures: SkillTupleEvaluated(tuple: tuple, outcome: "stale_pinned")
+}
+
+-- Install behavior
+
+rule InstallDryRunPlansNoWrites {
+    when: SkillInstallRequested(tuple, force, dry_run)
+    requires: dry_run
+    ensures: SkillProjectionActionPlanCreated(tuple: tuple, action: install, dry_run: true, force: force)
+    ensures: SkillProjectionAuditEventRecorded(tuple: tuple, action: "install", result: "planned", dry_run: true)
+}
+
+rule InstallIntoProjectByDefault {
+    when: SkillInstallRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.scope = project
+    requires: tuple.state = absent
+    requires: tuple.hitl.supports_project_scope
+    requires: ChildSkillSource.find(child_name = tuple.child_name).trusted
+    requires: not SkillProjectionCollisionDetected(tuple)
+    ensures: tuple.state = installed
+    ensures: tuple.last_error = none
+    ensures: SkillInstallApplied(tuple: tuple, forced: force)
+    ensures: SkillProjectionChanged(tuple: tuple, action: "install")
+}
+
+rule InstallGlobalRequiresCapability {
+    when: SkillInstallRequested(tuple, _, dry_run)
+    requires: tuple.scope = global
+    requires: not tuple.hitl.supports_global_scope
+    ensures: tuple.state = unsupported
+    ensures: SkillInstallRejected(tuple: tuple, reason: "global_scope_not_supported")
+    ensures: NoProjectionWritesPerformed(tuple: tuple)
+}
+
+rule InstallFromAbsentBecomesConflictedOnCollision {
+    when: SkillInstallRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.state = absent
+    requires: not force
+    requires: SkillProjectionCollisionDetected(tuple)
+    ensures: tuple.state = conflicted
+    ensures: tuple.conflict_reason = projection_collision
+    ensures: SkillInstallRejected(tuple: tuple, reason: "projection_collision")
+    ensures: NoProjectionWritesPerformed(tuple: tuple)
+}
+
+rule InstallFromAbsentWithForceOverwritesPlannedCollisions {
+    when: SkillInstallRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.state = absent
+    requires: force
+    requires: SkillProjectionCollisionDetected(tuple)
+    ensures: tuple.state = installed
+    ensures: tuple.conflict_reason = none
+    ensures: tuple.last_error = none
+    ensures: SkillInstallApplied(tuple: tuple, forced: true)
+    ensures: SkillProjectionChanged(tuple: tuple, action: "install")
+}
+
+rule InstallFromConflictedWithoutForceStaysConflicted {
+    when: SkillInstallRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.state = conflicted
+    requires: not force
+    requires: SkillProjectionCollisionDetected(tuple)
+    ensures: tuple.state = conflicted
+    ensures: SkillInstallRejected(tuple: tuple, reason: "projection_collision")
+    ensures: NoProjectionWritesPerformed(tuple: tuple)
+}
+
+rule InstallFromConflictedWithForce {
+    when: SkillInstallRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.state = conflicted
+    requires: force
+    ensures: tuple.state = installed
+    ensures: tuple.conflict_reason = none
+    ensures: tuple.last_error = none
+    ensures: SkillInstallApplied(tuple: tuple, forced: force)
+    ensures: SkillProjectionChanged(tuple: tuple, action: "install")
+}
+
+-- Sync behavior
+
+rule SyncDryRunPlansNoWrites {
+    when: SkillSyncRequested(tuple, force, dry_run)
+    requires: dry_run
+    ensures: SkillProjectionActionPlanCreated(tuple: tuple, action: sync, dry_run: true, force: force)
+    ensures: SkillProjectionAuditEventRecorded(tuple: tuple, action: "sync", result: "planned", dry_run: true)
+}
+
+rule SyncRejectedUnlessStateIsStaleOrConflicted {
+    when: SkillSyncRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.state != stale
+    requires: tuple.state != conflicted
+    ensures: SkillSyncRejected(tuple: tuple, reason: "sync_requires_stale_or_conflicted")
+    ensures: NoProjectionWritesPerformed(tuple: tuple)
+}
+
+rule SyncFromStaleToInstalled {
+    when: SkillSyncRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.state = stale
+    requires: not SkillProjectionCollisionDetected(tuple)
+    ensures: tuple.state = installed
+    ensures: tuple.last_error = none
+    ensures: SkillSyncApplied(tuple: tuple, forced: force)
+    ensures: SkillProjectionChanged(tuple: tuple, action: "sync")
+}
+
+rule SyncFromStaleToConflictedOnCollision {
+    when: SkillSyncRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.state = stale
+    requires: not force
+    requires: SkillProjectionCollisionDetected(tuple)
+    ensures: tuple.state = conflicted
+    ensures: tuple.conflict_reason = projection_collision
+    ensures: SkillSyncRejected(tuple: tuple, reason: "projection_collision")
+    ensures: NoProjectionWritesPerformed(tuple: tuple)
+}
+
+rule SyncFromStaleWithForceOverwritesPlannedCollisions {
+    when: SkillSyncRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.state = stale
+    requires: force
+    requires: SkillProjectionCollisionDetected(tuple)
+    ensures: tuple.state = installed
+    ensures: tuple.conflict_reason = none
+    ensures: tuple.last_error = none
+    ensures: SkillSyncApplied(tuple: tuple, forced: true)
+    ensures: SkillProjectionChanged(tuple: tuple, action: "sync")
+}
+
+rule SyncFromConflictedWithoutForceStaysConflicted {
+    when: SkillSyncRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.state = conflicted
+    requires: not force
+    requires: SkillProjectionCollisionDetected(tuple)
+    ensures: tuple.state = conflicted
+    ensures: SkillSyncRejected(tuple: tuple, reason: "projection_collision")
+    ensures: NoProjectionWritesPerformed(tuple: tuple)
+}
+
+rule SyncFromConflictedWithForce {
+    when: SkillSyncRequested(tuple, force, dry_run)
+    requires: not dry_run
+    requires: tuple.state = conflicted
+    requires: force
+    ensures: tuple.state = installed
+    ensures: tuple.conflict_reason = none
+    ensures: tuple.last_error = none
+    ensures: SkillSyncApplied(tuple: tuple, forced: force)
+    ensures: SkillProjectionChanged(tuple: tuple, action: "sync")
+}
+
+-- Uninstall behavior
+
+rule UninstallDryRunPlansNoWrites {
+    when: SkillUninstallRequested(tuple, dry_run, admin_ack)
+    requires: dry_run
+    ensures: SkillProjectionActionPlanCreated(tuple: tuple, action: uninstall, dry_run: true, force: false)
+    ensures: SkillProjectionAuditEventRecorded(tuple: tuple, action: "uninstall", result: "planned", dry_run: true)
+}
+
+rule UninstallRejectedWhenAdminRemovalLockedWithoutAck {
+    when: SkillUninstallRequested(tuple, dry_run, admin_ack)
+    requires: not dry_run
+    requires: tuple.block_reason = admin_removal_locked
+    requires: not admin_ack
+    ensures: tuple.state = blocked
+    ensures: SkillUninstallRejected(tuple: tuple, reason: "admin_ack_required")
+    ensures: NoProjectionWritesPerformed(tuple: tuple)
+}
+
+rule UninstallReturnsTupleToAbsent {
+    when: SkillUninstallRequested(tuple, dry_run, admin_ack)
+    requires: not dry_run
+    requires: tuple.state in {installed, stale, conflicted, error, blocked, unsupported}
+    requires: tuple.block_reason != admin_removal_locked
+    ensures: tuple.state = absent
+    ensures: tuple.managed_projection_hash = none
+    ensures: tuple.conflict_reason = none
+    ensures: tuple.block_reason = none
+    ensures: tuple.last_error = none
+    ensures: SkillUninstallApplied(tuple: tuple)
+    ensures: SkillProjectionChanged(tuple: tuple, action: "uninstall")
+}
+
+rule UninstallWithAdminAckReturnsTupleToAbsent {
+    when: SkillUninstallRequested(tuple, dry_run, admin_ack)
+    requires: not dry_run
+    requires: tuple.state = blocked
+    requires: tuple.block_reason = admin_removal_locked
+    requires: admin_ack
+    ensures: tuple.state = absent
+    ensures: tuple.managed_projection_hash = none
+    ensures: tuple.conflict_reason = none
+    ensures: tuple.block_reason = none
+    ensures: tuple.last_error = none
+    ensures: SkillUninstallApplied(tuple: tuple)
+    ensures: SkillProjectionChanged(tuple: tuple, action: "uninstall")
+}
+
+-- Handshake v2
+
+rule HandshakeV2RequiresVersionTwo {
+    when: InterfaceHandshakeRequested(request)
+    requires: request.skills_check
+    requires: request.version != 2
+    ensures: InterfaceHandshakeRejected(request: request, reason: "handshake_v2_required")
+}
+
+rule HandshakeV2EvaluatesSkillTuples {
+    when: InterfaceHandshakeRequested(request)
+    requires: request.version = 2
+    requires: request.skills_check
+    ensures: SkillTupleEvaluationRequested(tuple: SkillProjectionTuple)
+    ensures: MotherSkillHandshakeResponseCreated(request: request)
+    ensures: InterfaceHandshakeEvaluated(request: request)
+}
+
+rule HandshakeV2ReportsCapabilities {
+    when: MotherSkillHandshakeResponseCreated(request)
+    ensures: MotherSkillHandshakeResponse.version = 2
+    ensures: MotherSkillHandshakeResponse.interface_name = request.interface_name
+    ensures: MotherSkillHandshakeResponse.project_scope_supported = HitlInterface.find(name = request.interface_name).supports_project_scope
+    ensures: MotherSkillHandshakeResponse.global_scope_supported = HitlInterface.find(name = request.interface_name).supports_global_scope
+    ensures: MotherSkillHandshakeResponse.reload_hint = HitlInterface.find(name = request.interface_name).reload_hint
+    ensures: MotherSkillHandshakeResponse.reload_command = HitlInterface.find(name = request.interface_name).reload_command
+}
+
+rule HandshakeV2PlansAutoSyncWhenSafe {
+    when: InterfaceHandshakeRequested(request)
+    requires: request.version = 2
+    requires: request.skills_check
+    requires: request.auto_sync_mode in {plan, apply_safe}
+    requires: SkillProjectionTuple.state = stale
+    requires: SkillProjectionTuple.auto_sync_enabled
+    requires: not SkillProjectionCollisionDetected(SkillProjectionTuple)
+    requires: SkillProjectionTuple.pin_mode = latest
+    ensures: SkillProjectionActionPlanCreated(tuple: SkillProjectionTuple, action: sync, reason: auto_sync_safe, safe_to_apply: true)
+    ensures: SkillSyncPlanned(tuple: SkillProjectionTuple, reason: "auto_sync_safe")
+}
+
+rule HandshakeV2SkipsAutoSyncOnPinnedTuple {
+    when: InterfaceHandshakeRequested(request)
+    requires: request.version = 2
+    requires: request.skills_check
+    requires: request.auto_sync_mode in {plan, apply_safe}
+    requires: SkillProjectionTuple.state = stale
+    requires: SkillProjectionTuple.pin_mode = pin
+    ensures: SkillSyncSkipped(tuple: SkillProjectionTuple, reason: "pinned")
+}
+
+rule HandshakeV2NeverForceSyncsAutomatically {
+    when: InterfaceHandshakeRequested(request)
+    requires: request.version = 2
+    requires: request.skills_check
+    requires: request.auto_sync_mode = apply_safe
+    requires: SkillProjectionCollisionDetected(SkillProjectionTuple)
+    ensures: SkillProjectionActionPlanCreated(tuple: SkillProjectionTuple, action: sync, requires_force: true, safe_to_apply: false)
+    ensures: SkillSyncSkipped(tuple: SkillProjectionTuple, reason: "force_required")
+}
+
+rule HandshakeV2AppliesOnlySafePlans {
+    when: InterfaceHandshakeRequested(request)
+    requires: request.version = 2
+    requires: request.auto_sync_mode = apply_safe
+    requires: SkillProjectionActionPlan.safe_to_apply
+    requires: not SkillProjectionActionPlan.requires_force
+    ensures: SkillSyncRequested(tuple: SkillProjectionTuple, force: false, dry_run: false)
+}
+
+-- Effective-source and caveat reporting
+
+rule StatusReportsEffectiveWinnerSourceForPrecedenceModels {
+    when: MotherSkillsCommandResolved(command, tuple)
+    requires: command.verb = status
+    requires: DuplicateSkillNameDetected(tuple)
+    ensures: EffectiveSkillWinnerReported(tuple: tuple)
+    ensures: SkillProjectionAuditEventRecorded(tuple: tuple, action: "status", result: "no_op", reason: "effective_winner_reported")
+}
+
+rule StatusReportsRuntimeAnomalies {
+    when: SkillTupleEvaluationRequested(tuple)
+    requires: RuntimeObservation.find(hitl_name = tuple.hitl.name).anomaly_warning != none
+    ensures: RuntimeAnomalyReported(tuple: tuple, warning: RuntimeObservation.find(hitl_name = tuple.hitl.name).anomaly_warning)
+}
+
+-- Audit and manifest safety
+
+rule ProjectionChangesWriteManifestAndEvents {
+    when: SkillProjectionChanged(tuple, action)
+    ensures: ProjectionManifestUpdated(tuple: tuple, action: action)
+    ensures: ProjectSkillEventLogged(tuple: tuple, action: action)
+    ensures: MotherSkillEventLogged(tuple: tuple, action: action)
+    ensures: SkillProjectionAuditEventRecorded(tuple: tuple, action: action, result: "applied")
+}
+
+rule RejectedMutationsEmitAuditEvents {
+    when: SkillMutationRejected(tuple, reason)
+    ensures: SkillProjectionAuditEventRecorded(tuple: tuple, action: "plan", result: "rejected", reason: reason)
+    ensures: NoProjectionWritesPerformed(tuple: tuple)
+}
+
+rule UninstallRemovesOnlyManifestTrackedFiles {
+    when: SkillUninstallApplied(tuple)
+    requires: ProjectionManifest.find(child_name = tuple.child_name, hitl_name = tuple.hitl.name, scope = tuple.scope).exists
+    ensures: OnlyManagedProjectionFilesRemoved(tuple: tuple)
+    ensures: UnmanagedFilesPreserved(tuple: tuple)
+}
+
+surface MotherSkillsLifecycleCLI {
+    facing _: HitlInterface
+    context tuple: SkillProjectionTuple
+    context command: MotherSkillsCommand
+
+    exposes:
+        command.verb
+        command.hitl_name
+        command.requested_scope
+        command.global_requested
+        command.dry_run
+        command.force
+        tuple.child_name
+        tuple.hitl.name
+        tuple.scope
+        tuple.state
+        tuple.pin_mode
+        tuple.pinned_child_hash
+        tuple.managed_projection_hash
+        tuple.source_projection_hash
+        tuple.conflict_reason
+        tuple.block_reason
+        tuple.last_error
+
+    provides:
+        SkillInstallRequested(tuple, force, dry_run)
+        SkillSyncRequested(tuple, force, dry_run)
+        SkillUninstallRequested(tuple, dry_run, admin_ack)
+        SkillStatusRequested(tuple)
+}
+
+surface MotherHitlHandshakeV2API {
+    facing _: HitlInterface
+    context request: MotherSkillHandshakeRequest
+    context response: MotherSkillHandshakeResponse
+
+    exposes:
+        request.version
+        request.interface_name
+        request.project_root
+        request.session_id
+        request.skills_check
+        request.scope_mode
+        request.child_filter
+        request.auto_sync_mode
+        request.allow_force
+        response.project_scope_supported
+        response.global_scope_supported
+        response.reload_hint
+        response.reload_command
+        response.safe_to_apply
+
+    provides:
+        InterfaceHandshakeRequested(request)
+}
+
+surface MotherProjectionManifestStore {
+    facing _: ProjectionManifest
+    context manifest: ProjectionManifest
+    context file: ManagedProjectionFile
+
+    exposes:
+        manifest.manifest_path
+        manifest.projection_root
+        manifest.namespace_path
+        manifest.managed_projection_hash
+        manifest.source_projection_hash
+        manifest.source_child_hash
+        manifest.pin_mode
+        file.relative_path
+        file.expected_hash
+        file.actual_hash
+        file.managed_marker_present
+        file.executable
+
+    provides:
+        ProjectionManifestUpdated(tuple, action)
+}
+
+
+surface MotherCapabilityMatrixStore {
+    facing _: HitlInterface
+    context hitl: HitlInterface
+    context capability: HitlScopeCapability
+
+    exposes:
+        hitl.name
+        hitl.supports_project_scope
+        hitl.supports_global_scope
+        hitl.precedence_model
+        hitl.reload_hint
+        hitl.reload_command
+        capability.hitl_name
+        capability.scope
+        capability.supported
+        capability.primary_root
+        capability.alias_root
+        capability.secondary_root
+        capability.supports_nested_skill_dirs
+        capability.requires_folder_trust
+        capability.requires_skills_enabled
+        capability.may_be_disabled_by_runtime_flag
+
+    provides:
+        HitlCapabilityLoaded(hitl)
+}
+
+surface MotherSkillsCommandIngress {
+    facing _: MotherSkillsCommand
+    context command: MotherSkillsCommand
+
+    exposes:
+        command.verb
+        command.child_name
+        command.hitl_name
+        command.requested_scope
+        command.global_requested
+        command.dry_run
+        command.force
+
+    provides:
+        MotherSkillsCommandReceived(command)
+}
+
+surface MotherRuntimeObservationIngress {
+    facing _: RuntimeObservation
+    context observation: RuntimeObservation
+
+    exposes:
+        observation.hitl_name
+        observation.project_root
+        observation.folder_trusted
+        observation.skills_enabled
+        observation.admin_skills_enabled
+        observation.project_config_enabled
+        observation.external_skills_enabled
+        observation.anomaly_warning
+}
+
+surface MotherProjectionActionPlanView {
+    facing _: SkillProjectionActionPlan
+    context plan: SkillProjectionActionPlan
+
+    exposes:
+        plan.child_name
+        plan.hitl_name
+        plan.scope
+        plan.action
+        plan.reason
+        plan.dry_run
+        plan.force
+        plan.requires_force
+        plan.safe_to_apply
+        plan.writes_count
+        plan.removes_count
+}
+
+surface MotherProjectionAuditLog {
+    facing _: SkillProjectionAuditEvent
+    context event: SkillProjectionAuditEvent
+    context tuple: SkillProjectionTuple
+
+    exposes:
+        event.child_name
+        event.hitl_name
+        event.scope
+        event.action
+        event.result
+        event.forced
+        event.dry_run
+        event.manifest_path
+        event.projection_root
+        event.before_hash
+        event.after_hash
+        event.reason
+
+    provides:
+        SkillMutationRejected(tuple, event.reason)
+}
