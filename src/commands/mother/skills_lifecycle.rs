@@ -78,27 +78,95 @@ pub fn sync(
     }
 
     let status = build_status_response(child, hitl_arg, global)?;
-    let actions = status
-        .tuples
-        .iter()
-        .filter_map(sync_action_for_tuple)
-        .collect::<Vec<_>>();
-    let response = SkillsSyncPlanResponse {
-        schema: "patina.mother.skills.sync-plan.v1",
+    let response = build_plan_response(
+        "patina.mother.skills.sync-plan.v1",
+        status,
+        dry_run,
+        sync_action_for_tuple,
+    );
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        print_human_plan(&response);
+    }
+    Ok(())
+}
+
+pub fn install(
+    child: &str,
+    hitl_arg: Option<&str>,
+    global: bool,
+    dry_run: bool,
+    json: bool,
+) -> Result<()> {
+    if !dry_run {
+        anyhow::bail!(
+            "non-dry-run skill install is not implemented in this harness slice; use --dry-run"
+        )
+    }
+
+    let status = build_status_response(Some(child), hitl_arg, global)?;
+    let response = build_plan_response(
+        "patina.mother.skills.install-plan.v1",
+        status,
+        dry_run,
+        install_action_for_tuple,
+    );
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        print_human_plan(&response);
+    }
+    Ok(())
+}
+
+pub fn uninstall(
+    child: &str,
+    hitl_arg: Option<&str>,
+    global: bool,
+    dry_run: bool,
+    json: bool,
+) -> Result<()> {
+    if !dry_run {
+        anyhow::bail!(
+            "non-dry-run skill uninstall is not implemented in this harness slice; use --dry-run"
+        )
+    }
+
+    let status = build_status_response(Some(child), hitl_arg, global)?;
+    let response = build_plan_response(
+        "patina.mother.skills.uninstall-plan.v1",
+        status,
+        dry_run,
+        uninstall_action_for_tuple,
+    );
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        print_human_plan(&response);
+    }
+    Ok(())
+}
+
+fn build_plan_response(
+    schema: &'static str,
+    status: SkillsStatusResponse,
+    dry_run: bool,
+    planner: fn(&SkillTupleStatus) -> Option<SkillSyncAction>,
+) -> SkillsSyncPlanResponse {
+    let actions = status.tuples.iter().filter_map(planner).collect::<Vec<_>>();
+    SkillsSyncPlanResponse {
+        schema,
         sandbox_id: status.sandbox_id,
         scenario: status.scenario,
         hitl: status.hitl,
         scope: status.scope,
         dry_run,
         actions,
-    };
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&response)?);
-    } else {
-        print_human_sync_plan(&response);
     }
-    Ok(())
 }
 
 fn build_status_response(
@@ -282,6 +350,79 @@ fn projection_path(root: &Path, hitl: &str, child: &str, skill: &str) -> PathBuf
     }
 }
 
+fn install_action_for_tuple(tuple: &SkillTupleStatus) -> Option<SkillSyncAction> {
+    match tuple.state.as_str() {
+        "absent" => Some(SkillSyncAction {
+            child: tuple.child.clone(),
+            skill: tuple.skill.clone(),
+            state: tuple.state.clone(),
+            action: "install".to_string(),
+            reason: "absent".to_string(),
+            safe_to_apply: true,
+            requires_force: false,
+            writes: vec![tuple.projection_path.clone()],
+            removes: Vec::new(),
+        }),
+        "stale" => Some(SkillSyncAction {
+            child: tuple.child.clone(),
+            skill: tuple.skill.clone(),
+            state: tuple.state.clone(),
+            action: "install".to_string(),
+            reason: "stale_projection".to_string(),
+            safe_to_apply: true,
+            requires_force: false,
+            writes: vec![tuple.projection_path.clone()],
+            removes: Vec::new(),
+        }),
+        "conflicted" => Some(SkillSyncAction {
+            child: tuple.child.clone(),
+            skill: tuple.skill.clone(),
+            state: tuple.state.clone(),
+            action: "install".to_string(),
+            reason: tuple
+                .conflict_reason
+                .clone()
+                .unwrap_or_else(|| "conflicted".to_string()),
+            safe_to_apply: false,
+            requires_force: true,
+            writes: vec![tuple.projection_path.clone()],
+            removes: Vec::new(),
+        }),
+        _ => None,
+    }
+}
+
+fn uninstall_action_for_tuple(tuple: &SkillTupleStatus) -> Option<SkillSyncAction> {
+    match tuple.state.as_str() {
+        "installed" | "stale" => Some(SkillSyncAction {
+            child: tuple.child.clone(),
+            skill: tuple.skill.clone(),
+            state: tuple.state.clone(),
+            action: "uninstall".to_string(),
+            reason: tuple.state.clone(),
+            safe_to_apply: true,
+            requires_force: false,
+            writes: Vec::new(),
+            removes: vec![tuple.projection_path.clone()],
+        }),
+        "conflicted" if tuple.projection_path.exists() => Some(SkillSyncAction {
+            child: tuple.child.clone(),
+            skill: tuple.skill.clone(),
+            state: tuple.state.clone(),
+            action: "uninstall".to_string(),
+            reason: tuple
+                .conflict_reason
+                .clone()
+                .unwrap_or_else(|| "conflicted".to_string()),
+            safe_to_apply: false,
+            requires_force: true,
+            writes: Vec::new(),
+            removes: vec![tuple.projection_path.clone()],
+        }),
+        _ => None,
+    }
+}
+
 fn sync_action_for_tuple(tuple: &SkillTupleStatus) -> Option<SkillSyncAction> {
     match tuple.state.as_str() {
         "stale" => Some(SkillSyncAction {
@@ -335,9 +476,10 @@ fn print_human_status(response: &SkillsStatusResponse) {
     }
 }
 
-fn print_human_sync_plan(response: &SkillsSyncPlanResponse) {
+fn print_human_plan(response: &SkillsSyncPlanResponse) {
     println!(
-        "Mother skills sync plan: hitl={} scope={} dry_run={} sandbox={}",
+        "Mother skills plan: schema={} hitl={} scope={} dry_run={} sandbox={}",
+        response.schema,
         response.hitl,
         response.scope,
         response.dry_run,

@@ -238,6 +238,42 @@ pub enum SkillsCommands {
         json: bool,
     },
 
+    /// Plan or apply install for one child skill projection bundle
+    Install {
+        /// Child name, e.g. fixture-skill-app
+        child: String,
+
+        /// Check global/user HITL scope instead of project/workspace scope
+        #[arg(long)]
+        global: bool,
+
+        /// Preview actions without writing projection files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Plan or apply uninstall for one child skill projection bundle
+    Uninstall {
+        /// Child name, e.g. fixture-skill-app
+        child: String,
+
+        /// Check global/user HITL scope instead of project/workspace scope
+        #[arg(long)]
+        global: bool,
+
+        /// Preview actions without writing projection files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Show skill packages for one child
     Show {
         /// Child name, e.g. slate-manager
@@ -875,6 +911,18 @@ fn execute_skills(command: SkillsCommands, interface: Option<&str>) -> Result<()
             dry_run,
             json,
         } => skills_lifecycle::sync(child.as_deref(), interface, global, dry_run, json),
+        SkillsCommands::Install {
+            child,
+            global,
+            dry_run,
+            json,
+        } => skills_lifecycle::install(&child, interface, global, dry_run, json),
+        SkillsCommands::Uninstall {
+            child,
+            global,
+            dry_run,
+            json,
+        } => skills_lifecycle::uninstall(&child, interface, global, dry_run, json),
         SkillsCommands::Show { child } => {
             let skills = child_skills(&child)?;
             if skills.is_empty() {
@@ -2914,6 +2962,22 @@ mod tests {
             dry_run: true,
         });
         assert!(matches!(projects_prune, MotherCommands::Projects(_)));
+
+        let skills_install = MotherCommands::Skills(SkillsCommands::Install {
+            child: "fixture-skill-app".to_string(),
+            global: false,
+            dry_run: true,
+            json: true,
+        });
+        assert!(matches!(skills_install, MotherCommands::Skills(_)));
+
+        let skills_uninstall = MotherCommands::Skills(SkillsCommands::Uninstall {
+            child: "fixture-skill-app".to_string(),
+            global: false,
+            dry_run: true,
+            json: true,
+        });
+        assert!(matches!(skills_uninstall, MotherCommands::Skills(_)));
 
         let skills_sandbox = MotherCommands::Skills(SkillsCommands::Sandbox(
             skills_sandbox::SandboxCommands::List { json: true },
