@@ -29,7 +29,83 @@ pub struct SkillTupleStatus {
     pub last_error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillsSyncPlanResponse {
+    pub schema: &'static str,
+    pub sandbox_id: Option<String>,
+    pub scenario: Option<String>,
+    pub hitl: String,
+    pub scope: String,
+    pub dry_run: bool,
+    pub actions: Vec<SkillSyncAction>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillSyncAction {
+    pub child: String,
+    pub skill: String,
+    pub state: String,
+    pub action: String,
+    pub reason: String,
+    pub safe_to_apply: bool,
+    pub requires_force: bool,
+    pub writes: Vec<PathBuf>,
+    pub removes: Vec<PathBuf>,
+}
+
 pub fn status(child: Option<&str>, hitl_arg: Option<&str>, global: bool, json: bool) -> Result<()> {
+    let response = build_status_response(child, hitl_arg, global)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        print_human_status(&response);
+    }
+    Ok(())
+}
+
+pub fn sync(
+    child: Option<&str>,
+    hitl_arg: Option<&str>,
+    global: bool,
+    dry_run: bool,
+    json: bool,
+) -> Result<()> {
+    if !dry_run {
+        anyhow::bail!(
+            "non-dry-run skill sync is not implemented in this harness slice; use --dry-run"
+        )
+    }
+
+    let status = build_status_response(child, hitl_arg, global)?;
+    let actions = status
+        .tuples
+        .iter()
+        .filter_map(sync_action_for_tuple)
+        .collect::<Vec<_>>();
+    let response = SkillsSyncPlanResponse {
+        schema: "patina.mother.skills.sync-plan.v1",
+        sandbox_id: status.sandbox_id,
+        scenario: status.scenario,
+        hitl: status.hitl,
+        scope: status.scope,
+        dry_run,
+        actions,
+    };
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        print_human_sync_plan(&response);
+    }
+    Ok(())
+}
+
+fn build_status_response(
+    child: Option<&str>,
+    hitl_arg: Option<&str>,
+    global: bool,
+) -> Result<SkillsStatusResponse> {
     let cwd = std::env::current_dir().context("resolving current directory")?;
     let sandbox = skills_sandbox::find_enclosing_sandbox(&cwd)?;
     let hitl = resolve_hitl(hitl_arg, sandbox.as_ref())?;
@@ -39,21 +115,14 @@ pub fn status(child: Option<&str>, hitl_arg: Option<&str>, global: bool, json: b
         None => Vec::new(),
     };
 
-    let response = SkillsStatusResponse {
+    Ok(SkillsStatusResponse {
         schema: "patina.mother.skills.status.v1",
         sandbox_id: sandbox.as_ref().map(|s| s.id.clone()),
         scenario: sandbox.as_ref().map(|s| s.scenario.clone()),
         hitl,
         scope: scope.to_string(),
         tuples,
-    };
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&response)?);
-    } else {
-        print_human_status(&response);
-    }
-    Ok(())
+    })
 }
 
 fn resolve_hitl(hitl_arg: Option<&str>, sandbox: Option<&SandboxMetadata>) -> Result<String> {
@@ -213,6 +282,37 @@ fn projection_path(root: &Path, hitl: &str, child: &str, skill: &str) -> PathBuf
     }
 }
 
+fn sync_action_for_tuple(tuple: &SkillTupleStatus) -> Option<SkillSyncAction> {
+    match tuple.state.as_str() {
+        "stale" => Some(SkillSyncAction {
+            child: tuple.child.clone(),
+            skill: tuple.skill.clone(),
+            state: tuple.state.clone(),
+            action: "sync".to_string(),
+            reason: "stale".to_string(),
+            safe_to_apply: true,
+            requires_force: false,
+            writes: vec![tuple.projection_path.clone()],
+            removes: Vec::new(),
+        }),
+        "conflicted" => Some(SkillSyncAction {
+            child: tuple.child.clone(),
+            skill: tuple.skill.clone(),
+            state: tuple.state.clone(),
+            action: "sync".to_string(),
+            reason: tuple
+                .conflict_reason
+                .clone()
+                .unwrap_or_else(|| "conflicted".to_string()),
+            safe_to_apply: false,
+            requires_force: true,
+            writes: vec![tuple.projection_path.clone()],
+            removes: Vec::new(),
+        }),
+        _ => None,
+    }
+}
+
 fn print_human_status(response: &SkillsStatusResponse) {
     println!(
         "Mother skills status: hitl={} scope={} sandbox={}",
@@ -231,6 +331,31 @@ fn print_human_status(response: &SkillsStatusResponse) {
             tuple.skill,
             tuple.state,
             tuple.projection_path.display()
+        );
+    }
+}
+
+fn print_human_sync_plan(response: &SkillsSyncPlanResponse) {
+    println!(
+        "Mother skills sync plan: hitl={} scope={} dry_run={} sandbox={}",
+        response.hitl,
+        response.scope,
+        response.dry_run,
+        response.sandbox_id.as_deref().unwrap_or("none")
+    );
+    if response.actions.is_empty() {
+        println!("  no sync actions planned");
+        return;
+    }
+    for action in &response.actions {
+        println!(
+            "  {}/{}  {} reason={} safe={} force_required={}",
+            action.child,
+            action.skill,
+            action.action,
+            action.reason,
+            action.safe_to_apply,
+            action.requires_force
         );
     }
 }

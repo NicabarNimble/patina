@@ -220,6 +220,24 @@ pub enum SkillsCommands {
         json: bool,
     },
 
+    /// Plan or apply sync for stale/conflicted child skill projections
+    Sync {
+        /// Optional child name; omitted means all stale/conflicted fixture children in scope
+        child: Option<String>,
+
+        /// Check global/user HITL scope instead of project/workspace scope
+        #[arg(long)]
+        global: bool,
+
+        /// Preview actions without writing projection files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Show skill packages for one child
     Show {
         /// Child name, e.g. slate-manager
@@ -851,6 +869,12 @@ fn execute_skills(command: SkillsCommands, interface: Option<&str>) -> Result<()
             global,
             json,
         } => skills_lifecycle::status(child.as_deref(), interface, global, json),
+        SkillsCommands::Sync {
+            child,
+            global,
+            dry_run,
+            json,
+        } => skills_lifecycle::sync(child.as_deref(), interface, global, dry_run, json),
         SkillsCommands::Show { child } => {
             let skills = child_skills(&child)?;
             if skills.is_empty() {

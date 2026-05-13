@@ -285,7 +285,9 @@ fn materialize_scenario(metadata: &SandboxMetadata) -> Result<()> {
 
     match metadata.scenario.as_str() {
         "project-conflicted" => {
-            let conflict = metadata.project_root.join(".gemini/skills/hello/SKILL.md");
+            let conflict = metadata
+                .project_root
+                .join(".gemini/skills/fixture-skill-app/hello/SKILL.md");
             if let Some(parent) = conflict.parent() {
                 fs::create_dir_all(parent)?;
             }
