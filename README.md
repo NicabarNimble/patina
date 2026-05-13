@@ -25,6 +25,8 @@ Patina has two closely related halves:
 
 Mother/Child/Toy is Patina's experimental infrastructure layer around shared beliefs anchored in truth.
 
+> Mother provides the runtime. Children are apps. Toys are WIT-contracted SDK capabilities children use to speak with Mother. Vision decides what is allowed.
+
 - **Mother** is the local control plane. It owns routing, project coordination, child orchestration, grants, readiness, secrets/session coordination, and observability.
 - **Children** are sandboxed WASI/WASM components with typed WIT contracts. They perform specific work without becoming one growing monolith.
 - **Toys** are explicit capabilities granted to children, such as filesystem, git, logging, measurement, state, or messaging.
