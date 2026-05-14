@@ -19,6 +19,9 @@ proof_plan = [
 closure_evidence = [
     "Created this Slate after reviewing current `sdk/patina-sdk` structure: it currently provides typed WIT-facing types, toy helper wrappers, a Rust child template, and toy governance docs, but no coherent SDK-side child conformance harness.",
     "Reviewed existing conformance-like repo tests (`tests/mother_typed_fixture_conformance.rs`, `tests/child_init_typed_default.rs`, `tests/wit_deps_multifile.rs`, and Mother skill fixtures) and confirmed they are useful foundations but are scattered internal tests rather than a child-developer suite.",
+    "Validated current child upgrade pressure with Slate child `v0.2.0`: source release metadata is now aligned (`Cargo.toml` and `child.toml` both `0.2.0`), but Mother registry discovery required GitHub release assets to include `child.toml` plus checksum coverage for both manifest and WASM component.",
+    "Repaired Slate child `v0.2.0` release assets on GitHub by uploading `child.toml`, `child.toml.sha256`, and `checksums.txt`; `patina mother children sync` then discovered `slate-manager@0.2.0`, and Mother approved, installed, and assigned it to project `2bdc808e` with audit events.",
+    "Updated the external Slate child release workflow in `/Users/nicabar/Projects/Patina/patina-child-slate` so future tag releases publish Mother registry assets (`.wasm`, `child.toml`, sidecar hashes, and `checksums.txt`); external commit `16a92a8` pushed to `origin/main`.",
 ]
 blocked_by = []
 implementation_plan = [
