@@ -51,9 +51,16 @@ pub enum RepoCommands {
 
     /// List registered repositories
     List {
+        /// Partial registered repo name to search for (case-insensitive substring)
+        query: Option<String>,
+
         /// Show git status (behind/dirty) for each repo
         #[arg(long)]
         status: bool,
+
+        /// Output stable JSON for tools/LLMs
+        #[arg(long)]
+        json: bool,
     },
 
     /// Update a repository (git pull + rescrape)
@@ -120,7 +127,18 @@ pub fn execute_cli(
             sparse,
             no_oxidize,
         },
-        (Some(RepoCommands::List { status }), _) => RepoCommand::List { status },
+        (
+            Some(RepoCommands::List {
+                query,
+                status,
+                json,
+            }),
+            _,
+        ) => RepoCommand::List {
+            query,
+            status,
+            json,
+        },
         (
             Some(RepoCommands::Update {
                 name,
@@ -160,7 +178,11 @@ pub fn execute_cli(
         },
 
         // No args: show list
-        (None, None) => RepoCommand::List { status: false },
+        (None, None) => RepoCommand::List {
+            query: None,
+            status: false,
+            json: false,
+        },
     };
 
     execute(cmd)
@@ -275,6 +297,73 @@ pub fn migrate_registry_paths() -> bool {
     updated_any
 }
 
+fn repo_mode(repo: &RepoEntry) -> String {
+    if repo.sparse.is_empty() {
+        "full".to_string()
+    } else {
+        format!("sparse({})", repo.sparse.len())
+    }
+}
+
+fn normalize_query(query: Option<&str>) -> Option<String> {
+    query
+        .map(str::trim)
+        .filter(|query| !query.is_empty())
+        .map(str::to_lowercase)
+}
+
+fn filter_repos_by_name_query(repos: Vec<RepoEntry>, query: Option<&str>) -> Vec<RepoEntry> {
+    let Some(normalized) = normalize_query(query) else {
+        return repos;
+    };
+
+    repos
+        .into_iter()
+        .filter(|repo| repo.name.to_lowercase().contains(&normalized))
+        .collect()
+}
+
+fn repo_list_json(repos: &[RepoEntry], query: Option<&str>, status: bool) -> serde_json::Value {
+    let rows: Vec<serde_json::Value> = repos
+        .iter()
+        .map(|repo| {
+            let mut row = serde_json::json!({
+                "name": repo.name,
+                "github": repo.github,
+                "path": repo.path,
+                "domains": repo.domains,
+                "mode": repo_mode(repo),
+                "contrib": repo.contrib,
+                "registered": repo.registered,
+                "synced_commit": repo.synced_commit,
+            });
+
+            if status {
+                row["status"] = serde_json::Value::String(internal::check_repo_status(
+                    &repo.path,
+                    repo.synced_commit.as_deref(),
+                ));
+            }
+
+            row
+        })
+        .collect();
+
+    serde_json::json!({
+        "schema": "patina.repo.list.v1",
+        "query": query,
+        "count": rows.len(),
+        "repositories": rows,
+    })
+}
+
+fn print_no_repo_matches(query: &str) {
+    println!("No registered repositories match: {}", query);
+    println!("\nTry:");
+    println!("  patina repo list");
+    println!("  patina repo add <owner/repo>");
+}
+
 /// Execute the repo command (main entry point from CLI)
 pub fn execute(command: RepoCommand) -> Result<()> {
     match command {
@@ -284,32 +373,84 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             sparse,
             no_oxidize,
         } => add(&url, contrib, no_oxidize, sparse),
-        RepoCommand::List { status } => {
-            let repos = list()?;
-            if repos.is_empty() {
-                println!("No repositories registered.");
-                println!("\nAdd one with: patina repo <url>");
+        RepoCommand::List {
+            query,
+            status,
+            json,
+        } => {
+            let query_ref = query.as_deref();
+            let mut repos = list()?;
+            repos = filter_repos_by_name_query(repos, query_ref);
+
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&repo_list_json(&repos, query_ref, status))?
+                );
                 return Ok(());
             }
 
-            println!("📚 Registered Repositories\n");
+            if repos.is_empty() {
+                if let Some(query) = query_ref {
+                    print_no_repo_matches(query);
+                } else {
+                    println!("No repositories registered.");
+                    println!("\nAdd one with: patina repo <url>");
+                }
+                return Ok(());
+            }
+
+            if let Some(query) = query_ref {
+                println!("📚 Matching Repositories: {}\n", query);
+            } else {
+                println!("📚 Registered Repositories\n");
+            }
+
+            let filtered = normalize_query(query_ref).is_some();
 
             if status {
-                println!("{:<40} {:<8} {:<10} STATUS", "NAME", "CONTRIB", "MODE");
-                println!("{}", "─".repeat(100));
+                if filtered {
+                    println!(
+                        "{:<40} {:<8} {:<10} {:<28} PATH",
+                        "NAME", "CONTRIB", "MODE", "STATUS"
+                    );
+                    println!("{}", "─".repeat(140));
+                } else {
+                    println!("{:<40} {:<8} {:<10} STATUS", "NAME", "CONTRIB", "MODE");
+                    println!("{}", "─".repeat(100));
+                }
 
                 for repo in repos {
                     let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
-                    let mode = if repo.sparse.is_empty() {
-                        "full".to_string()
-                    } else {
-                        format!("sparse({})", repo.sparse.len())
-                    };
+                    let mode = repo_mode(&repo);
                     let status_str =
                         internal::check_repo_status(&repo.path, repo.synced_commit.as_deref());
+                    if filtered {
+                        println!(
+                            "{:<40} {:<8} {:<10} {:<28} {}",
+                            repo.name, contrib_str, mode, status_str, repo.path
+                        );
+                    } else {
+                        println!(
+                            "{:<40} {:<8} {:<10} {}",
+                            repo.name, contrib_str, mode, status_str
+                        );
+                    }
+                }
+            } else if filtered {
+                println!(
+                    "{:<40} {:<8} {:<10} {:<32} PATH",
+                    "NAME", "CONTRIB", "MODE", "DOMAINS"
+                );
+                println!("{}", "─".repeat(140));
+
+                for repo in repos {
+                    let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
+                    let mode = repo_mode(&repo);
+                    let domains = repo.domains.join(", ");
                     println!(
-                        "{:<40} {:<8} {:<10} {}",
-                        repo.name, contrib_str, mode, status_str
+                        "{:<40} {:<8} {:<10} {:<32} {}",
+                        repo.name, contrib_str, mode, domains, repo.path
                     );
                 }
             } else {
@@ -318,11 +459,7 @@ pub fn execute(command: RepoCommand) -> Result<()> {
 
                 for repo in repos {
                     let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
-                    let mode = if repo.sparse.is_empty() {
-                        "full".to_string()
-                    } else {
-                        format!("sparse({})", repo.sparse.len())
-                    };
+                    let mode = repo_mode(&repo);
                     let domains = repo.domains.join(", ");
                     println!(
                         "{:<40} {:<8} {:<10} {}",
@@ -365,7 +502,9 @@ pub enum RepoCommand {
         no_oxidize: bool,
     },
     List {
+        query: Option<String>,
         status: bool,
+        json: bool,
     },
     Update {
         name: Option<String>,
@@ -395,7 +534,80 @@ mod tests {
         };
         assert!(matches!(add, RepoCommand::Add { .. }));
 
-        let list = RepoCommand::List { status: false };
+        let list = RepoCommand::List {
+            query: Some("flu".to_string()),
+            status: false,
+            json: true,
+        };
         assert!(matches!(list, RepoCommand::List { .. }));
+    }
+
+    fn repo_entry(name: &str) -> RepoEntry {
+        RepoEntry {
+            name: name.to_string(),
+            path: format!("/tmp/repos/{name}"),
+            github: name.to_string(),
+            sparse: Vec::new(),
+            contrib: false,
+            fork: None,
+            registered: "2026-05-14T00:00:00Z".to_string(),
+            synced_commit: Some("abc123".to_string()),
+            domains: vec!["typescript".to_string()],
+        }
+    }
+
+    #[test]
+    fn test_repo_list_partial_name_filter_is_case_insensitive() {
+        let repos = vec![
+            repo_entry("withastro/flue"),
+            repo_entry("google-gemini/gemini-cli"),
+            repo_entry("anomalyco/opencode"),
+        ];
+
+        let filtered = filter_repos_by_name_query(repos, Some("FLU"));
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "withastro/flue");
+    }
+
+    #[test]
+    fn test_repo_list_partial_name_filter_no_match_is_empty() {
+        let repos = vec![repo_entry("withastro/flue")];
+
+        let filtered = filter_repos_by_name_query(repos, Some("missing"));
+
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn test_repo_list_json_includes_stable_metadata_and_path() {
+        let repos = vec![repo_entry("withastro/flue")];
+
+        let json = repo_list_json(&repos, Some("flu"), false);
+
+        assert_eq!(json["schema"], "patina.repo.list.v1");
+        assert_eq!(json["query"], "flu");
+        assert_eq!(json["count"], 1);
+        assert_eq!(json["repositories"][0]["name"], "withastro/flue");
+        assert_eq!(json["repositories"][0]["path"], "/tmp/repos/withastro/flue");
+        assert_eq!(json["repositories"][0]["mode"], "full");
+        assert_eq!(json["repositories"][0]["contrib"], false);
+        assert_eq!(
+            json["repositories"][0]["registered"],
+            "2026-05-14T00:00:00Z"
+        );
+        assert_eq!(json["repositories"][0]["synced_commit"], "abc123");
+    }
+
+    #[test]
+    fn test_repo_list_json_no_match_shape() {
+        let repos: Vec<RepoEntry> = Vec::new();
+
+        let json = repo_list_json(&repos, Some("missing"), false);
+
+        assert_eq!(json["schema"], "patina.repo.list.v1");
+        assert_eq!(json["query"], "missing");
+        assert_eq!(json["count"], 0);
+        assert_eq!(json["repositories"].as_array().unwrap().len(), 0);
     }
 }

@@ -68,6 +68,19 @@ Slate and `patina spec` remain separate islands, but current version/archive beh
 - for now Slate archive should mirror spec archive: terminal gate, clean tracked tree, archive-removal commit, and recovery tag such as `slate/<id>`
 - git/session artifacts provide version boundaries for Slate work
 
+## Reference repo research flow
+
+When the user mentions Mother/HITL/source reference repos such as PI, OpenCode, Gemini, Claude-adjacent tooling, or other registered external repos:
+
+1. Start with discovery tools before raw file reads:
+   - `patina scry "<question>" --repo <repo-name>` when you already know the repo key.
+   - `patina assay` / `patina assay --repo <repo-name>` for structured repo context when available.
+2. If the cached source location is needed, locate it with partial repo-name lookup:
+   - `patina repo list <partial-name>`
+   - examples: `patina repo list gemini`, `patina repo list opencode`, `patina repo list pi`, `patina repo list flu`
+3. Use `patina repo list <partial-name> --json` when an agent/tool needs stable repo metadata and cache paths.
+4. Read focused files from the returned path only after the scry/assay pass or when the user explicitly asks for direct source inspection.
+
 ## Agent procedure
 
 When asked to change Patina code:
