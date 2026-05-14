@@ -8,15 +8,15 @@ user_alignment = "User clarified architecture boundaries: children install into 
 belief_refs = []
 proof_plan = [
     """
-[ ] A capability matrix exists for each HITL and is used at runtime to resolve scope paths and behavior (project/global support, projection roots, conflict/override, marker/update, executable handling).
-[ ] `patina mother skills status` reports child source state and projection state per scope (project/global) deterministically for at least one installed child.
-[ ] Project-scope install writes only expected Mother-managed files into chosen HITL/project path and records them in scope lock state.
-[ ] Global install (`--global`) succeeds only for HITLs that declare support; unsupported HITLs fail with actionable error and zero writes.
-[ ] `patina mother skills sync <child>` is idempotent in both project and global scopes (second run no-op when source unchanged).
-[ ] `patina mother skills uninstall <child>` removes only tracked Mother-managed artifacts for selected scope and preserves unmanaged/user files.
-[ ] Conflict behavior is safe: `--dry-run` previews exact actions; non-dry-run fails closed with no partial writes when collisions are disallowed.
-[ ] Automated tests include parser/dispatch coverage plus at least one filesystem roundtrip for project scope and one for global-scope capability gating.""",
-    "[ ] Handshake v2 returns deterministic per-tuple skill lifecycle evaluation (`absent|installed|stale|conflicted|unsupported|blocked|error`) and enforces `--global` support gating fail-closed, with project/mother event logging for any planned/applied projection updates.",
+[x] A capability matrix exists for each HITL and is used at runtime to resolve scope paths and behavior (project/global support, projection roots, conflict/override, marker/update, executable handling).
+[x] `patina mother skills status` reports child source state and projection state per scope (project/global) deterministically for at least one installed child.
+[x] Project-scope install writes only expected Mother-managed files into chosen HITL/project path and records them in scope lock state.
+[x] Global install (`--global`) succeeds only for HITLs that declare support; unsupported HITLs fail with actionable error and zero writes.
+[x] `patina mother skills sync <child>` is idempotent in both project and global scopes (second run no-op when source unchanged).
+[x] `patina mother skills uninstall <child>` removes only tracked Mother-managed artifacts for selected scope and preserves unmanaged/user files.
+[x] Conflict behavior is safe: `--dry-run` previews exact actions; non-dry-run fails closed with no partial writes when collisions are disallowed.
+[x] Automated tests include parser/dispatch coverage plus at least one filesystem roundtrip for project scope and one for global-scope capability gating.""",
+    "[x] Handshake v2 returns deterministic per-tuple skill lifecycle evaluation (`absent|installed|stale|conflicted|unsupported|blocked|error`) and enforces `--global` support gating fail-closed, with project/mother event logging for any planned/applied projection updates.",
 ]
 closure_evidence = [
     "PI HITL discovery captured from Patina code: managed path `.pi/`; project skill source path `.patina/skills/pi/`; project overrides path `.patina/interfaces/pi/overrides/`; marker-based managed updates for markdown/toml and direct executable writes.",
@@ -34,20 +34,24 @@ closure_evidence = [
     "Added first lifecycle status slice: `patina mother skills status [child] [--global] [--json]` can infer HITL from sandbox metadata or use global `--interface`, discover fixture child skills in sandbox child-store, evaluate project/global sandbox scenarios into tuple states, and emit `patina.mother.skills.status.v1` JSON; verified project-empty absent output, project-installed installed output, global-interface override, cargo check, and targeted tests.",
     "Added sync dry-run planning slice: `patina mother skills sync [child] [--global] --dry-run [--json]` builds `patina.mother.skills.sync-plan.v1` actions from status tuples, plans safe writes for stale tuples, marks conflicted tuples as requiring force, and rejects non-dry-run sync until projection writes are implemented; verified project-stale and project-conflicted sandbox flows plus targeted tests.",
     "Added install/uninstall dry-run planning slice: `patina mother skills install <child> [--global] --dry-run [--json]` and `patina mother skills uninstall <child> [--global] --dry-run [--json]` require explicit child names, emit operation-specific plan schemas, plan writes/removes from status tuples, mark conflicts as force-required, and reject non-dry-run execution until projection manifests/writes are implemented; verified project-empty install, project-installed uninstall, and project-conflicted force-required flows.",
+    "Completed projection lifecycle implementation: runtime HITL capability matrix now resolves PI/Claude/OpenCode/Gemini project/global roots; status evaluates installed child skill bundles from real Mother plugin store or sandbox child-store; projection manifests are persisted under `.patina/local/mother/skills/<hitl>/<scope>/<child>.json` with source/projection hashes.",
+    "Implemented non-dry-run `install`, `sync`, and `uninstall`: writes are staged and atomically replaced, manifests are updated/removed, uninstall only removes managed manifest-tracked files, and projection audit events are written to project events.db as `mother.skills.projection.{install,sync,uninstall}`.",
+    "Added `--force` to lifecycle apply commands; force-required conflicts fail closed without `--force`, while reviewed force applies overwrite managed/conflicting projections. Added idempotent filesystem roundtrip tests covering install -> status -> sync no-op -> uninstall, conflict force behavior, and unsupported global HITL gating.",
+    "Integrated handshake v2 by adding `patina:interface/handshake.v2`, returning `skill_lifecycle` status/sync-plan payloads, and switching HITL launch check-in to request handshake v2 while preserving v1 support.",
 ]
 blocked_by = []
 implementation_plan = [
     """
-[ ] Define command contract for `patina mother skills {status,sync,install,uninstall}` with flags: `--interface`, optional `--global`, and `--dry-run` (project scope is default when `--global` is absent).
-[ ] Build a per-HITL capability matrix covering: project/global support, project/global projection roots, conflict/override rules, marker/update strategy, and executable handling.
-[ ] Implement scope resolver from the capability matrix and gate `--global` fail-closed with actionable errors when unsupported by a HITL.
-[ ] Codify architecture boundary in code/docs: child install lifecycle is Mother/node-scoped; skill lifecycle is projection-scoped (project HITL default, global HITL optional).
-[ ] Implement source vs projection model: source from installed child skill bundles; projection outputs materialized into scope-specific HITL paths.
-[ ] Add projection lock/manifest per scope to track Mother-managed files and enable deterministic status/sync/uninstall without touching unmanaged files.
-[ ] Implement namespace and conflict policy using `<child>/<skill>` default layout, collision diagnostics, and atomic write strategy (no partial apply on failure).
-[ ] Wire CLI handlers + tests for parser/dispatch, scope behavior, idempotent sync/install/uninstall, global-support gating, and conflict dry-run vs apply semantics.
-[ ] Document migration from discovery-only (`list/show/help`) to managed lifecycle commands with examples for project and global scopes.""",
-    "[ ] Design and implement Mother interface handshake v2 for HITL launch with child-skill verification inputs/outputs (capability matrix resolution, per-(child,hitl,scope) state evaluation, optional auto-sync planning, and actionable conflict/unsupported reporting).",
+[x] Define command contract for `patina mother skills {status,sync,install,uninstall}` with flags: `--interface`, optional `--global`, `--force`, and `--dry-run` (project scope is default when `--global` is absent).
+[x] Build a per-HITL capability matrix covering: project/global support, project/global projection roots, conflict/override rules, marker/update strategy, and executable handling.
+[x] Implement scope resolver from the capability matrix and gate `--global` fail-closed with actionable errors when unsupported by a HITL.
+[x] Codify architecture boundary in code/docs: child install lifecycle is Mother/node-scoped; skill lifecycle is projection-scoped (project HITL default, global HITL optional).
+[x] Implement source vs projection model: source from installed child skill bundles; projection outputs materialized into scope-specific HITL paths.
+[x] Add projection lock/manifest per scope to track Mother-managed files and enable deterministic status/sync/uninstall without touching unmanaged files.
+[x] Implement namespace and conflict policy using `<child>/<skill>` default layout, collision diagnostics, and atomic write strategy (no partial apply on failure).
+[x] Wire CLI handlers + tests for parser/dispatch, scope behavior, idempotent sync/install/uninstall, global-support gating, and conflict dry-run vs apply semantics.
+[x] Document migration from discovery-only (`list/show/help`) to managed lifecycle commands with examples for project and global scopes.""",
+    "[x] Design and implement Mother interface handshake v2 for HITL launch with child-skill verification inputs/outputs (capability matrix resolution, per-(child,hitl,scope) state evaluation, optional auto-sync planning, and actionable conflict/unsupported reporting).",
     "[ ] Add repo-discovery UX slice: improve `patina repo list` discoverability for HITL-source repos with search/filter/json/alias support so PI/mother-related source repos (e.g. pi-mono) are easy to locate during capability-matrix research.",
     "[x] Complete authoritative HITL capability research for Claude, OpenCode, and Gemini (project/global paths, precedence, reload semantics, and conflict caveats), then lock matrix entries before implementing status/sync/install/uninstall logic.",
 ]

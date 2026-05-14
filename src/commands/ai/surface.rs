@@ -425,7 +425,7 @@ fn resolve_checkin_via_mother_with_client(
     };
 
     let handshake = client.interface_control_call(
-        "patina:interface/handshake.v1",
+        "patina:interface/handshake.v2",
         serde_json::json!({
             "protocol_version": protocol,
             "cli_version": env!("CARGO_PKG_VERSION"),
