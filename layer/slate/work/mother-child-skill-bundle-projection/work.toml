@@ -1,12 +1,18 @@
 id = "mother-child-skill-bundle-projection"
 title = "Build Mother child skill bundle management surface"
 kind = "build"
-status = "active"
+status = "complete"
 human_request = "Implement Mother-managed child skill bundle lifecycle commands so children remain Mother/node-installed while skills are projected per HITL scope (project by default, optional global when supported), with deterministic state tracking and safe sync/install/uninstall operations."
-allium_anchors = ["layer/allium/mother/mother-child-toy-orchestration.allium", "layer/allium/mother/mother-hitl-skill-lifecycle.allium", "layer/allium/mother/mother-mct-test-harness.allium"]
+allium_anchors = [
+    "layer/allium/mother/mother-child-toy-orchestration.allium",
+    "layer/allium/mother/mother-hitl-skill-lifecycle.allium",
+    "layer/allium/mother/mother-mct-test-harness.allium",
+]
 user_alignment = "User clarified architecture boundaries: children install into Mother, not projects; skills install into project HITL surfaces; and add `--global` for HITLs that support user-level projections."
-belief_refs = ["children-install-in-mother-skills-project-by-hitl", "mother-harness-separates-child-fixtures-from-scenarios"]
-belief_harvest_decision = "no new belief required at close; implementation applies existing [[children-install-in-mother-skills-project-by-hitl]] and [[mother-harness-separates-child-fixtures-from-scenarios]] after previously capturing the main architecture and harness-separation beliefs"
+belief_refs = [
+    "children-install-in-mother-skills-project-by-hitl",
+    "mother-harness-separates-child-fixtures-from-scenarios",
+]
 proof_plan = [
     """
 [x] A capability matrix exists for each HITL and is used at runtime to resolve scope paths and behavior (project/global support, projection roots, conflict/override, marker/update, executable handling).
@@ -57,5 +63,7 @@ implementation_plan = [
     "[x] Split repo-discovery UX slice into `repo-list-discoverability-ux`; it supports future HITL-source repo research but is outside this skill projection lifecycle closure scope.",
     "[x] Complete authoritative HITL capability research for Claude, OpenCode, and Gemini (project/global paths, precedence, reload semantics, and conflict caveats), then lock matrix entries before implementing status/sync/install/uninstall logic.",
 ]
+belief_harvest_decision = "no new belief required at close; implementation applies existing [[children-install-in-mother-skills-project-by-hitl]] and [[mother-harness-separates-child-fixtures-from-scenarios]] after previously capturing the main architecture and harness-separation beliefs"
 created_at = "1778623287"
-updated_at = "1778636534"
+updated_at = "1778770984"
+closed_at = "1778770984"
