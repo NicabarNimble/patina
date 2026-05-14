@@ -172,3 +172,4 @@
 {"created_at":"1778771782","event_type":"archived","payload":{"force":false,"tag":"slate/mother-markdown-artifact-buffer"},"work_id":"mother-markdown-artifact-buffer"}
 {"created_at":"1778771784","event_type":"archived","payload":{"force":false,"tag":"slate/patina-mct-positioning-audit"},"work_id":"patina-mct-positioning-audit"}
 {"created_at":"1778771786","event_type":"archived","payload":{"force":false,"tag":"slate/patina-mother-skill-routing"},"work_id":"patina-mother-skill-routing"}
+{"created_at":"1778771788","event_type":"archived","payload":{"force":false,"tag":"slate/patina-slate-cli-wrapper"},"work_id":"patina-slate-cli-wrapper"}
