@@ -602,6 +602,11 @@ fn manifest_entry_map(
 fn install_action_for_tuple(tuple: &SkillTupleStatus, force: bool) -> Option<SkillSyncAction> {
     match tuple.state.as_str() {
         "absent" => Some(write_action(tuple, "install", "absent", false, true)),
+        "installed" if !tuple.managed => Some(track_action(
+            tuple,
+            "install",
+            "projection_matches_source_without_manifest",
+        )),
         "stale" => Some(write_action(
             tuple,
             "install",
@@ -666,6 +671,20 @@ fn write_action(
         safe_to_apply,
         requires_force,
         writes: vec![tuple.projection_path.clone()],
+        removes: Vec::new(),
+    }
+}
+
+fn track_action(tuple: &SkillTupleStatus, action: &str, reason: &str) -> SkillSyncAction {
+    SkillSyncAction {
+        child: tuple.child.clone(),
+        skill: tuple.skill.clone(),
+        state: tuple.state.clone(),
+        action: action.to_string(),
+        reason: reason.to_string(),
+        safe_to_apply: true,
+        requires_force: false,
+        writes: Vec::new(),
         removes: Vec::new(),
     }
 }
