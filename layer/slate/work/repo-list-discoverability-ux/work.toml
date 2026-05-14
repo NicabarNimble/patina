@@ -1,31 +1,34 @@
 id = "repo-list-discoverability-ux"
 title = "Improve repo list discoverability"
 kind = "build"
-status = "draft"
-human_request = "Improve `patina repo list` discoverability for external HITL/source repositories with search/filter/json/path/recent affordances so capability research can quickly locate cached repos such as pi-mono, opencode, and gemini-cli."
-allium_anchors = []
-user_alignment = "Split from the completed Mother child skill bundle projection work: repo discovery is useful research UX, but it is separate from skill projection lifecycle runtime behavior."
+status = "active"
+human_request = "Make registered reference/source repos easier for humans and LLMs to locate: agents should use `patina scry`/`patina assay` first, then `patina repo list <partial-name>` to find cached source paths; JSON output should expose stable repo metadata for tool use."
+allium_anchors = ["layer/allium/reference-repo-discovery.allium"]
+user_alignment = "Split from the completed Mother child skill bundle projection work and sharpened into reference-repo discovery: this supports HITL/Mother capability research without becoming skill projection lifecycle runtime behavior."
 belief_refs = []
-proof_plan = [
-    """
-[ ] `patina repo list` supports a query/filter flow for quickly finding registered reference repos by owner/name/alias/domain.
-[ ] JSON output includes stable repo identifiers, cache paths, domains, mode, contribution state, and enough metadata for tools to open or inspect repos without scraping table output.
-[ ] Human output can show local cache paths and recent/update/status information without overwhelming the default table.
-[ ] Tests cover search/filter/json behavior and preserve existing `--status` behavior.
-""",
-]
+proof_plan = ["""
+[ ] Allium anchor `layer/allium/reference-repo-discovery.allium` captures source-research guidance, partial repo-name lookup, filtered path visibility, JSON output, and no-match success semantics.
+[ ] `allium check layer/allium/reference-repo-discovery.allium` passes and `layer/allium/reference-repo-discovery.plan.json` is generated.
+[ ] `patina repo list <partial-name>` filters registered repo names by case-insensitive substring; for example `flu` can match `withastro/flue`.
+[ ] Filtered human output includes local cache paths by default, while unfiltered default list remains compact.
+[ ] `patina repo list <partial-name> --json` emits `patina.repo.list.v1` with query, count, and repository metadata including name, github, path, domains, mode, contrib, registered, and synced commit.
+[ ] No-match searches succeed with clear human guidance and JSON `{ count: 0, repositories: [] }` semantics.
+[ ] Tests cover partial-name filtering, filtered path display, JSON output, no-match behavior, and preservation of existing `--status` behavior.
+"""]
 closure_evidence = [
     "Split out from `mother-child-skill-bundle-projection` after the HITL skill lifecycle proof was satisfied; repo-list UX supports future capability research but does not belong to the skill projection lifecycle closure gate.",
+    "Added linked Allium anchor `layer/allium/reference-repo-discovery.allium` and generated `layer/allium/reference-repo-discovery.plan.json`; `allium check layer/allium/reference-repo-discovery.allium` passes.",
 ]
 blocked_by = []
-implementation_plan = [
-    """
-[ ] Read current repo registry/list implementation and cached repo metadata shape.
-[ ] Define UX flags such as `--search`, `--json`, `--paths`, and optionally `--recent`/alias support without breaking existing table output.
-[ ] Implement query/filter behavior over registered repositories and include local cache paths in machine-readable output.
-[ ] Add focused tests for default, filtered, and JSON list output.
-[ ] Document example flows for locating HITL source repos used in capability-matrix research.
-""",
-]
+implementation_plan = ["""
+[x] Read current repo registry/list implementation and cached repo metadata shape.
+[x] Define precise behavior in linked Allium: name-only partial lookup, JSON for LLMs/tools, filtered path visibility, and no-match success.
+[ ] Promote this Slate to active before source edits.
+[ ] Implement `patina repo list <partial-name>` as case-insensitive substring filtering over registered repo names.
+[ ] Implement `--json` for list output with stable `patina.repo.list.v1` envelope.
+[ ] Include cache paths in filtered human output by default without changing compact unfiltered output.
+[ ] Add focused tests for default, filtered, JSON, no-match, and existing `--status` behavior.
+[ ] Document/encode source-research guidance: use `patina scry` and `patina assay` first, then `patina repo list <partial-name>` when direct cached source inspection is needed.
+"""]
 created_at = "1778770837"
-updated_at = "1778770837"
+updated_at = "1778790954"

@@ -1,0 +1,673 @@
+{
+  "obligations": [
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on RepoDiscoveryRuntime are present with correct types",
+      "detail": {
+        "fields": [
+          "kind"
+        ]
+      },
+      "id": "entity-fields.RepoDiscoveryRuntime",
+      "source_construct": "RepoDiscoveryRuntime",
+      "source_span": {
+        "end": 759,
+        "start": 703
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on ReferenceRepoRegistry are present with correct types",
+      "detail": {
+        "fields": [
+          "repos",
+          "repo_count"
+        ]
+      },
+      "id": "entity-fields.ReferenceRepoRegistry",
+      "source_construct": "ReferenceRepoRegistry",
+      "source_span": {
+        "end": 877,
+        "start": 761
+      }
+    },
+    {
+      "category": "entity_relationship",
+      "description": "Verify relationship ReferenceRepoRegistry.repos navigates to the correct related entities",
+      "id": "entity-relationship.ReferenceRepoRegistry.repos",
+      "source_construct": "ReferenceRepoRegistry.repos",
+      "source_span": {
+        "end": 877,
+        "start": 761
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on RegisteredReferenceRepo are present with correct types",
+      "detail": {
+        "fields": [
+          "registry",
+          "name",
+          "github",
+          "path",
+          "domains",
+          "mode",
+          "contrib",
+          "registered_at",
+          "synced_commit"
+        ]
+      },
+      "id": "entity-fields.RegisteredReferenceRepo",
+      "source_construct": "RegisteredReferenceRepo",
+      "source_span": {
+        "end": 1128,
+        "start": 879
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field RegisteredReferenceRepo.synced_commit accepts null and non-null values",
+      "id": "entity-optional.RegisteredReferenceRepo.synced_commit",
+      "source_construct": "RegisteredReferenceRepo.synced_commit",
+      "source_span": {
+        "end": 1128,
+        "start": 879
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on RepoListRequest are present with correct types",
+      "detail": {
+        "fields": [
+          "query",
+          "json",
+          "status"
+        ]
+      },
+      "id": "entity-fields.RepoListRequest",
+      "source_construct": "RepoListRequest",
+      "source_span": {
+        "end": 1213,
+        "start": 1130
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field RepoListRequest.query accepts null and non-null values",
+      "id": "entity-optional.RepoListRequest.query",
+      "source_construct": "RepoListRequest.query",
+      "source_span": {
+        "end": 1213,
+        "start": 1130
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on SourceResearchRequest are present with correct types",
+      "detail": {
+        "fields": [
+          "target_hint",
+          "scry_attempted",
+          "assay_attempted",
+          "direct_source_needed"
+        ]
+      },
+      "id": "entity-fields.SourceResearchRequest",
+      "source_construct": "SourceResearchRequest",
+      "source_span": {
+        "end": 1362,
+        "start": 1215
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListPathsIncluded",
+          "RepoListSearchScopeDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UnfilteredRepoListKeepsCompactDefault succeeds when all preconditions are met",
+      "id": "rule-success.UnfilteredRepoListKeepsCompactDefault",
+      "source_construct": "UnfilteredRepoListKeepsCompactDefault",
+      "source_span": {
+        "end": 1733,
+        "start": 1411
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListPathsIncluded",
+          "RepoListSearchScopeDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule UnfilteredRepoListKeepsCompactDefault is rejected when requires clause fails",
+      "id": "rule-failure.UnfilteredRepoListKeepsCompactDefault.1",
+      "source_construct": "UnfilteredRepoListKeepsCompactDefault",
+      "source_span": {
+        "end": 1527,
+        "start": 1497
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListSearchScopeDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule PartialRepoNameLookupUsesCaseInsensitiveSubstring succeeds when all preconditions are met",
+      "id": "rule-success.PartialRepoNameLookupUsesCaseInsensitiveSubstring",
+      "source_construct": "PartialRepoNameLookupUsesCaseInsensitiveSubstring",
+      "source_span": {
+        "end": 2267,
+        "start": 1735
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListSearchScopeDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule PartialRepoNameLookupUsesCaseInsensitiveSubstring is rejected when requires clause fails",
+      "id": "rule-failure.PartialRepoNameLookupUsesCaseInsensitiveSubstring.1",
+      "source_construct": "PartialRepoNameLookupUsesCaseInsensitiveSubstring",
+      "source_span": {
+        "end": 1864,
+        "start": 1833
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListMatchSelected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule PartialRepoNameMatchSelectsRepo succeeds when all preconditions are met",
+      "id": "rule-success.PartialRepoNameMatchSelectsRepo",
+      "source_construct": "PartialRepoNameMatchSelectsRepo",
+      "source_span": {
+        "end": 2554,
+        "start": 2269
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListMatchSelected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule PartialRepoNameMatchSelectsRepo is rejected when requires clause fails",
+      "id": "rule-failure.PartialRepoNameMatchSelectsRepo.1",
+      "source_construct": "PartialRepoNameMatchSelectsRepo",
+      "source_span": {
+        "end": 2380,
+        "start": 2349
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListHumanRowShown",
+          "RepoListPathsIncluded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule FilteredHumanOutputShowsCachePath succeeds when all preconditions are met",
+      "id": "rule-success.FilteredHumanOutputShowsCachePath",
+      "source_construct": "FilteredHumanOutputShowsCachePath",
+      "source_span": {
+        "end": 3027,
+        "start": 2556
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListHumanRowShown",
+          "RepoListPathsIncluded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule FilteredHumanOutputShowsCachePath is rejected when requires clause fails",
+      "id": "rule-failure.FilteredHumanOutputShowsCachePath.1",
+      "source_construct": "FilteredHumanOutputShowsCachePath",
+      "source_span": {
+        "end": 2674,
+        "start": 2648
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListJsonEnvelopeProduced",
+          "RepoListJsonFieldsDeclared",
+          "RepoListJsonRepositoryFieldsDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule JsonOutputUsesStableSchema succeeds when all preconditions are met",
+      "id": "rule-success.JsonOutputUsesStableSchema",
+      "source_construct": "JsonOutputUsesStableSchema",
+      "source_span": {
+        "end": 3430,
+        "start": 3029
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListJsonEnvelopeProduced",
+          "RepoListJsonFieldsDeclared",
+          "RepoListJsonRepositoryFieldsDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule JsonOutputUsesStableSchema is rejected when requires clause fails",
+      "id": "rule-failure.JsonOutputUsesStableSchema.1",
+      "source_construct": "JsonOutputUsesStableSchema",
+      "source_span": {
+        "end": 3126,
+        "start": 3104
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListJsonRepositoryEmitted"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule JsonMatchedRowsIncludeCachePath succeeds when all preconditions are met",
+      "id": "rule-success.JsonMatchedRowsIncludeCachePath",
+      "source_construct": "JsonMatchedRowsIncludeCachePath",
+      "source_span": {
+        "end": 3830,
+        "start": 3432
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListJsonRepositoryEmitted"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule JsonMatchedRowsIncludeCachePath is rejected when requires clause fails",
+      "id": "rule-failure.JsonMatchedRowsIncludeCachePath.1",
+      "source_construct": "JsonMatchedRowsIncludeCachePath",
+      "source_span": {
+        "end": 3544,
+        "start": 3522
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListCommandSucceeded",
+          "RepoListResultProduced"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule PartialRepoNameNoMatchSucceeds succeeds when all preconditions are met",
+      "id": "rule-success.PartialRepoNameNoMatchSucceeds",
+      "source_construct": "PartialRepoNameNoMatchSucceeds",
+      "source_span": {
+        "end": 4129,
+        "start": 3832
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListCommandSucceeded",
+          "RepoListResultProduced"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule PartialRepoNameNoMatchSucceeds is rejected when requires clause fails",
+      "id": "rule-failure.PartialRepoNameNoMatchSucceeds.1",
+      "source_construct": "PartialRepoNameNoMatchSucceeds",
+      "source_span": {
+        "end": 3942,
+        "start": 3911
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListCommandSucceeded",
+          "RepoListResultProduced"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule PartialRepoNameNoMatchSucceeds is rejected when requires clause fails",
+      "id": "rule-failure.PartialRepoNameNoMatchSucceeds.2",
+      "source_construct": "PartialRepoNameNoMatchSucceeds",
+      "source_span": {
+        "end": 3989,
+        "start": 3947
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListHumanGuidanceShown",
+          "RepoListHumanMessageShown"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HumanNoMatchGivesNextActions succeeds when all preconditions are met",
+      "id": "rule-success.HumanNoMatchGivesNextActions",
+      "source_construct": "HumanNoMatchGivesNextActions",
+      "source_span": {
+        "end": 4553,
+        "start": 4131
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListHumanGuidanceShown",
+          "RepoListHumanMessageShown"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HumanNoMatchGivesNextActions is rejected when requires clause fails",
+      "id": "rule-failure.HumanNoMatchGivesNextActions.1",
+      "source_construct": "HumanNoMatchGivesNextActions",
+      "source_span": {
+        "end": 4239,
+        "start": 4208
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListHumanGuidanceShown",
+          "RepoListHumanMessageShown"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HumanNoMatchGivesNextActions is rejected when requires clause fails",
+      "id": "rule-failure.HumanNoMatchGivesNextActions.2",
+      "source_construct": "HumanNoMatchGivesNextActions",
+      "source_span": {
+        "end": 4270,
+        "start": 4244
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListHumanGuidanceShown",
+          "RepoListHumanMessageShown"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule HumanNoMatchGivesNextActions is rejected when requires clause fails",
+      "id": "rule-failure.HumanNoMatchGivesNextActions.3",
+      "source_construct": "HumanNoMatchGivesNextActions",
+      "source_span": {
+        "end": 4317,
+        "start": 4275
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListJsonCountProduced",
+          "RepoListJsonEnvelopeProduced",
+          "RepoListJsonRepositoriesProduced"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule JsonNoMatchReturnsEmptyArray succeeds when all preconditions are met",
+      "id": "rule-success.JsonNoMatchReturnsEmptyArray",
+      "source_construct": "JsonNoMatchReturnsEmptyArray",
+      "source_span": {
+        "end": 4939,
+        "start": 4555
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListJsonCountProduced",
+          "RepoListJsonEnvelopeProduced",
+          "RepoListJsonRepositoriesProduced"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule JsonNoMatchReturnsEmptyArray is rejected when requires clause fails",
+      "id": "rule-failure.JsonNoMatchReturnsEmptyArray.1",
+      "source_construct": "JsonNoMatchReturnsEmptyArray",
+      "source_span": {
+        "end": 4663,
+        "start": 4632
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListJsonCountProduced",
+          "RepoListJsonEnvelopeProduced",
+          "RepoListJsonRepositoriesProduced"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule JsonNoMatchReturnsEmptyArray is rejected when requires clause fails",
+      "id": "rule-failure.JsonNoMatchReturnsEmptyArray.2",
+      "source_construct": "JsonNoMatchReturnsEmptyArray",
+      "source_span": {
+        "end": 4690,
+        "start": 4668
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "RepoListJsonCountProduced",
+          "RepoListJsonEnvelopeProduced",
+          "RepoListJsonRepositoriesProduced"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule JsonNoMatchReturnsEmptyArray is rejected when requires clause fails",
+      "id": "rule-failure.JsonNoMatchReturnsEmptyArray.3",
+      "source_construct": "JsonNoMatchReturnsEmptyArray",
+      "source_span": {
+        "end": 4737,
+        "start": 4695
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SourceResearchGuidanceIssued"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule SourceResearchStartsWithScry succeeds when all preconditions are met",
+      "id": "rule-success.SourceResearchStartsWithScry",
+      "source_construct": "SourceResearchStartsWithScry",
+      "source_span": {
+        "end": 5175,
+        "start": 4941
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SourceResearchGuidanceIssued"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule SourceResearchStartsWithScry is rejected when requires clause fails",
+      "id": "rule-failure.SourceResearchStartsWithScry.1",
+      "source_construct": "SourceResearchStartsWithScry",
+      "source_span": {
+        "end": 5072,
+        "start": 5035
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "SourceResearchGuidanceIssued"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule SourceResearchUsesAssayBeforeRawReads succeeds when all preconditions are met",
+      "id": "rule-success.SourceResearchUsesAssayBeforeRawReads",
+      "source_construct": "SourceResearchUsesAssayBeforeRawReads",
+      "source_span": {
+        "end": 5460,
+        "start": 5177
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SourceResearchGuidanceIssued"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule SourceResearchUsesAssayBeforeRawReads is rejected when requires clause fails",
+      "id": "rule-failure.SourceResearchUsesAssayBeforeRawReads.1",
+      "source_construct": "SourceResearchUsesAssayBeforeRawReads",
+      "source_span": {
+        "end": 5313,
+        "start": 5280
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "SourceResearchGuidanceIssued"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule SourceResearchUsesAssayBeforeRawReads is rejected when requires clause fails",
+      "id": "rule-failure.SourceResearchUsesAssayBeforeRawReads.2",
+      "source_construct": "SourceResearchUsesAssayBeforeRawReads",
+      "source_span": {
+        "end": 5356,
+        "start": 5318
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "CachedRepoPathDiscoveryRequested",
+          "SourceResearchGuidanceIssued"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule CachedSourcePathLookupUsesPartialRepoList succeeds when all preconditions are met",
+      "id": "rule-success.CachedSourcePathLookupUsesPartialRepoList",
+      "source_construct": "CachedSourcePathLookupUsesPartialRepoList",
+      "source_span": {
+        "end": 5813,
+        "start": 5462
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "CachedRepoPathDiscoveryRequested",
+          "SourceResearchGuidanceIssued"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule CachedSourcePathLookupUsesPartialRepoList is rejected when requires clause fails",
+      "id": "rule-failure.CachedSourcePathLookupUsesPartialRepoList.1",
+      "source_construct": "CachedSourcePathLookupUsesPartialRepoList",
+      "source_span": {
+        "end": 5608,
+        "start": 5569
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface ReferenceRepoDiscoveryCLI is accessible only to the specified actor",
+      "id": "surface-actor.ReferenceRepoDiscoveryCLI",
+      "source_construct": "ReferenceRepoDiscoveryCLI",
+      "source_span": {
+        "end": 6657,
+        "start": 5815
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on ReferenceRepoDiscoveryCLI is accessible",
+      "detail": {
+        "items": [
+          "kind",
+          "repo_count",
+          "query",
+          "json",
+          "status",
+          "target_hint",
+          "scry_attempted",
+          "assay_attempted",
+          "direct_source_needed"
+        ],
+        "surface": "ReferenceRepoDiscoveryCLI"
+      },
+      "id": "surface-exposure.ReferenceRepoDiscoveryCLI",
+      "source_construct": "ReferenceRepoDiscoveryCLI",
+      "source_span": {
+        "end": 6553,
+        "start": 6022
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on ReferenceRepoDiscoveryCLI appear/hide based on when conditions",
+      "id": "surface-provides.ReferenceRepoDiscoveryCLI",
+      "source_construct": "ReferenceRepoDiscoveryCLI",
+      "source_span": {
+        "end": 6655,
+        "start": 6559
+      }
+    }
+  ],
+  "version": 3
+}
