@@ -7,16 +7,34 @@
     {
       "child": "fixture-skill-app",
       "skill": "hello",
+      "hitl": "gemini",
+      "scope": "project",
       "state": "absent",
+      "projection_root": "$SANDBOX/project/.gemini/skills",
       "projection_path": "$SANDBOX/project/.gemini/skills/fixture-skill-app/hello/SKILL.md",
-      "source_path": "$SANDBOX/child-store/fixture-skill-app/skills/hello/SKILL.md"
+      "source_path": "$SANDBOX/child-store/fixture-skill-app/skills/hello/SKILL.md",
+      "manifest_path": "$SANDBOX/project/.patina/local/mother/skills/gemini/project/fixture-skill-app.json",
+      "managed": false,
+      "source_sha256": "be343fb18e1799aa1ed97f26cb093972e7355a60a7f24a22e27d1e44bd58e8c5",
+      "projection_sha256": null,
+      "conflict_reason": null,
+      "last_error": null
     },
     {
       "child": "fixture-skill-app",
       "skill": "review",
+      "hitl": "gemini",
+      "scope": "project",
       "state": "absent",
+      "projection_root": "$SANDBOX/project/.gemini/skills",
       "projection_path": "$SANDBOX/project/.gemini/skills/fixture-skill-app/review/SKILL.md",
-      "source_path": "$SANDBOX/child-store/fixture-skill-app/skills/review/SKILL.md"
+      "source_path": "$SANDBOX/child-store/fixture-skill-app/skills/review/SKILL.md",
+      "manifest_path": "$SANDBOX/project/.patina/local/mother/skills/gemini/project/fixture-skill-app.json",
+      "managed": false,
+      "source_sha256": "d7c2ec9617e4313ab51133c826cb6156b0b94ad2dea492e25935a75461bcc04d",
+      "projection_sha256": null,
+      "conflict_reason": null,
+      "last_error": null
     }
   ]
 }

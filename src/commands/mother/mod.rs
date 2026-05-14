@@ -233,6 +233,10 @@ pub enum SkillsCommands {
         #[arg(long)]
         dry_run: bool,
 
+        /// Apply force-required conflict actions after review
+        #[arg(long)]
+        force: bool,
+
         /// Output raw JSON
         #[arg(long)]
         json: bool,
@@ -251,6 +255,10 @@ pub enum SkillsCommands {
         #[arg(long)]
         dry_run: bool,
 
+        /// Apply force-required conflict actions after review
+        #[arg(long)]
+        force: bool,
+
         /// Output raw JSON
         #[arg(long)]
         json: bool,
@@ -268,6 +276,10 @@ pub enum SkillsCommands {
         /// Preview actions without writing projection files
         #[arg(long)]
         dry_run: bool,
+
+        /// Apply force-required conflict actions after review
+        #[arg(long)]
+        force: bool,
 
         /// Output raw JSON
         #[arg(long)]
@@ -909,20 +921,23 @@ fn execute_skills(command: SkillsCommands, interface: Option<&str>) -> Result<()
             child,
             global,
             dry_run,
+            force,
             json,
-        } => skills_lifecycle::sync(child.as_deref(), interface, global, dry_run, json),
+        } => skills_lifecycle::sync(child.as_deref(), interface, global, dry_run, force, json),
         SkillsCommands::Install {
             child,
             global,
             dry_run,
+            force,
             json,
-        } => skills_lifecycle::install(&child, interface, global, dry_run, json),
+        } => skills_lifecycle::install(&child, interface, global, dry_run, force, json),
         SkillsCommands::Uninstall {
             child,
             global,
             dry_run,
+            force,
             json,
-        } => skills_lifecycle::uninstall(&child, interface, global, dry_run, json),
+        } => skills_lifecycle::uninstall(&child, interface, global, dry_run, force, json),
         SkillsCommands::Show { child } => {
             let skills = child_skills(&child)?;
             if skills.is_empty() {
@@ -2967,6 +2982,7 @@ mod tests {
             child: "fixture-skill-app".to_string(),
             global: false,
             dry_run: true,
+            force: false,
             json: true,
         });
         assert!(matches!(skills_install, MotherCommands::Skills(_)));
@@ -2975,6 +2991,7 @@ mod tests {
             child: "fixture-skill-app".to_string(),
             global: false,
             dry_run: true,
+            force: false,
             json: true,
         });
         assert!(matches!(skills_uninstall, MotherCommands::Skills(_)));

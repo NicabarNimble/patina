@@ -296,15 +296,95 @@ fn materialize_scenario(metadata: &SandboxMetadata) -> Result<()> {
                 "---\nname: hello\ndescription: unmanaged conflicting skill\n---\n\n# Unmanaged\n",
             )?;
         }
-        "project-installed" | "project-stale" | "mixed-all" => {
+        "project-installed" => {
             copy_fixture_skills_to_root(metadata, &metadata.project_root.join(".gemini/skills"))?;
+            write_fixture_projection_manifest(metadata, "project", false)?;
+        }
+        "project-stale" | "mixed-all" => {
+            copy_fixture_skills_to_root(metadata, &metadata.project_root.join(".gemini/skills"))?;
+            write_fixture_projection_manifest(metadata, "project", true)?;
         }
         "global-installed" => {
             copy_fixture_skills_to_root(metadata, &metadata.home_root.join(".gemini/skills"))?;
+            write_fixture_projection_manifest(metadata, "global", false)?;
         }
         _ => {}
     }
     Ok(())
+}
+
+fn write_fixture_projection_manifest(
+    metadata: &SandboxMetadata,
+    scope: &str,
+    stale_source_hashes: bool,
+) -> Result<()> {
+    let projection_root = if scope == "global" {
+        metadata.home_root.join(".gemini/skills")
+    } else {
+        metadata.project_root.join(".gemini/skills")
+    };
+    let source_root = metadata.child_store_root.join("fixture-skill-app/skills");
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(source_root)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let skill = entry.file_name().to_string_lossy().to_string();
+        let source_path = entry.path().join("SKILL.md");
+        let projection_path = projection_root
+            .join("fixture-skill-app")
+            .join(&skill)
+            .join("SKILL.md");
+        let source_sha256 = if stale_source_hashes {
+            "0".repeat(64)
+        } else {
+            sha256_file(&source_path)?
+        };
+        entries.push(serde_json::json!({
+            "skill": skill,
+            "source_path": source_path,
+            "projection_path": projection_path,
+            "source_sha256": source_sha256,
+            "projection_sha256": sha256_file(&projection_path)?,
+        }));
+    }
+    entries.sort_by(|a, b| {
+        a.get("skill")
+            .and_then(|v| v.as_str())
+            .cmp(&b.get("skill").and_then(|v| v.as_str()))
+    });
+    let manifest = serde_json::json!({
+        "schema": "patina.mother.skills.projection-manifest.v1",
+        "child": "fixture-skill-app",
+        "hitl": "gemini",
+        "scope": scope,
+        "projection_root": projection_root,
+        "entries": entries,
+        "updated_at": "fixture",
+    });
+    let manifest_path = metadata
+        .project_root
+        .join(".patina/local/mother/skills/gemini")
+        .join(scope)
+        .join("fixture-skill-app.json");
+    if let Some(parent) = manifest_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(manifest_path, serde_json::to_string_pretty(&manifest)?)?;
+    Ok(())
+}
+
+fn sha256_file(path: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = fs::read(path)?;
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
 }
 
 fn copy_fixture_skills_to_root(metadata: &SandboxMetadata, root: &Path) -> Result<()> {

@@ -4,6 +4,8 @@
   "hitl": "gemini",
   "scope": "project",
   "dry_run": true,
+  "force": false,
+  "applied": false,
   "actions": [
     {
       "child": "fixture-skill-app",
