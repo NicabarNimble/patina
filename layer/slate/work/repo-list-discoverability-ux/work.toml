@@ -1,0 +1,31 @@
+id = "repo-list-discoverability-ux"
+title = "Improve repo list discoverability"
+kind = "build"
+status = "draft"
+human_request = "Improve `patina repo list` discoverability for external HITL/source repositories with search/filter/json/path/recent affordances so capability research can quickly locate cached repos such as pi-mono, opencode, and gemini-cli."
+allium_anchors = []
+user_alignment = "Split from the completed Mother child skill bundle projection work: repo discovery is useful research UX, but it is separate from skill projection lifecycle runtime behavior."
+belief_refs = []
+proof_plan = [
+    """
+[ ] `patina repo list` supports a query/filter flow for quickly finding registered reference repos by owner/name/alias/domain.
+[ ] JSON output includes stable repo identifiers, cache paths, domains, mode, contribution state, and enough metadata for tools to open or inspect repos without scraping table output.
+[ ] Human output can show local cache paths and recent/update/status information without overwhelming the default table.
+[ ] Tests cover search/filter/json behavior and preserve existing `--status` behavior.
+""",
+]
+closure_evidence = [
+    "Split out from `mother-child-skill-bundle-projection` after the HITL skill lifecycle proof was satisfied; repo-list UX supports future capability research but does not belong to the skill projection lifecycle closure gate.",
+]
+blocked_by = []
+implementation_plan = [
+    """
+[ ] Read current repo registry/list implementation and cached repo metadata shape.
+[ ] Define UX flags such as `--search`, `--json`, `--paths`, and optionally `--recent`/alias support without breaking existing table output.
+[ ] Implement query/filter behavior over registered repositories and include local cache paths in machine-readable output.
+[ ] Add focused tests for default, filtered, and JSON list output.
+[ ] Document example flows for locating HITL source repos used in capability-matrix research.
+""",
+]
+created_at = "1778770837"
+updated_at = "1778770837"

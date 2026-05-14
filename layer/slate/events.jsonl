@@ -166,3 +166,4 @@
 {"created_at":"1778607535","event_type":"archived","payload":{"force":false,"tag":"slate/slate-manager-monorepo-removal"},"work_id":"slate-manager-monorepo-removal"}
 {"created_at":"1778761031","event_type":"created","payload":{"status":"draft"},"work_id":"child-sdk-conformance-suite"}
 {"created_at":"1778765370","event_type":"created","payload":{"status":"draft"},"work_id":"hitl-session-artifact-normalization"}
+{"created_at":"1778770837","event_type":"created","payload":{"status":"draft"},"work_id":"repo-list-discoverability-ux"}

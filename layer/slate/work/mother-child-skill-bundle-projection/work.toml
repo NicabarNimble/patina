@@ -38,6 +38,7 @@ closure_evidence = [
     "Implemented non-dry-run `install`, `sync`, and `uninstall`: writes are staged and atomically replaced, manifests are updated/removed, uninstall only removes managed manifest-tracked files, and projection audit events are written to project events.db as `mother.skills.projection.{install,sync,uninstall}`.",
     "Added `--force` to lifecycle apply commands; force-required conflicts fail closed without `--force`, while reviewed force applies overwrite managed/conflicting projections. Added idempotent filesystem roundtrip tests covering install -> status -> sync no-op -> uninstall, conflict force behavior, and unsupported global HITL gating.",
     "Integrated handshake v2 by adding `patina:interface/handshake.v2`, returning `skill_lifecycle` status/sync-plan payloads, and switching HITL launch check-in to request handshake v2 while preserving v1 support.",
+    "Split the unrelated `patina repo list` discoverability follow-up into separate draft Slate `repo-list-discoverability-ux`, leaving this Slate scoped to completed Mother child skill projection lifecycle work.",
 ]
 blocked_by = []
 implementation_plan = [
@@ -52,7 +53,7 @@ implementation_plan = [
 [x] Wire CLI handlers + tests for parser/dispatch, scope behavior, idempotent sync/install/uninstall, global-support gating, and conflict dry-run vs apply semantics.
 [x] Document migration from discovery-only (`list/show/help`) to managed lifecycle commands with examples for project and global scopes.""",
     "[x] Design and implement Mother interface handshake v2 for HITL launch with child-skill verification inputs/outputs (capability matrix resolution, per-(child,hitl,scope) state evaluation, optional auto-sync planning, and actionable conflict/unsupported reporting).",
-    "[ ] Add repo-discovery UX slice: improve `patina repo list` discoverability for HITL-source repos with search/filter/json/alias support so PI/mother-related source repos (e.g. pi-mono) are easy to locate during capability-matrix research.",
+    "[x] Split repo-discovery UX slice into `repo-list-discoverability-ux`; it supports future HITL-source repo research but is outside this skill projection lifecycle closure scope.",
     "[x] Complete authoritative HITL capability research for Claude, OpenCode, and Gemini (project/global paths, precedence, reload semantics, and conflict caveats), then lock matrix entries before implementing status/sync/install/uninstall logic.",
 ]
 created_at = "1778623287"
