@@ -1,7 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use crate::release::internal::{compute_next_version, read_cargo_version, update_cargo_version};
-use crate::release::BumpType;
+use patina::release::{compute_next_version, read_cargo_version, update_cargo_version, BumpType};
 
 pub fn execute(component: &str, bump_type: &str, dry_run: bool) -> Result<()> {
     println!("📦 Bumping {} version ({})...", component, bump_type);

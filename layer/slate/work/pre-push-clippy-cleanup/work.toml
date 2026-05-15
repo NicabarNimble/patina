@@ -1,0 +1,32 @@
+id = "pre-push-clippy-cleanup"
+title = "Fix pre-push clippy cleanup"
+kind = "refactor"
+status = "complete"
+human_request = "Fix mechanical clippy errors found by the pre-push hook so the patina branch can push cleanly and a PR can be opened."
+allium_anchors = []
+user_alignment = "This is a no behavior change refactor: replace redundant closures and simplify a complex internal return type reported by clippy without changing runtime behavior."
+belief_refs = []
+proof_plan = ["""
+[x] Redundant closure clippy diagnostics in `src/commands/mother/skills_lifecycle.rs` are removed without behavior changes.
+[x] Complex tuple return type in `src/commands/mother/skills_lifecycle.rs` is factored into a named internal type without behavior changes.
+[x] `cargo fmt --all --check` passes.
+[x] `cargo clippy --all-targets --all-features -- -D warnings` passes or the pre-push hook proceeds past the previously reported diagnostics.
+"""]
+closure_evidence = [
+    "Replaced redundant closures in `src/commands/mother/skills_lifecycle.rs` with direct function references.",
+    "Introduced `SkillProjectionStateEvaluation` to replace the complex status tuple return in `evaluate_state` without changing output fields.",
+    "Fixed additional full-feature clippy blockers surfaced during validation: removed an unused `Context` import, made `native_command_names` mutable when `dev` feature is enabled, exposed release helper wrappers for dev commands, and replaced a literal bool assert comparison.",
+    "Validation passed: `cargo fmt --all --check` and `cargo clippy --all-targets --all-features -- -D warnings`.",
+]
+blocked_by = []
+implementation_plan = ["""
+[x] Inspect the clippy-reported locations in `src/commands/mother/skills_lifecycle.rs`.
+[x] Replace redundant closures with direct function references.
+[x] Introduce a named internal result type for the complex tuple return.
+[x] Run formatting and clippy validation.
+[x] Commit the cleanup and retry push/PR.
+"""]
+belief_harvest_decision = "no new belief required; this is mechanical clippy cleanup with no behavior change"
+created_at = "1778876899"
+updated_at = "1778877266"
+closed_at = "1778877266"

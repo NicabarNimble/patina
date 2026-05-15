@@ -77,7 +77,7 @@ fn seed_first_party_pandos(pandos_root: &Path) -> Result<()> {
 }
 
 pub fn native_command_names() -> Vec<String> {
-    let names = vec![
+    let mut names = vec![
         "init",
         "doctor",
         "child",

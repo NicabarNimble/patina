@@ -25,6 +25,18 @@ pub(crate) mod internal;
 use anyhow::Result;
 use std::path::Path;
 
+pub fn read_cargo_version() -> Result<String> {
+    internal::read_cargo_version()
+}
+
+pub fn compute_next_version(current: &str, bump: BumpType) -> Result<String> {
+    internal::compute_next_version(current, bump)
+}
+
+pub fn update_cargo_version(new_version: &str) -> Result<()> {
+    internal::update_cargo_version(new_version)
+}
+
 // ============================================================================
 // Core Types
 // ============================================================================

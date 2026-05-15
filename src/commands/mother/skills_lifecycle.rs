@@ -119,6 +119,15 @@ struct ProjectionManifestEntry {
     projection_sha256: String,
 }
 
+#[derive(Debug, Clone)]
+struct SkillProjectionStateEvaluation {
+    state: String,
+    projection_sha256: Option<String>,
+    conflict_reason: Option<String>,
+    last_error: Option<String>,
+    managed: bool,
+}
+
 pub fn status(child: Option<&str>, hitl_arg: Option<&str>, global: bool, json: bool) -> Result<()> {
     let response = build_status_response(child, hitl_arg, global)?;
 
@@ -139,10 +148,13 @@ pub fn sync(
     json: bool,
 ) -> Result<()> {
     let status = build_status_response(child, hitl_arg, global)?;
-    let mut response =
-        build_plan_response(SYNC_PLAN_SCHEMA, status, dry_run, force, |tuple, force| {
-            sync_action_for_tuple(tuple, force)
-        });
+    let mut response = build_plan_response(
+        SYNC_PLAN_SCHEMA,
+        status,
+        dry_run,
+        force,
+        sync_action_for_tuple,
+    );
 
     if !dry_run {
         apply_plan(&response)?;
@@ -177,7 +189,7 @@ pub fn install(
         status,
         dry_run,
         force,
-        |tuple, force| install_action_for_tuple(tuple, force),
+        install_action_for_tuple,
     );
 
     if !dry_run {
@@ -213,7 +225,7 @@ pub fn uninstall(
         status,
         dry_run,
         force,
-        |tuple, force| uninstall_action_for_tuple(tuple, force),
+        uninstall_action_for_tuple,
     );
 
     if !dry_run {
@@ -241,7 +253,7 @@ pub(crate) fn handshake_v2_payload(project_root: &Path, hitl_arg: &str) -> serde
                     status.clone(),
                     true,
                     false,
-                    |tuple, force| sync_action_for_tuple(tuple, force),
+                    sync_action_for_tuple,
                 )
             });
             serde_json::json!({
@@ -439,14 +451,14 @@ fn status_tuples(
             let source_sha256 = file_sha256(&source_path)?;
             let projection_path = projection_path(&projection_root, hitl, &child_name, &skill_name);
             let manifest_entry = manifest_entries.get(skill_name.as_str());
-            let (state, projection_sha256, conflict_reason, last_error, managed) = if !supported {
-                (
-                    "unsupported".to_string(),
-                    None,
-                    None,
-                    Some(format!("HITL '{}' does not support {} scope", hitl, scope)),
-                    manifest_entry.is_some(),
-                )
+            let evaluation = if !supported {
+                SkillProjectionStateEvaluation {
+                    state: "unsupported".to_string(),
+                    projection_sha256: None,
+                    conflict_reason: None,
+                    last_error: Some(format!("HITL '{}' does not support {} scope", hitl, scope)),
+                    managed: manifest_entry.is_some(),
+                }
             } else {
                 evaluate_state(&projection_path, &source_sha256, manifest_entry)?
             };
@@ -458,16 +470,16 @@ fn status_tuples(
                     .map(|capability| capability.hitl.to_string())
                     .unwrap_or_else(|| hitl.to_string()),
                 scope: scope.to_string(),
-                state,
+                state: evaluation.state,
                 projection_root: projection_root.clone(),
                 projection_path,
                 source_path,
                 manifest_path: manifest_path.clone(),
-                managed,
+                managed: evaluation.managed,
                 source_sha256,
-                projection_sha256,
-                conflict_reason,
-                last_error,
+                projection_sha256: evaluation.projection_sha256,
+                conflict_reason: evaluation.conflict_reason,
+                last_error: evaluation.last_error,
             });
         }
     }
@@ -479,60 +491,69 @@ fn evaluate_state(
     projection_path: &Path,
     source_sha256: &str,
     manifest_entry: Option<&&ProjectionManifestEntry>,
-) -> Result<(String, Option<String>, Option<String>, Option<String>, bool)> {
+) -> Result<SkillProjectionStateEvaluation> {
     let managed = manifest_entry.is_some();
     if !projection_path.exists() {
         return Ok(if managed {
-            (
-                "stale".to_string(),
-                None,
-                None,
-                Some("projected_skill_missing".to_string()),
-                true,
-            )
+            SkillProjectionStateEvaluation {
+                state: "stale".to_string(),
+                projection_sha256: None,
+                conflict_reason: None,
+                last_error: Some("projected_skill_missing".to_string()),
+                managed: true,
+            }
         } else {
-            ("absent".to_string(), None, None, None, false)
+            SkillProjectionStateEvaluation {
+                state: "absent".to_string(),
+                projection_sha256: None,
+                conflict_reason: None,
+                last_error: None,
+                managed: false,
+            }
         });
     }
 
     let projection_sha256 = file_sha256(projection_path)?;
-    match manifest_entry {
-        Some(entry) if projection_sha256 != entry.projection_sha256 => Ok((
-            "conflicted".to_string(),
-            Some(projection_sha256),
-            Some("managed_projection_modified".to_string()),
-            None,
-            true,
-        )),
-        Some(entry) if source_sha256 != entry.source_sha256 => Ok((
-            "stale".to_string(),
-            Some(projection_sha256),
-            None,
-            None,
-            true,
-        )),
-        Some(_) => Ok((
-            "installed".to_string(),
-            Some(projection_sha256),
-            None,
-            None,
-            true,
-        )),
-        None if projection_sha256 == source_sha256 => Ok((
-            "installed".to_string(),
-            Some(projection_sha256),
-            None,
-            Some("projection_matches_source_without_manifest".to_string()),
-            false,
-        )),
-        None => Ok((
-            "conflicted".to_string(),
-            Some(projection_sha256),
-            Some("projection_collision".to_string()),
-            None,
-            false,
-        )),
-    }
+    let evaluation = match manifest_entry {
+        Some(entry) if projection_sha256 != entry.projection_sha256 => {
+            SkillProjectionStateEvaluation {
+                state: "conflicted".to_string(),
+                projection_sha256: Some(projection_sha256),
+                conflict_reason: Some("managed_projection_modified".to_string()),
+                last_error: None,
+                managed: true,
+            }
+        }
+        Some(entry) if source_sha256 != entry.source_sha256 => SkillProjectionStateEvaluation {
+            state: "stale".to_string(),
+            projection_sha256: Some(projection_sha256),
+            conflict_reason: None,
+            last_error: None,
+            managed: true,
+        },
+        Some(_) => SkillProjectionStateEvaluation {
+            state: "installed".to_string(),
+            projection_sha256: Some(projection_sha256),
+            conflict_reason: None,
+            last_error: None,
+            managed: true,
+        },
+        None if projection_sha256 == source_sha256 => SkillProjectionStateEvaluation {
+            state: "installed".to_string(),
+            projection_sha256: Some(projection_sha256),
+            conflict_reason: None,
+            last_error: Some("projection_matches_source_without_manifest".to_string()),
+            managed: false,
+        },
+        None => SkillProjectionStateEvaluation {
+            state: "conflicted".to_string(),
+            projection_sha256: Some(projection_sha256),
+            conflict_reason: Some("projection_collision".to_string()),
+            last_error: None,
+            managed: false,
+        },
+    };
+    Ok(evaluation)
 }
 
 fn primary_projection_root(
