@@ -19,10 +19,11 @@ proof_plan = [
 closure_evidence = [
     "Created Slate-local Allium anchor `layer/slate/work/children-storage-cleanup/allium/children-storage-cleanup.allium` and generated `children-storage-cleanup.plan.json`; `allium check` and `allium analyse` pass cleanly.",
     "Initial inventory found repo children split across `sdk/patina-sdk` push-pure WIT/export children and `sdk/patina-sdk-legacy` handle/trait children; installed runtime state is split between flat `~/.patina/children` and command-child `~/.patina/plugins` roots.",
-    "Split watcher extraction into sub-Slates: `watcher-child-bundle-contract`, `watcher-bundle-standalone-build`, `mother-multi-child-bundle-registry`, and `watcher-monorepo-retirement`, treating folder-watch-actor plus watch-null-sink as a child-bundle ecosystem like Slate rather than unrelated in-tree children.",
-    "Watcher bundle contract selected per-child release tags as v1 (`folder-watch-actor-v0.1.0`, `watch-null-sink-v0.1.0`) to keep standalone build/local install unblocked while `mother-multi-child-bundle-registry` handles richer multi-child registry discovery later.",
+    "Split watcher extraction into sub-Slates: `watcher-child-bundle-contract`, `watcher-bundle-standalone-build`, `watcher-github-release-install-proof`, and `watcher-monorepo-retirement`, treating folder-watch-actor plus watch-null-sink as a child-bundle ecosystem like Slate rather than unrelated in-tree children; future bundle-installer behavior is parked separately in `mother-child-bundle-install-model`.",
+    "Watcher bundle contract selected per-child release tags as v1 (`folder-watch-actor-v0.1.0`, `watch-null-sink-v0.1.0`) to keep standalone build/local install unblocked while richer child-bundle installer UX remains deferred to `mother-child-bundle-install-model`.",
     "Watcher standalone build proof succeeded externally in `/Users/nicabar/Projects/Patina/patina-child-watcher-system` at [[commit-d2be416]]: both watcher children build with published `patina-sdk = \"0.22.0\"`, install through `patina child install`, and pass typed-call smoke checks.",
     "Watcher GitHub release/install parity proof succeeded: external release workflow [[commit-526dbf1]] published per-child releases `folder-watch-actor-v0.1.0` and `watch-null-sink-v0.1.0`; Mother registry selectors in [[commit-14f2df48]] discovered/approved/installed/assigned both as independent child entries from one source repo.",
+    "Watcher monorepo retirement removed in-tree watcher source directories and WIT-dependent tests in [[commit-39f01ff5]] while installed external watcher artifacts continued to pass typed-call smoke checks.",
 ]
 blocked_by = []
 implementation_plan = [
