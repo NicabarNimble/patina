@@ -16,7 +16,7 @@ proof_plan = [
 """,
 ]
 closure_evidence = []
-blocked_by = ["watcher-bundle-standalone-build", "mother-multi-child-bundle-registry"]
+blocked_by = ["watcher-github-release-install-proof"]
 implementation_plan = [
     """
 [ ] Confirm external watcher-system build/install/registry proof is complete before touching monorepo sources.

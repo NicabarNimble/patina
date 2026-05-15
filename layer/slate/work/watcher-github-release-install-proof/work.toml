@@ -1,0 +1,27 @@
+id = "watcher-github-release-install-proof"
+title = "Prove watcher GitHub release install parity"
+kind = "build"
+status = "active"
+human_request = "Finish the watcher extraction proof by making folder-watch-actor and watch-null-sink installable from GitHub release assets like Slate, using minimal per-child source selection rather than the future child-bundle installer model."
+allium_anchors = ["layer/slate/work/watcher-github-release-install-proof/allium/watcher-github-release-install-proof.allium"]
+user_alignment = "User wants watcher release/install parity with the external Slate child before removing in-tree watcher sources; the richer Mother child-bundle install model is parked in a separate top-level Slate."
+belief_refs = []
+proof_plan = ["""
+[ ] Watcher external repo publishes Slate-style GitHub release assets for `folder-watch-actor-v0.1.0` and `watch-null-sink-v0.1.0`: WASM, WASM SHA-256 sidecar, `child.toml`, manifest SHA-256 sidecar, and `checksums.txt`.
+[ ] Mother registry source configuration can select one child release stream from a shared GitHub repo using configured asset names and tag prefixes without changing single-child Slate behavior.
+[ ] Registry sync discovers `folder-watch-actor@0.1.0` and `watch-null-sink@0.1.0` from the watcher repo as independent child entries with hash verification.
+[ ] Approve/install flow installs both watcher children from registry release assets without manual file copying.
+[ ] Local smoke proves installed registry artifacts load and typed-call correctly.
+[ ] The richer child-bundle installer/config prompt model remains deferred to `mother-child-bundle-install-model` and is not required for watcher monorepo retirement.
+"""]
+closure_evidence = []
+blocked_by = []
+implementation_plan = ["""
+[ ] Add a watcher release workflow modeled after Slate, with per-child tag prefixes and release assets.
+[ ] Tag/publish `folder-watch-actor-v0.1.0` and `watch-null-sink-v0.1.0` releases from the external watcher repo.
+[ ] Add minimal Mother GitHub source selector support where missing, especially tag-prefix version extraction and CLI-configurable asset names.
+[ ] Add tests for tag-prefix version extraction and GitHub source configuration serialization.
+[ ] Sync/add two watcher registry sources, approve/install both entries, and run typed-call smoke checks.
+"""]
+created_at = "1778870181"
+updated_at = "1778874792"

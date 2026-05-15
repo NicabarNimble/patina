@@ -1,0 +1,283 @@
+{
+  "obligations": [
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on GitHubChildReleaseSource are present with correct types",
+      "detail": {
+        "fields": [
+          "source_id",
+          "repo",
+          "child_name",
+          "tag_prefix",
+          "wasm_asset_name",
+          "manifest_asset_name",
+          "checksums_asset_name"
+        ]
+      },
+      "id": "entity-fields.GitHubChildReleaseSource",
+      "source_construct": "GitHubChildReleaseSource",
+      "source_span": {
+        "end": 445,
+        "start": 228
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field GitHubChildReleaseSource.tag_prefix accepts null and non-null values",
+      "id": "entity-optional.GitHubChildReleaseSource.tag_prefix",
+      "source_construct": "GitHubChildReleaseSource.tag_prefix",
+      "source_span": {
+        "end": 445,
+        "start": 228
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field GitHubChildReleaseSource.wasm_asset_name accepts null and non-null values",
+      "id": "entity-optional.GitHubChildReleaseSource.wasm_asset_name",
+      "source_construct": "GitHubChildReleaseSource.wasm_asset_name",
+      "source_span": {
+        "end": 445,
+        "start": 228
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field GitHubChildReleaseSource.manifest_asset_name accepts null and non-null values",
+      "id": "entity-optional.GitHubChildReleaseSource.manifest_asset_name",
+      "source_construct": "GitHubChildReleaseSource.manifest_asset_name",
+      "source_span": {
+        "end": 445,
+        "start": 228
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field GitHubChildReleaseSource.checksums_asset_name accepts null and non-null values",
+      "id": "entity-optional.GitHubChildReleaseSource.checksums_asset_name",
+      "source_construct": "GitHubChildReleaseSource.checksums_asset_name",
+      "source_span": {
+        "end": 445,
+        "start": 228
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on GitHubChildRelease are present with correct types",
+      "detail": {
+        "fields": [
+          "child_name",
+          "version",
+          "release_tag",
+          "wasm_asset_name",
+          "manifest_asset_name",
+          "checksums_asset_name",
+          "artifact_sha256",
+          "manifest_sha256"
+        ]
+      },
+      "id": "entity-fields.GitHubChildRelease",
+      "source_construct": "GitHubChildRelease",
+      "source_span": {
+        "end": 693,
+        "start": 447
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field GitHubChildRelease.checksums_asset_name accepts null and non-null values",
+      "id": "entity-optional.GitHubChildRelease.checksums_asset_name",
+      "source_construct": "GitHubChildRelease.checksums_asset_name",
+      "source_span": {
+        "end": 693,
+        "start": 447
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on ChildInstallProof are present with correct types",
+      "detail": {
+        "fields": [
+          "child_name",
+          "version",
+          "installed_from_source",
+          "approved",
+          "installed",
+          "smoke_checked"
+        ]
+      },
+      "id": "entity-fields.ChildInstallProof",
+      "source_construct": "ChildInstallProof",
+      "source_span": {
+        "end": 872,
+        "start": 695
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ReleaseTagsFilteredByPrefix"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule SourceTagPrefixSelectsOneChildReleaseStream succeeds when all preconditions are met",
+      "id": "rule-success.SourceTagPrefixSelectsOneChildReleaseStream",
+      "source_construct": "SourceTagPrefixSelectsOneChildReleaseStream",
+      "source_span": {
+        "end": 1104,
+        "start": 874
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ReleaseTagsFilteredByPrefix"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule SourceTagPrefixSelectsOneChildReleaseStream is rejected when requires clause fails",
+      "id": "rule-failure.SourceTagPrefixSelectsOneChildReleaseStream.1",
+      "source_construct": "SourceTagPrefixSelectsOneChildReleaseStream",
+      "source_span": {
+        "end": 1005,
+        "start": 971
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ManifestAssetSelected",
+          "ReleaseAssetSelected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ConfiguredAssetsSelectReleaseUnit succeeds when all preconditions are met",
+      "id": "rule-success.ConfiguredAssetsSelectReleaseUnit",
+      "source_construct": "ConfiguredAssetsSelectReleaseUnit",
+      "source_span": {
+        "end": 1437,
+        "start": 1106
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ManifestAssetSelected",
+          "ReleaseAssetSelected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ConfiguredAssetsSelectReleaseUnit is rejected when requires clause fails",
+      "id": "rule-failure.ConfiguredAssetsSelectReleaseUnit.1",
+      "source_construct": "ConfiguredAssetsSelectReleaseUnit",
+      "source_span": {
+        "end": 1232,
+        "start": 1193
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildRegistryEntryCreated",
+          "ReleaseIntegrityHashRecorded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule PerChildReleaseKeepsIndependentInstallState succeeds when all preconditions are met",
+      "id": "rule-success.PerChildReleaseKeepsIndependentInstallState",
+      "source_construct": "PerChildReleaseKeepsIndependentInstallState",
+      "source_span": {
+        "end": 1794,
+        "start": 1439
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_source": "external"
+      },
+      "description": "Verify rule WatcherInstallProofRequiresSmokeCheck succeeds when all preconditions are met",
+      "id": "rule-success.WatcherInstallProofRequiresSmokeCheck",
+      "source_construct": "WatcherInstallProofRequiresSmokeCheck",
+      "source_span": {
+        "end": 1991,
+        "start": 1796
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_source": "external"
+      },
+      "description": "Verify rule WatcherInstallProofRequiresSmokeCheck is rejected when requires clause fails",
+      "id": "rule-failure.WatcherInstallProofRequiresSmokeCheck.1",
+      "source_construct": "WatcherInstallProofRequiresSmokeCheck",
+      "source_span": {
+        "end": 1914,
+        "start": 1889
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface WatcherGitHubReleaseInstallProof is accessible only to the specified actor",
+      "id": "surface-actor.WatcherGitHubReleaseInstallProof",
+      "source_construct": "WatcherGitHubReleaseInstallProof",
+      "source_span": {
+        "end": 2953,
+        "start": 1993
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on WatcherGitHubReleaseInstallProof is accessible",
+      "detail": {
+        "items": [
+          "source_id",
+          "repo",
+          "child_name",
+          "tag_prefix",
+          "wasm_asset_name",
+          "manifest_asset_name",
+          "checksums_asset_name",
+          "child_name",
+          "version",
+          "release_tag",
+          "wasm_asset_name",
+          "manifest_asset_name",
+          "checksums_asset_name",
+          "artifact_sha256",
+          "manifest_sha256",
+          "child_name",
+          "version",
+          "installed_from_source",
+          "approved",
+          "installed",
+          "smoke_checked"
+        ],
+        "surface": "WatcherGitHubReleaseInstallProof"
+      },
+      "id": "surface-exposure.WatcherGitHubReleaseInstallProof",
+      "source_construct": "WatcherGitHubReleaseInstallProof",
+      "source_span": {
+        "end": 2808,
+        "start": 2195
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on WatcherGitHubReleaseInstallProof appear/hide based on when conditions",
+      "id": "surface-provides.WatcherGitHubReleaseInstallProof",
+      "source_construct": "WatcherGitHubReleaseInstallProof",
+      "source_span": {
+        "end": 2951,
+        "start": 2814
+      }
+    }
+  ],
+  "version": 3
+}
