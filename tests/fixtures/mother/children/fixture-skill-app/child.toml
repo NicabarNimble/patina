@@ -1,0 +1,13 @@
+[child]
+name = "fixture-skill-app"
+version = "0.1.0"
+description = "Mother MCT harness fixture child that exposes deterministic HITL skills"
+kind = "child"
+role = "app"
+patina_min = "0.71.0"
+
+[needs]
+toys = ["logging", "state"]
+
+[provides]
+child = "fixture-skill-app"

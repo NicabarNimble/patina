@@ -1,0 +1,33 @@
+{
+  "schema": "patina.mother.skills.install-plan.v1",
+  "scenario": "project-empty",
+  "hitl": "gemini",
+  "scope": "project",
+  "dry_run": true,
+  "force": false,
+  "applied": false,
+  "actions": [
+    {
+      "child": "fixture-skill-app",
+      "skill": "hello",
+      "state": "absent",
+      "action": "install",
+      "reason": "absent",
+      "safe_to_apply": true,
+      "requires_force": false,
+      "writes": ["$SANDBOX/project/.gemini/skills/fixture-skill-app/hello/SKILL.md"],
+      "removes": []
+    },
+    {
+      "child": "fixture-skill-app",
+      "skill": "review",
+      "state": "absent",
+      "action": "install",
+      "reason": "absent",
+      "safe_to_apply": true,
+      "requires_force": false,
+      "writes": ["$SANDBOX/project/.gemini/skills/fixture-skill-app/review/SKILL.md"],
+      "removes": []
+    }
+  ]
+}

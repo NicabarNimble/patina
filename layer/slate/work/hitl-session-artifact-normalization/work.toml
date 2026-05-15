@@ -1,0 +1,41 @@
+id = "hitl-session-artifact-normalization"
+title = "Normalize HITL session artifacts"
+kind = "build"
+status = "draft"
+human_request = "Build a Mother-centered, HITL-capability-aware session pipeline so Claude, OpenCode, Pi, and Gemini can keep their native session/log shapes while Patina produces near-identical durable session artifacts, graph-complete archive commits, correct end tags, and consistent classification."
+allium_anchors = ["layer/allium/mother/mother-secrets-session-coordination.allium"]
+user_alignment = "The user clarified that HITLs should be handled like skill projections: learn each interface's native session/log behavior, give the HITL what it wants, and normalize only at the durable Patina artifact/finalization boundary."
+belief_refs = []
+proof_plan = [
+    """
+[ ] A HITL session capability matrix exists for `claude`, `opencode`, `pi`, and `gemini`, covering native log location, assistant-response availability, tool-call/result availability, active-session detection, source-log extraction quality, and what must be LLM-synthesized.
+[ ] Session update/end uses a Mother-centered normalization pipeline: HITL adapters collect what each interface can provide, while Patina emits one durable artifact contract under `layer/sessions/`.
+[ ] `session-end --commit` creates a graph-complete archive bundle: session artifact, session/event logs, and referenced/new `layer/**` artifacts such as beliefs/specs/slates are included or explicitly reported as excluded.
+[ ] `end_tag` is created or moved only after archive commit creation and points at the actual archive commit.
+[ ] Session classification and summary statistics are computed from the true corrected range (`start_tag..end_tag`) after tags are finalized.
+[ ] Finalization emits consistency warnings when the session body references existing artifacts (for example `[[belief-id]]`) but counters such as `beliefs_captured` report zero.
+[ ] Documentation and wrapper output clarify `--commit` semantics across HITLs and distinguish HITL-native logs from durable Patina project artifacts.
+[ ] Regression coverage includes a Claude sparse-log case and richer OpenCode/Pi/Gemini-style log cases to prove artifact outputs remain near-identical despite native differences.
+""",
+]
+closure_evidence = [
+    "Created this Slate from observed cross-HITL session archive drift in `/Users/nicabar/Projects/Patina/nicabar-patina-evolution-research-paper`: a Claude session artifact referenced `[[runtime-neutral-context]]`, the belief file existed at `layer/surface/epistemic/beliefs/runtime-neutral-context.md`, but `session-end --commit` archived only the session file and events.",
+    "Observed that `session-20260514-083237-592318000-claude-end` pointed at the pre-archive initialization commit while the actual archive commit was `705a072`, proving end-tag placement must happen after archive commit creation.",
+    "Read `.claude/bin/session-end.sh` and `.opencode/bin/session-end.sh` in the research project and confirmed wrappers differ only by `PATINA_AI_INTERFACE`, so the durable finalization layer should be interface-neutral even though HITL native logs differ substantially.",
+    "User clarified the model should mirror HITL skill projection work: learn each HITL's native session/log behavior and give it what it wants, but normalize into near-identical Patina durable artifacts through Mother.",
+]
+blocked_by = []
+implementation_plan = [
+    """
+[ ] Inventory current session code paths, HITL wrappers, active-session state, Mother session coordination state, and archive/tag creation logic.
+[ ] Define a HITL session capability matrix parallel to the skill capability matrix for Claude, OpenCode, Pi, and Gemini.
+[ ] Define the normalized durable session artifact contract and separate required fields from interface-specific metadata.
+[ ] Refactor session update/end flow into phases: interface capture, artifact graph scan, commit plan, archive commit, end-tag correction, classification, and consistency checks.
+[ ] Implement graph-complete `--commit` planning for `layer/**` artifacts, including linked beliefs/specs/slates and clear exclusion reporting.
+[ ] Fix end-tag ordering so archive commits exist before tags are created/moved; recompute range-derived statistics after tag finalization.
+[ ] Add consistency warnings for referenced-but-uncommitted artifacts and mismatched counters such as `beliefs_captured=0` when linked belief files exist.
+[ ] Add docs/tests showing equivalent durable outputs from Claude sparse logs and richer OpenCode/Pi/Gemini logs.
+""",
+]
+created_at = "1778765370"
+updated_at = "1778765370"

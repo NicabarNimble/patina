@@ -1,0 +1,195 @@
+-- allium: 3
+-- reference-repo-discovery.allium
+
+-- Scope: Registered reference/source repository discovery for humans and LLMs.
+-- Includes:
+--   - `patina repo list <partial-name>` lookup over registered repo names
+--   - path visibility for filtered results so cached source locations are easy to open
+--   - stable JSON output for LLM/tool consumption
+--   - source-research guidance: use `patina scry` and `patina assay` before raw file reads
+-- Excludes:
+--   - repository add/update/remove semantics
+--   - semantic search over repository contents
+--   - Mother child lifecycle or HITL skill projection behavior
+--   - broad fuzzy ranking beyond case-insensitive substring matching on repo name
+
+entity RepoDiscoveryRuntime {
+    kind: cli | llm_tool
+}
+
+entity ReferenceRepoRegistry {
+    repos: RegisteredReferenceRepo with registry = this
+    repo_count: repos.count
+}
+
+entity RegisteredReferenceRepo {
+    registry: ReferenceRepoRegistry
+    name: String
+    github: String
+    path: String
+    domains: Set<String>
+    mode: full | sparse
+    contrib: Boolean
+    registered_at: Timestamp
+    synced_commit: String?
+}
+
+entity RepoListRequest {
+    query: String?
+    json: Boolean
+    status: Boolean
+}
+
+entity SourceResearchRequest {
+    target_hint: String
+    scry_attempted: Boolean
+    assay_attempted: Boolean
+    direct_source_needed: Boolean
+}
+
+given {
+    registry: ReferenceRepoRegistry
+}
+
+rule UnfilteredRepoListKeepsCompactDefault {
+    when: RepoListRequested(request)
+    requires: request.query = null
+    ensures: RepoListSearchScopeDeclared(request: request, scope: "all_registered_repos")
+    ensures: RepoListPathsIncluded(request: request, included: false, reason: "unfiltered_default_stays_compact")
+}
+
+rule PartialRepoNameLookupUsesCaseInsensitiveSubstring {
+    when: RepoListRequested(request)
+    requires: request.query != null
+    ensures: RepoListSearchScopeDeclared(request: request, scope: "registered_repo_name_case_insensitive_substring")
+    @guidance
+        -- `patina repo list flu` means: return registered repositories whose registry name
+        -- contains `flu`, ignoring case. For example, `withastro/flue` matches `flu`.
+        -- This is intentionally name-based, not semantic search over repository contents.
+}
+
+rule PartialRepoNameMatchSelectsRepo {
+    when: RepoListRequested(request)
+    requires: request.query != null
+    for repo in registry.repos where RepoNameContainsQueryCaseInsensitively(repo.name, request.query):
+        ensures: RepoListMatchSelected(request: request, repo: repo)
+}
+
+rule FilteredHumanOutputShowsCachePath {
+    when: RepoListMatchSelected(request, repo)
+    requires: not request.json
+    ensures: RepoListHumanRowShown(
+        request: request,
+        name: repo.name,
+        github: repo.github,
+        path: repo.path,
+        mode: repo.mode,
+        domains: repo.domains,
+        contrib: repo.contrib
+    )
+    ensures: RepoListPathsIncluded(request: request, included: true, reason: "filtered_lookup_locates_cached_source")
+}
+
+rule JsonOutputUsesStableSchema {
+    when: RepoListRequested(request)
+    requires: request.json
+    ensures: RepoListJsonEnvelopeProduced(schema: "patina.repo.list.v1", query: request.query)
+    ensures: RepoListJsonFieldsDeclared(fields: "schema,query,count,repositories")
+    ensures: RepoListJsonRepositoryFieldsDeclared(fields: "name,github,path,domains,mode,contrib,registered,synced_commit")
+}
+
+rule JsonMatchedRowsIncludeCachePath {
+    when: RepoListMatchSelected(request, repo)
+    requires: request.json
+    ensures: RepoListJsonRepositoryEmitted(
+        request: request,
+        name: repo.name,
+        github: repo.github,
+        path: repo.path,
+        mode: repo.mode,
+        domains: repo.domains,
+        contrib: repo.contrib,
+        synced_commit: repo.synced_commit
+    )
+}
+
+rule PartialRepoNameNoMatchSucceeds {
+    when: RepoListRequested(request)
+    requires: request.query != null
+    requires: not RepoListMatchExists(request)
+    ensures: RepoListResultProduced(request: request, count: 0, outcome: success)
+    ensures: RepoListCommandSucceeded(request: request)
+}
+
+rule HumanNoMatchGivesNextActions {
+    when: RepoListRequested(request)
+    requires: request.query != null
+    requires: not request.json
+    requires: not RepoListMatchExists(request)
+    ensures: RepoListHumanMessageShown(message: "No registered repositories match")
+    ensures: RepoListHumanGuidanceShown(command: "patina repo list")
+    ensures: RepoListHumanGuidanceShown(command: "patina repo add <owner/repo>")
+}
+
+rule JsonNoMatchReturnsEmptyArray {
+    when: RepoListRequested(request)
+    requires: request.query != null
+    requires: request.json
+    requires: not RepoListMatchExists(request)
+    ensures: RepoListJsonEnvelopeProduced(schema: "patina.repo.list.v1", query: request.query)
+    ensures: RepoListJsonCountProduced(count: 0)
+    ensures: RepoListJsonRepositoriesProduced(count: 0)
+}
+
+rule SourceResearchStartsWithScry {
+    when: SourceRepositoryResearchRequested(research)
+    requires: not research.scry_attempted
+    ensures: SourceResearchGuidanceIssued(command: "patina scry", target_hint: research.target_hint)
+}
+
+rule SourceResearchUsesAssayBeforeRawReads {
+    when: SourceRepositoryResearchRequested(research)
+    requires: research.scry_attempted
+    requires: not research.assay_attempted
+    ensures: SourceResearchGuidanceIssued(command: "patina assay", target_hint: research.target_hint)
+}
+
+rule CachedSourcePathLookupUsesPartialRepoList {
+    when: SourceRepositoryResearchRequested(research)
+    requires: research.direct_source_needed
+    ensures: SourceResearchGuidanceIssued(command: "patina repo list <partial-name>", target_hint: research.target_hint)
+    ensures: CachedRepoPathDiscoveryRequested(partial_name: research.target_hint)
+}
+
+surface ReferenceRepoDiscoveryCLI {
+    facing runtime: RepoDiscoveryRuntime
+    context registry: ReferenceRepoRegistry
+    context request: RepoListRequest
+    context research: SourceResearchRequest
+
+    exposes:
+        runtime.kind
+        registry.repo_count
+        request.query
+        request.json
+        request.status
+        research.target_hint
+        research.scry_attempted
+        research.assay_attempted
+        research.direct_source_needed
+
+        for repo in registry.repos:
+            repo.registry.repo_count
+            repo.name
+            repo.github
+            repo.path
+            repo.domains
+            repo.mode
+            repo.contrib
+            repo.registered_at
+            repo.synced_commit
+
+    provides:
+        RepoListRequested(request)
+        SourceRepositoryResearchRequested(research)
+}

@@ -1,0 +1,402 @@
+-- allium: 3
+-- mother-mct-test-harness.allium
+
+-- Scope: Durable Mother/Child/Toy test harness and dev sandbox system.
+-- Includes: repository-owned fixtures, global ephemeral sandboxes, fixture children,
+--   fixture skills, toy/WIT contracts, SDK conformance fixtures, HITL roots,
+--   projection scenarios, JSON golden outputs, and conformance run evidence.
+-- Excludes:
+--   - production Mother daemon scheduling semantics
+--   - real third-party HITL runtime execution
+--   - package registry publication and supply-chain trust beyond fixture metadata
+
+entity MotherHarnessFixtureSet {
+    name: String
+    fixture_root: String
+    version: String
+    durable: Boolean
+}
+
+entity FixtureChildApp {
+    name: String
+    manifest_path: String
+    skills_path: String?
+    wit_world_path: String?
+    sdk_crate_path: String?
+
+    has_child_manifest: Boolean
+    has_skill_bundle: Boolean
+    has_wit_contract: Boolean
+    has_sdk_example: Boolean
+}
+
+entity FixtureSkill {
+    child_name: String
+    skill_name: String
+    skill_path: String
+    frontmatter_valid: Boolean
+    body_present: Boolean
+}
+
+entity FixtureToyContract {
+    toy_name: String
+    wit_package_path: String
+    sdk_type_path: String?
+    available_to_children: Boolean
+}
+
+entity SdkConformanceFixture {
+    name: String
+    sdk_path: String
+    child_name: String
+    toy_name: String?
+    expected_imports: String?
+    expected_exports: String?
+}
+
+entity HitlFixtureRoot {
+    hitl_name: pi | claude | opencode | gemini
+    scope: project | global
+    root_path: String
+    exists: Boolean
+}
+
+entity ProjectionScenarioFixture {
+    name: project_empty | project_installed | project_stale | project_conflicted | global_installed | mixed_all
+    scenario_path: String
+    child_name: String?
+    hitl_name: pi | claude | opencode | gemini | all
+    scope: project | global | both
+
+    includes_manifest: Boolean
+    includes_hitl_files: Boolean
+    includes_collision: Boolean
+    includes_stale_source: Boolean
+}
+
+entity GoldenOutputFixture {
+    name: String
+    command: String
+    command_kind: status_json | sync_dry_run_json | other
+    json_path: String
+    stable: Boolean
+}
+
+entity MotherSkillSandbox {
+    id: String
+    fixture_name: String
+    scenario_name: String
+    root_path: String
+    project_root: String
+    home_root: String
+    child_store_root: String
+    logs_root: String
+    default_interface: pi | claude | opencode | gemini
+    materializes_all_hitls: Boolean
+    attached_project_root: String?
+    state: created | active | reset | removed | error
+}
+
+entity HarnessConformanceRun {
+    id: String
+    sandbox_id: String?
+    fixture_name: String
+    command: String
+    status: String
+    json_output_path: String?
+    log_path: String?
+}
+
+rule FixtureSetIsDurableRepoOwned {
+    when: fixture_set: MotherHarnessFixtureSet.created
+    requires: fixture_set.durable
+    ensures: FixtureRootDeclared(path: fixture_set.fixture_root)
+    ensures: FixtureSetAvailable(name: fixture_set.name)
+}
+
+rule FixtureChildRequiresManifest {
+    when: child: FixtureChildApp.created
+    requires: not child.has_child_manifest
+    ensures: FixtureChildRejected(child: child.name, reason: "missing_child_manifest")
+}
+
+rule FixtureSkillRequiresValidFrontmatter {
+    when: skill: FixtureSkill.created
+    requires: not skill.frontmatter_valid
+    ensures: FixtureSkillRejected(skill: skill.skill_name, reason: "invalid_frontmatter")
+}
+
+rule FixtureSkillRequiresBody {
+    when: skill: FixtureSkill.created
+    requires: not skill.body_present
+    ensures: FixtureSkillRejected(skill: skill.skill_name, reason: "missing_body")
+}
+
+rule ToyContractRequiresWitPackage {
+    when: toy: FixtureToyContract.created
+    requires: toy.available_to_children
+    ensures: WitToyContractDeclared(toy: toy.toy_name, path: toy.wit_package_path)
+}
+
+rule SdkFixtureLinksChildToyAndSdk {
+    when: sdk_fixture: SdkConformanceFixture.created
+    requires: FixtureChildApp.find(name = sdk_fixture.child_name).has_sdk_example
+    ensures: SdkFixtureDeclared(name: sdk_fixture.name)
+    ensures: SdkToyCoverageRecorded(sdk: sdk_fixture.sdk_path, toy: sdk_fixture.toy_name)
+}
+
+rule ScenarioMaterializesAllHitlRoots {
+    when: MotherSkillSandboxCreated(sandbox)
+    requires: sandbox.materializes_all_hitls
+    ensures: HitlFixtureRoot.created(hitl_name: pi, scope: project, root_path: sandbox.project_root + "/.pi", exists: true)
+    ensures: HitlFixtureRoot.created(hitl_name: claude, scope: project, root_path: sandbox.project_root + "/.claude", exists: true)
+    ensures: HitlFixtureRoot.created(hitl_name: opencode, scope: project, root_path: sandbox.project_root + "/.opencode", exists: true)
+    ensures: HitlFixtureRoot.created(hitl_name: gemini, scope: project, root_path: sandbox.project_root + "/.gemini", exists: true)
+    ensures: HitlFixtureRoot.created(hitl_name: gemini, scope: project, root_path: sandbox.project_root + "/.agents", exists: true)
+    ensures: HitlFixtureRoot.created(hitl_name: gemini, scope: global, root_path: sandbox.home_root + "/.gemini", exists: true)
+    ensures: HitlFixtureRoot.created(hitl_name: claude, scope: global, root_path: sandbox.home_root + "/.claude", exists: true)
+    ensures: HitlFixtureRoot.created(hitl_name: opencode, scope: global, root_path: sandbox.home_root + "/.config/opencode", exists: true)
+    ensures: HitlFixtureRoot.created(hitl_name: pi, scope: global, root_path: sandbox.home_root + "/.pi", exists: true)
+    ensures: HitlFixtureRoot.created(hitl_name: gemini, scope: global, root_path: sandbox.home_root + "/.agents", exists: true)
+}
+
+rule SandboxCreateUsesGlobalEphemeralRoot {
+    when: MotherSkillSandboxCreated(sandbox)
+    requires: sandbox.attached_project_root = none
+    ensures: sandbox.root_path = "~/.patina/local/dev/mother-skill-sandboxes/" + sandbox.id
+    ensures: sandbox.project_root = sandbox.root_path + "/project"
+    ensures: sandbox.home_root = sandbox.root_path + "/home"
+    ensures: sandbox.child_store_root = sandbox.root_path + "/child-store"
+    ensures: sandbox.logs_root = sandbox.root_path + "/logs"
+    ensures: sandbox.state = created
+}
+
+rule SandboxRecordsDefaultInterface {
+    when: MotherSkillSandboxCreated(sandbox)
+    ensures: SandboxMetadataWritten(sandbox: sandbox, field: "default_interface", value: sandbox.default_interface)
+}
+
+rule SandboxResetReturnsToScenarioBaseline {
+    when: MotherSkillSandboxResetRequested(sandbox)
+    requires: sandbox.state in {created, active, reset, error}
+    ensures: ScenarioFixtureMaterialized(sandbox: sandbox, scenario: sandbox.scenario_name)
+    ensures: sandbox.state = reset
+}
+
+rule SandboxRemoveDeletesEphemeralRoot {
+    when: MotherSkillSandboxRemoveRequested(sandbox)
+    ensures: not exists sandbox
+    ensures: SandboxRootRemoved(path: sandbox.root_path)
+}
+
+rule ProjectEmptyScenarioHasNoProjectionState {
+    when: scenario: ProjectionScenarioFixture.created
+    requires: scenario.name = project_empty
+    ensures: scenario.includes_manifest = false
+    ensures: scenario.includes_hitl_files = false
+    ensures: scenario.includes_collision = false
+}
+
+rule ProjectInstalledScenarioHasManifestAndHitlFiles {
+    when: scenario: ProjectionScenarioFixture.created
+    requires: scenario.name = project_installed
+    ensures: scenario.includes_manifest = true
+    ensures: scenario.includes_hitl_files = true
+    ensures: scenario.includes_collision = false
+}
+
+rule ProjectStaleScenarioHasChangedSource {
+    when: scenario: ProjectionScenarioFixture.created
+    requires: scenario.name = project_stale
+    ensures: scenario.includes_manifest = true
+    ensures: scenario.includes_hitl_files = true
+    ensures: scenario.includes_stale_source = true
+}
+
+rule ProjectConflictedScenarioHasCollision {
+    when: scenario: ProjectionScenarioFixture.created
+    requires: scenario.name = project_conflicted
+    ensures: scenario.includes_collision = true
+    ensures: scenario.includes_hitl_files = true
+}
+
+rule GoldenOutputsStartWithStatusAndSyncDryRun {
+    when: golden: GoldenOutputFixture.created
+    requires: golden.stable
+    requires: golden.command_kind = other
+    ensures: GoldenOutputRejected(name: golden.name, reason: "initial_goldens_limited_to_status_and_sync_dry_run")
+}
+
+rule ConformanceRunStartsPending {
+    when: HarnessConformanceRunStarted(run)
+    ensures: run.status = "pending"
+}
+
+rule ConformanceRunPassesWithEvidence {
+    when: HarnessConformanceRunPassed(run)
+    ensures: run.status = "passed"
+    ensures: HarnessEvidenceRecorded(run: run.id, output: run.json_output_path, log: run.log_path)
+}
+
+rule FailedConformanceRunPreservesLogs {
+    when: HarnessConformanceRunFailed(run)
+    ensures: run.status = "failed"
+    ensures: HarnessEvidenceRecorded(run: run.id, output: run.json_output_path, log: run.log_path)
+    ensures: HarnessFailureReported(run: run.id)
+}
+
+rule ErrorConformanceRunPreservesLogs {
+    when: HarnessConformanceRunErrored(run)
+    ensures: run.status = "error"
+    ensures: HarnessEvidenceRecorded(run: run.id, output: run.json_output_path, log: run.log_path)
+    ensures: HarnessFailureReported(run: run.id)
+}
+
+surface MotherHarnessFixtureTree {
+    facing _: MotherHarnessFixtureSet
+    context fixture_set: MotherHarnessFixtureSet
+
+    exposes:
+        fixture_set.name
+        fixture_set.fixture_root
+        fixture_set.version
+        fixture_set.durable
+
+    provides:
+        FixtureSetAvailable(fixture_set.name)
+}
+
+surface MotherSkillSandboxCLI {
+    facing _: MotherSkillSandbox
+    context sandbox: MotherSkillSandbox
+
+    exposes:
+        sandbox.id
+        sandbox.fixture_name
+        sandbox.scenario_name
+        sandbox.root_path
+        sandbox.project_root
+        sandbox.home_root
+        sandbox.child_store_root
+        sandbox.logs_root
+        sandbox.default_interface
+        sandbox.materializes_all_hitls
+        sandbox.state
+
+    provides:
+        MotherSkillSandboxCreated(sandbox)
+        MotherSkillSandboxResetRequested(sandbox)
+        MotherSkillSandboxRemoveRequested(sandbox)
+}
+
+surface MotherHarnessConformanceCLI {
+    facing _: HarnessConformanceRun
+    context run: HarnessConformanceRun
+
+    exposes:
+        run.id
+        run.sandbox_id
+        run.fixture_name
+        run.command
+        run.status
+        run.json_output_path
+        run.log_path
+
+    provides:
+        HarnessConformanceRunStarted(run)
+        HarnessConformanceRunPassed(run)
+        HarnessConformanceRunFailed(run)
+        HarnessConformanceRunErrored(run)
+}
+
+
+surface MotherFixtureChildView {
+    facing _: FixtureChildApp
+    context child: FixtureChildApp
+
+    exposes:
+        child.name
+        child.manifest_path
+        child.skills_path
+        child.wit_world_path
+        child.sdk_crate_path
+        child.has_child_manifest
+        child.has_skill_bundle
+        child.has_wit_contract
+        child.has_sdk_example
+}
+
+surface MotherFixtureSkillView {
+    facing _: FixtureSkill
+    context skill: FixtureSkill
+
+    exposes:
+        skill.child_name
+        skill.skill_name
+        skill.skill_path
+        skill.frontmatter_valid
+        skill.body_present
+}
+
+surface MotherFixtureToyView {
+    facing _: FixtureToyContract
+    context toy: FixtureToyContract
+
+    exposes:
+        toy.toy_name
+        toy.wit_package_path
+        toy.sdk_type_path
+        toy.available_to_children
+}
+
+surface MotherSdkConformanceFixtureView {
+    facing _: SdkConformanceFixture
+    context sdk_fixture: SdkConformanceFixture
+
+    exposes:
+        sdk_fixture.name
+        sdk_fixture.sdk_path
+        sdk_fixture.child_name
+        sdk_fixture.toy_name
+        sdk_fixture.expected_imports
+        sdk_fixture.expected_exports
+}
+
+surface MotherHitlFixtureRootView {
+    facing _: HitlFixtureRoot
+    context root: HitlFixtureRoot
+
+    exposes:
+        root.hitl_name
+        root.scope
+        root.root_path
+        root.exists
+}
+
+surface MotherProjectionScenarioView {
+    facing _: ProjectionScenarioFixture
+    context scenario: ProjectionScenarioFixture
+
+    exposes:
+        scenario.name
+        scenario.scenario_path
+        scenario.child_name
+        scenario.hitl_name
+        scenario.scope
+        scenario.includes_manifest
+        scenario.includes_hitl_files
+        scenario.includes_collision
+        scenario.includes_stale_source
+}
+
+surface MotherGoldenOutputView {
+    facing _: GoldenOutputFixture
+    context golden: GoldenOutputFixture
+
+    exposes:
+        golden.name
+        golden.command
+        golden.command_kind
+        golden.json_path
+        golden.stable
+}

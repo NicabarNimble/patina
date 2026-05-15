@@ -1,0 +1,7 @@
+{
+  "name": "project-stale",
+  "description": "A project-scope projection manifest exists but the source/projection should be treated as stale.",
+  "child": "fixture-skill-app",
+  "scope": "project",
+  "state": "stale"
+}

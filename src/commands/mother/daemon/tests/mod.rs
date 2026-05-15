@@ -524,7 +524,7 @@ fn daemon_view_maturation_persists_event_and_improvement_artifact() {
         let artifact = outcome
             .observability_improvement
             .expect("observability improvement returned");
-        assert_eq!(artifact.work_item_created, false);
+        assert!(!artifact.work_item_created);
         assert_eq!(
             runtime_store
                 .get_view_observability_improvement(&artifact.artifact_id)

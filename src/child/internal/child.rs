@@ -2076,9 +2076,9 @@ mod tests {
 
     #[test]
     fn resolve_typed_operation_accepts_canonical_versioned_identity() {
-        let resolved = resolve_typed_operation("patina:watch/control@0.1.0.status")
+        let resolved = resolve_typed_operation("patina:fixture/control@0.1.0.status")
             .expect("operation id should resolve");
-        assert_eq!(resolved.interface, "patina:watch/control@0.1.0");
+        assert_eq!(resolved.interface, "patina:fixture/control@0.1.0");
         assert_eq!(resolved.function, "status");
         assert_eq!(resolved.action, "status");
     }
@@ -2114,8 +2114,8 @@ mod tests {
 
     #[test]
     fn ensure_operation_exported_fails_for_unknown_exact_identity() {
-        let exports = BTreeSet::from(["patina:watch/control@0.1.0.status".to_string()]);
-        let op = resolve_typed_operation("patina:watch/control@0.1.0.configure")
+        let exports = BTreeSet::from(["patina:fixture/control@0.1.0.status".to_string()]);
+        let op = resolve_typed_operation("patina:fixture/control@0.1.0.configure")
             .expect("operation should parse");
         let err = ensure_operation_exported(&op, &exports)
             .expect_err("unknown operation should fail closed");
@@ -2127,18 +2127,18 @@ mod tests {
         );
         assert_eq!(
             typed.field("operation_id"),
-            Some("patina:watch/control@0.1.0.configure")
+            Some("patina:fixture/control@0.1.0.configure")
         );
     }
 
     #[test]
     fn validate_typed_operation_contract_rejects_allowlist_export_mismatch() {
-        let exports = BTreeSet::from(["patina:watch/control@0.1.0.status".to_string()]);
+        let exports = BTreeSet::from(["patina:fixture/control@0.1.0.status".to_string()]);
         let err = validate_typed_operation_contract(
-            "folder-watch-actor",
+            "fixture-control-child",
             ChildIngressMode::WitOnly,
             None,
-            &["patina:watch/control.status".to_string()],
+            &["patina:fixture/control.status".to_string()],
             &exports,
         )
         .expect_err("unversioned allowlist entry should fail exact export check");
@@ -2151,7 +2151,7 @@ mod tests {
         assert_eq!(typed.field("source"), Some("allow"));
         assert_eq!(
             typed.field("operation_id"),
-            Some("patina:watch/control.status")
+            Some("patina:fixture/control.status")
         );
     }
 

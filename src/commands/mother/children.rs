@@ -130,11 +130,25 @@ fn add_source_cli(provider: ChildrenSourceProviderCommands, as_json: bool) -> Re
             repo,
             source_id,
             child_name,
+            tag_prefix,
+            asset_name_wasm,
+            asset_name_manifest,
+            asset_name_checksums,
+            include_prerelease,
+            patina_min,
             disabled,
         } => add_github_source_cli(
             &repo,
             source_id.as_deref(),
-            child_name.as_deref(),
+            GitHubSourceOptions {
+                child_name: child_name.as_deref(),
+                tag_prefix: tag_prefix.as_deref(),
+                asset_name_wasm: asset_name_wasm.as_deref(),
+                asset_name_manifest: asset_name_manifest.as_deref(),
+                asset_name_checksums: asset_name_checksums.as_deref(),
+                include_prerelease,
+                patina_min: patina_min.as_deref(),
+            },
             disabled,
             as_json,
         ),
@@ -175,10 +189,21 @@ fn set_source_enabled_cli(source_id: &str, enabled: bool, as_json: bool) -> Resu
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct GitHubSourceOptions<'a> {
+    child_name: Option<&'a str>,
+    tag_prefix: Option<&'a str>,
+    asset_name_wasm: Option<&'a str>,
+    asset_name_manifest: Option<&'a str>,
+    asset_name_checksums: Option<&'a str>,
+    include_prerelease: bool,
+    patina_min: Option<&'a str>,
+}
+
 fn add_github_source_cli(
     repo: &str,
     source_id_override: Option<&str>,
-    child_name: Option<&str>,
+    options: GitHubSourceOptions<'_>,
     disabled: bool,
     as_json: bool,
 ) -> Result<()> {
@@ -195,13 +220,7 @@ fn add_github_source_cli(
         );
     }
 
-    let mut config = json!({
-        "owner": owner,
-        "repo": repo_name,
-    });
-    if let Some(child_name) = child_name {
-        config["child_name"] = json!(child_name);
-    }
+    let config = github_source_config_json(&owner, &repo_name, options);
 
     store.upsert_child_registry_source(&patina::mother::ChildRegistrySourceUpdate {
         source_id: source_id.clone(),
@@ -232,6 +251,39 @@ fn add_github_source_cli(
     }
 
     Ok(())
+}
+
+fn github_source_config_json(
+    owner: &str,
+    repo_name: &str,
+    options: GitHubSourceOptions<'_>,
+) -> serde_json::Value {
+    let mut config = json!({
+        "owner": owner,
+        "repo": repo_name,
+    });
+    if let Some(child_name) = options.child_name {
+        config["child_name"] = json!(child_name);
+    }
+    if let Some(tag_prefix) = options.tag_prefix {
+        config["tag_prefix"] = json!(tag_prefix);
+    }
+    if let Some(asset_name_wasm) = options.asset_name_wasm {
+        config["asset_name_wasm"] = json!(asset_name_wasm);
+    }
+    if let Some(asset_name_manifest) = options.asset_name_manifest {
+        config["asset_name_manifest"] = json!(asset_name_manifest);
+    }
+    if let Some(asset_name_checksums) = options.asset_name_checksums {
+        config["asset_name_checksums"] = json!(asset_name_checksums);
+    }
+    if options.include_prerelease {
+        config["include_prerelease"] = json!(true);
+    }
+    if let Some(patina_min) = options.patina_min {
+        config["patina_min"] = json!(patina_min);
+    }
+    config
 }
 
 fn sync_sources_cli(source_id: Option<&str>, as_json: bool) -> Result<()> {
@@ -1110,6 +1162,39 @@ mod tests {
             parse_owner_repo("git@github.com:NicabarNimble/patina.git").unwrap(),
             ("NicabarNimble".to_string(), "patina".to_string())
         );
+    }
+
+    #[test]
+    fn github_source_config_records_release_selectors() {
+        let config = github_source_config_json(
+            "NicabarNimble",
+            "patina-child-watcher-system",
+            GitHubSourceOptions {
+                child_name: Some("demo-child"),
+                tag_prefix: Some("demo-child-v"),
+                asset_name_wasm: Some("patina_ai_child_demo_child.wasm"),
+                asset_name_manifest: Some("child.toml"),
+                asset_name_checksums: Some("checksums.txt"),
+                include_prerelease: true,
+                patina_min: Some("0.71.0"),
+            },
+        );
+
+        assert_eq!(config["owner"].as_str(), Some("NicabarNimble"));
+        assert_eq!(config["repo"].as_str(), Some("patina-child-watcher-system"));
+        assert_eq!(config["child_name"].as_str(), Some("demo-child"));
+        assert_eq!(config["tag_prefix"].as_str(), Some("demo-child-v"));
+        assert_eq!(
+            config["asset_name_wasm"].as_str(),
+            Some("patina_ai_child_demo_child.wasm")
+        );
+        assert_eq!(config["asset_name_manifest"].as_str(), Some("child.toml"));
+        assert_eq!(
+            config["asset_name_checksums"].as_str(),
+            Some("checksums.txt")
+        );
+        assert_eq!(config["include_prerelease"].as_bool(), Some(true));
+        assert_eq!(config["patina_min"].as_str(), Some("0.71.0"));
     }
 
     #[test]

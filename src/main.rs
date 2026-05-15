@@ -1148,7 +1148,7 @@ fn main() -> Result<()> {
         Some(Commands::Connect { command }) => commands::connect::execute_cli(command)?,
         Some(Commands::Lake { command }) => commands::lake::execute_cli(command)?,
         Some(Commands::Mother { command }) => {
-            main_dispatch::mother::dispatch_mother(command)?;
+            main_dispatch::mother::dispatch_mother(command, cli.interface)?;
         }
         Some(Commands::Pando { command }) => commands::pando::execute_cli(command)?,
         Some(Commands::Secrets { command, flags }) => {

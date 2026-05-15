@@ -15,6 +15,7 @@ const ENVELOPE_RETAIN_HOURS: i64 = 24;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InterfaceControlOperation {
     HandshakeV1,
+    HandshakeV2,
     EnvelopeResolveV1,
     EnvelopeHeartbeatV1,
     EnvelopeEndV1,
@@ -24,6 +25,7 @@ impl InterfaceControlOperation {
     fn parse(operation_id: &str) -> Option<Self> {
         match operation_id {
             "patina:interface/handshake.v1" => Some(Self::HandshakeV1),
+            "patina:interface/handshake.v2" => Some(Self::HandshakeV2),
             "patina:interface/envelope.resolve.v1" => Some(Self::EnvelopeResolveV1),
             "patina:interface/envelope.heartbeat.v1" => Some(Self::EnvelopeHeartbeatV1),
             "patina:interface/envelope.end.v1" => Some(Self::EnvelopeEndV1),
@@ -34,6 +36,7 @@ impl InterfaceControlOperation {
     fn as_str(self) -> &'static str {
         match self {
             Self::HandshakeV1 => "patina:interface/handshake.v1",
+            Self::HandshakeV2 => "patina:interface/handshake.v2",
             Self::EnvelopeResolveV1 => "patina:interface/envelope.resolve.v1",
             Self::EnvelopeHeartbeatV1 => "patina:interface/envelope.heartbeat.v1",
             Self::EnvelopeEndV1 => "patina:interface/envelope.end.v1",
@@ -251,7 +254,7 @@ pub(super) fn dispatch_interface_control_call(
     let correlation = request.correlation;
 
     match operation {
-        InterfaceControlOperation::HandshakeV1 => {
+        InterfaceControlOperation::HandshakeV1 | InterfaceControlOperation::HandshakeV2 => {
             handle_handshake(operation, request.args, correlation.as_ref())
         }
         InterfaceControlOperation::EnvelopeResolveV1 => {
@@ -333,13 +336,20 @@ fn handle_handshake(
         },
     );
 
-    let result = serde_json::json!({
+    let mut result = serde_json::json!({
         "handshake_id": handshake_id.clone(),
         "mother_version": env!("CARGO_PKG_VERSION"),
         "project_uid": normalized_uid,
         "control_plane_ready": true,
         "expires_at": expires_at.to_rfc3339(),
     });
+
+    if operation == InterfaceControlOperation::HandshakeV2 {
+        result["skill_lifecycle"] = crate::commands::mother::skills_lifecycle::handshake_v2_payload(
+            &project_root,
+            &args.interface_name,
+        );
+    }
 
     emit_interface_event_best_effort(
         &project_root,
@@ -1026,6 +1036,18 @@ mod tests {
             Ok(value) => value,
             Err(panic) => std::panic::resume_unwind(panic),
         }
+    }
+
+    #[test]
+    fn parses_handshake_v2_operation_id() {
+        assert!(matches!(
+            InterfaceControlOperation::parse("patina:interface/handshake.v2"),
+            Some(InterfaceControlOperation::HandshakeV2)
+        ));
+        assert_eq!(
+            InterfaceControlOperation::HandshakeV2.as_str(),
+            "patina:interface/handshake.v2"
+        );
     }
 
     #[test]

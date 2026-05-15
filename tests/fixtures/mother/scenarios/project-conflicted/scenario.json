@@ -1,0 +1,7 @@
+{
+  "name": "project-conflicted",
+  "description": "An unmanaged HITL skill file collides with the desired projection path.",
+  "child": "fixture-skill-app",
+  "scope": "project",
+  "state": "conflicted"
+}

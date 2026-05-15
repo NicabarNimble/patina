@@ -1,0 +1,7 @@
+{
+  "name": "global-installed",
+  "description": "A global/user-scope projection is already installed and in sync.",
+  "child": "fixture-skill-app",
+  "scope": "global",
+  "state": "installed"
+}

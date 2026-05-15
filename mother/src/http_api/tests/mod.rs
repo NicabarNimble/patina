@@ -275,8 +275,8 @@ impl ApiRuntime for StubRuntime {
         Ok(serde_json::json!({
             "count": limit.min(1),
             "calls": [{
-                "child": "folder-watch-actor",
-                "operation_id": "patina:watch/control.status",
+                "child": "fixture-typed-child",
+                "operation_id": "patina:fixture/control.status",
                 "outcome": "success",
                 "correlation": {
                     "rivet_run_id": "run-123",
@@ -1561,10 +1561,10 @@ fn interface_control_route_rejects_missing_operation_id() {
 fn child_call_route_dispatches_typed_operation() {
     let request = HttpRequest {
         method: "POST".to_string(),
-        path: "/child/folder-watch-actor/call".to_string(),
+        path: "/child/fixture-typed-child/call".to_string(),
         headers: vec![],
         body: serde_json::to_vec(&serde_json::json!({
-            "operation_id": "patina:watch/control.status",
+            "operation_id": "patina:fixture/control.status",
             "args": [],
             "correlation": {
                 "rivet_run_id": "run-123",
@@ -1579,7 +1579,7 @@ fn child_call_route_dispatches_typed_operation() {
     let payload: serde_json::Value = serde_json::from_slice(&response.body).unwrap();
     assert_eq!(
         payload.get("operation_id").and_then(|v| v.as_str()),
-        Some("patina:watch/control.status")
+        Some("patina:fixture/control.status")
     );
     assert_eq!(
         payload
@@ -1598,8 +1598,8 @@ fn rivet_dispatch_route_translates_to_typed_call_shape() {
         path: "/api/rivet/dispatch".to_string(),
         headers: vec![],
         body: serde_json::to_vec(&serde_json::json!({
-            "child": "folder-watch-actor",
-            "operation_id": "patina:watch/control.status",
+            "child": "fixture-typed-child",
+            "operation_id": "patina:fixture/control.status",
             "args": [],
             "correlation": {
                 "rivet_run_id": "run-123"
@@ -1635,8 +1635,8 @@ fn rivet_dispatch_route_rejects_dead_letter_without_target() {
         path: "/api/rivet/dispatch".to_string(),
         headers: vec![],
         body: serde_json::to_vec(&serde_json::json!({
-            "child": "folder-watch-actor",
-            "operation_id": "patina:watch/control.status",
+            "child": "fixture-typed-child",
+            "operation_id": "patina:fixture/control.status",
             "args": [],
             "delivery": "dead-letter"
         }))
@@ -1656,7 +1656,7 @@ fn rivet_dispatch_route_rejects_dead_letter_without_target() {
 fn child_call_route_rejects_missing_operation_id() {
     let request = HttpRequest {
         method: "POST".to_string(),
-        path: "/child/folder-watch-actor/call".to_string(),
+        path: "/child/fixture-typed-child/call".to_string(),
         headers: vec![],
         body: serde_json::to_vec(&serde_json::json!({"args": []})).unwrap(),
     };
@@ -1685,7 +1685,7 @@ fn inspector_typed_calls_route_returns_history() {
             .and_then(|items| items.first())
             .and_then(|v| v.get("operation_id"))
             .and_then(|v| v.as_str()),
-        Some("patina:watch/control.status")
+        Some("patina:fixture/control.status")
     );
 }
 
@@ -1854,8 +1854,8 @@ fn route_table_wiring_preserves_handler_surface() {
         path: "/api/rivet/dispatch".to_string(),
         headers: vec![],
         body: serde_json::to_vec(&serde_json::json!({
-            "child": "folder-watch-actor",
-            "operation_id": "patina:watch/control.status",
+            "child": "fixture-typed-child",
+            "operation_id": "patina:fixture/control.status",
             "args": []
         }))
         .unwrap(),
@@ -1875,10 +1875,10 @@ fn route_table_wiring_preserves_handler_surface() {
 
     let child_request = HttpRequest {
         method: "POST".to_string(),
-        path: "/child/folder-watch-actor/call".to_string(),
+        path: "/child/fixture-typed-child/call".to_string(),
         headers: vec![],
         body: serde_json::to_vec(&serde_json::json!({
-            "operation_id": "patina:watch/control.status",
+            "operation_id": "patina:fixture/control.status",
             "args": []
         }))
         .unwrap(),
@@ -1957,8 +1957,8 @@ fn lifecycle_warmup_maps_resource_exhausted_to_429_envelope() {
         path: "/api/rivet/dispatch".to_string(),
         headers: vec![],
         body: serde_json::to_vec(&serde_json::json!({
-            "child": "folder-watch-actor",
-            "operation_id": "patina:watch/control.status",
+            "child": "fixture-typed-child",
+            "operation_id": "patina:fixture/control.status",
             "args": []
         }))
         .unwrap(),

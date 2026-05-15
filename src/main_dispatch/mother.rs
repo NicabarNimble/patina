@@ -2,8 +2,9 @@ use anyhow::Result;
 
 pub(crate) fn dispatch_mother(
     command: Option<crate::commands::mother::MotherCommands>,
+    interface: Option<String>,
 ) -> Result<()> {
-    crate::commands::mother::execute_cli(command)?;
+    crate::commands::mother::execute_cli(command, interface)?;
     Ok(())
 }
 

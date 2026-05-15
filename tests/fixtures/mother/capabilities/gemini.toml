@@ -1,0 +1,3 @@
+hitl = "gemini"
+project_roots = [".gemini/skills", ".agents/skills"]
+global_roots = ["~/.gemini/skills", "~/.agents/skills"]

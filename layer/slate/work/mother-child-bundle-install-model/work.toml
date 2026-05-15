@@ -1,0 +1,26 @@
+id = "mother-child-bundle-install-model"
+title = "Design Mother child-bundle install model"
+kind = "design"
+status = "draft"
+human_request = "Capture the future Mother/SDK child-bundle install model separately from watcher cleanup: a bundle is an install-time package and guidance surface that groups related independently installable children, profiles, downstream suggestions, and future configuration prompts without creating a bundled runtime child."
+allium_anchors = []
+user_alignment = "User wants the richer bundle installer idea preserved as a separate top-level Slate outside the children storage cleanup path, while watcher extraction continues with minimal Slate-style release/install proof."
+belief_refs = []
+proof_plan = ["""
+[ ] Define bundle vocabulary: bundle package, child release unit, install profile, required child, optional downstream, shared contract, and config prompt.
+[ ] Document that bundles are install-time/package guidance surfaces, not runtime-coupled bundled children.
+[ ] Sketch Mother registry/install UX for grouped child installation while preserving per-child approval, install, assignment, and uninstall semantics.
+[ ] Sketch SDK support for authoring `bundle.toml` or equivalent bundle manifests.
+[ ] Explicitly defer implementation until after watcher extraction and child storage cleanup proof gates.
+"""]
+closure_evidence = []
+blocked_by = []
+implementation_plan = ["""
+[ ] Review watcher-system and Slate external-child patterns as examples of single-child vs multi-child package shapes.
+[ ] Propose minimal bundle manifest fields and install profiles.
+[ ] Identify Mother CLI/API surfaces that would consume bundle metadata.
+[ ] Identify SDK/template changes needed for child-bundle authors.
+[ ] Split implementation follow-ups after design acceptance.
+"""]
+created_at = "1778874624"
+updated_at = "1778874624"

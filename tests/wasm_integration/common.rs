@@ -9,14 +9,7 @@ pub(crate) use patina::child::testing::{
     events_subscribe, ChildEngine, ChildIngressMode, ChildKind, ChildManifest, ChildProvides,
     FilesystemAccessMode, FilesystemPreopen, PipelineEngine,
 };
-pub(crate) use patina::mother::{Child, ChildCallRequest, ChildHealth, ChildRequest, GrantedToys};
-
-pub(crate) mod watch_null_sink_bindings {
-    wasmtime::component::bindgen!({
-        path: "children/watch-null-sink/wit",
-        world: "watch-null-sink",
-    });
-}
+pub(crate) use patina::mother::{Child, ChildHealth, ChildRequest, GrantedToys};
 
 // =====================================================================
 // Helpers
@@ -165,38 +158,6 @@ pub(crate) fn lakehouse_catalog_component_path() -> Option<std::path::PathBuf> {
         "target/wasm32-wasip2/release/patina_ai_child_lakehouse_catalog.wasm",
         "target/wasm32-wasip1/debug/patina_ai_child_lakehouse_catalog.wasm",
         "target/wasm32-wasip1/release/patina_ai_child_lakehouse_catalog.wasm",
-    ] {
-        let path = root.join(rel);
-        if path.exists() {
-            return Some(path);
-        }
-    }
-    None
-}
-
-pub(crate) fn folder_watch_actor_component_path() -> Option<std::path::PathBuf> {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for rel in [
-        "target/wasm32-wasip2/debug/patina_ai_child_folder_watch_actor.wasm",
-        "target/wasm32-wasip2/release/patina_ai_child_folder_watch_actor.wasm",
-        "target/wasm32-wasip1/debug/patina_ai_child_folder_watch_actor.wasm",
-        "target/wasm32-wasip1/release/patina_ai_child_folder_watch_actor.wasm",
-    ] {
-        let path = root.join(rel);
-        if path.exists() {
-            return Some(path);
-        }
-    }
-    None
-}
-
-pub(crate) fn watch_null_sink_component_path() -> Option<std::path::PathBuf> {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for rel in [
-        "target/wasm32-wasip2/debug/patina_ai_child_watch_null_sink.wasm",
-        "target/wasm32-wasip2/release/patina_ai_child_watch_null_sink.wasm",
-        "target/wasm32-wasip1/debug/patina_ai_child_watch_null_sink.wasm",
-        "target/wasm32-wasip1/release/patina_ai_child_watch_null_sink.wasm",
     ] {
         let path = root.join(rel);
         if path.exists() {

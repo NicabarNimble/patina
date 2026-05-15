@@ -49,6 +49,8 @@ pub(crate) mod federation;
 pub(crate) mod graph;
 pub(crate) mod integrity;
 pub(crate) mod loader;
+pub(crate) mod skills_lifecycle;
+pub(crate) mod skills_sandbox;
 pub(crate) mod toys;
 
 // Moved to mother crate — re-export for daemon.rs
@@ -204,6 +206,86 @@ pub enum SkillsCommands {
     /// List installed children with skill packages
     List,
 
+    /// Report child skill projection status for the selected/inferred HITL
+    Status {
+        /// Optional child name; omitted means all fixture children in the selected scope
+        child: Option<String>,
+
+        /// Check global/user HITL scope instead of project/workspace scope
+        #[arg(long)]
+        global: bool,
+
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Plan or apply sync for stale/conflicted child skill projections
+    Sync {
+        /// Optional child name; omitted means all stale/conflicted fixture children in scope
+        child: Option<String>,
+
+        /// Check global/user HITL scope instead of project/workspace scope
+        #[arg(long)]
+        global: bool,
+
+        /// Preview actions without writing projection files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Apply force-required conflict actions after review
+        #[arg(long)]
+        force: bool,
+
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Plan or apply install for one child skill projection bundle
+    Install {
+        /// Child name, e.g. fixture-skill-app
+        child: String,
+
+        /// Check global/user HITL scope instead of project/workspace scope
+        #[arg(long)]
+        global: bool,
+
+        /// Preview actions without writing projection files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Apply force-required conflict actions after review
+        #[arg(long)]
+        force: bool,
+
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Plan or apply uninstall for one child skill projection bundle
+    Uninstall {
+        /// Child name, e.g. fixture-skill-app
+        child: String,
+
+        /// Check global/user HITL scope instead of project/workspace scope
+        #[arg(long)]
+        global: bool,
+
+        /// Preview actions without writing projection files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Apply force-required conflict actions after review
+        #[arg(long)]
+        force: bool,
+
+        /// Output raw JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Show skill packages for one child
     Show {
         /// Child name, e.g. slate-manager
@@ -217,6 +299,10 @@ pub enum SkillsCommands {
         /// Skill package name, e.g. slate-code
         skill: String,
     },
+
+    /// Create and manage isolated Mother skill sandboxes for MCT harness development
+    #[command(subcommand)]
+    Sandbox(skills_sandbox::SandboxCommands),
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
@@ -518,6 +604,30 @@ pub enum ChildrenSourceProviderCommands {
         #[arg(long)]
         child_name: Option<String>,
 
+        /// Only consider release tags with this prefix; stripped before deriving version
+        #[arg(long)]
+        tag_prefix: Option<String>,
+
+        /// Exact WASM asset name to select from matching releases
+        #[arg(long)]
+        asset_name_wasm: Option<String>,
+
+        /// Exact manifest asset name to select from matching releases
+        #[arg(long)]
+        asset_name_manifest: Option<String>,
+
+        /// Exact checksums asset name to select from matching releases
+        #[arg(long)]
+        asset_name_checksums: Option<String>,
+
+        /// Include prerelease GitHub releases
+        #[arg(long)]
+        include_prerelease: bool,
+
+        /// Minimum Patina version hint for discovered entries
+        #[arg(long)]
+        patina_min: Option<String>,
+
         /// Add as disabled source
         #[arg(long)]
         disabled: bool,
@@ -704,7 +814,7 @@ pub enum QueryCommands {
 }
 
 /// Execute mother command from CLI
-pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
+pub fn execute_cli(command: Option<MotherCommands>, interface: Option<String>) -> Result<()> {
     match command {
         None => {
             // Bare `patina mother` — show status (or help for now)
@@ -803,12 +913,12 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
         Some(MotherCommands::Children(command)) => children::execute_children(command),
         Some(MotherCommands::Lifecycle(command)) => execute_lifecycle(command),
         Some(MotherCommands::Projects(command)) => execute_projects(command),
-        Some(MotherCommands::Skills(command)) => execute_skills(command),
+        Some(MotherCommands::Skills(command)) => execute_skills(command, interface.as_deref()),
         Some(MotherCommands::View(command)) => execute_view(command),
     }
 }
 
-fn execute_skills(command: SkillsCommands) -> Result<()> {
+fn execute_skills(command: SkillsCommands, interface: Option<&str>) -> Result<()> {
     match command {
         SkillsCommands::List => {
             let rows = installed_child_skill_rows()?;
@@ -826,6 +936,32 @@ fn execute_skills(command: SkillsCommands) -> Result<()> {
             }
             Ok(())
         }
+        SkillsCommands::Status {
+            child,
+            global,
+            json,
+        } => skills_lifecycle::status(child.as_deref(), interface, global, json),
+        SkillsCommands::Sync {
+            child,
+            global,
+            dry_run,
+            force,
+            json,
+        } => skills_lifecycle::sync(child.as_deref(), interface, global, dry_run, force, json),
+        SkillsCommands::Install {
+            child,
+            global,
+            dry_run,
+            force,
+            json,
+        } => skills_lifecycle::install(&child, interface, global, dry_run, force, json),
+        SkillsCommands::Uninstall {
+            child,
+            global,
+            dry_run,
+            force,
+            json,
+        } => skills_lifecycle::uninstall(&child, interface, global, dry_run, force, json),
         SkillsCommands::Show { child } => {
             let skills = child_skills(&child)?;
             if skills.is_empty() {
@@ -851,6 +987,7 @@ fn execute_skills(command: SkillsCommands) -> Result<()> {
             println!("{}", std::fs::read_to_string(path)?);
             Ok(())
         }
+        SkillsCommands::Sandbox(command) => skills_sandbox::execute(command),
     }
 }
 
@@ -2864,6 +3001,29 @@ mod tests {
             dry_run: true,
         });
         assert!(matches!(projects_prune, MotherCommands::Projects(_)));
+
+        let skills_install = MotherCommands::Skills(SkillsCommands::Install {
+            child: "fixture-skill-app".to_string(),
+            global: false,
+            dry_run: true,
+            force: false,
+            json: true,
+        });
+        assert!(matches!(skills_install, MotherCommands::Skills(_)));
+
+        let skills_uninstall = MotherCommands::Skills(SkillsCommands::Uninstall {
+            child: "fixture-skill-app".to_string(),
+            global: false,
+            dry_run: true,
+            force: false,
+            json: true,
+        });
+        assert!(matches!(skills_uninstall, MotherCommands::Skills(_)));
+
+        let skills_sandbox = MotherCommands::Skills(SkillsCommands::Sandbox(
+            skills_sandbox::SandboxCommands::List { json: true },
+        ));
+        assert!(matches!(skills_sandbox, MotherCommands::Skills(_)));
     }
 
     #[test]

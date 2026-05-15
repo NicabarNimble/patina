@@ -1,0 +1,3 @@
+hitl = "opencode"
+project_roots = [".opencode/skills", ".agents/skills"]
+global_roots = ["~/.config/opencode/skills", "~/.opencode/skills"]

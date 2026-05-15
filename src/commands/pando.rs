@@ -113,10 +113,12 @@ pub fn native_command_names() -> Vec<String> {
     ];
 
     #[cfg(feature = "dev")]
-    {
+    let names = {
+        let mut names = names;
         names.push("upgrade");
         names.push("dev");
-    }
+        names
+    };
 
     names.into_iter().map(String::from).collect()
 }
