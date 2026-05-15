@@ -203,3 +203,4 @@
 {"created_at":"1778875886","event_type":"promoted","payload":{"force":false,"from":"ready","to":"active"},"work_id":"watcher-monorepo-retirement"}
 {"created_at":"1778876354","event_type":"completed","payload":{"force":false},"work_id":"watcher-monorepo-retirement"}
 {"created_at":"1778876372","event_type":"completed","payload":{"force":false},"work_id":"watcher-monorepo-retirement"}
+{"created_at":"1778876380","event_type":"archived","payload":{"force":false,"tag":"slate/watcher-monorepo-retirement"},"work_id":"watcher-monorepo-retirement"}
