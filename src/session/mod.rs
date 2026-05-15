@@ -184,6 +184,9 @@ mod tests {
 
     #[test]
     fn test_find_project_root_from_subdirectory() {
+        let _env_guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let temp_dir = TempDir::new().unwrap();
         fs::create_dir(temp_dir.path().join(".patina")).unwrap();
         fs::create_dir(temp_dir.path().join("layer")).unwrap();
@@ -211,6 +214,9 @@ mod tests {
 
     #[test]
     fn test_find_project_root_not_in_project() {
+        let _env_guard = crate::test_support::env_test_mutex()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let temp_dir = TempDir::new().unwrap();
 
         struct DirGuard(Option<PathBuf>);
