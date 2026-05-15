@@ -1,8 +1,0 @@
-package patina:watch-null-sink@0.1.0;
-
-world watch-null-sink {
-    import wasi:logging/logging@0.1.0;
-    import patina:measure/measure@0.1.0;
-
-    export patina:watch/events@0.1.0;
-}

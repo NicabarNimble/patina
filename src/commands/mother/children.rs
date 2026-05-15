@@ -1170,9 +1170,9 @@ mod tests {
             "NicabarNimble",
             "patina-child-watcher-system",
             GitHubSourceOptions {
-                child_name: Some("folder-watch-actor"),
-                tag_prefix: Some("folder-watch-actor-v"),
-                asset_name_wasm: Some("patina_ai_child_folder_watch_actor.wasm"),
+                child_name: Some("demo-child"),
+                tag_prefix: Some("demo-child-v"),
+                asset_name_wasm: Some("patina_ai_child_demo_child.wasm"),
                 asset_name_manifest: Some("child.toml"),
                 asset_name_checksums: Some("checksums.txt"),
                 include_prerelease: true,
@@ -1182,11 +1182,11 @@ mod tests {
 
         assert_eq!(config["owner"].as_str(), Some("NicabarNimble"));
         assert_eq!(config["repo"].as_str(), Some("patina-child-watcher-system"));
-        assert_eq!(config["child_name"].as_str(), Some("folder-watch-actor"));
-        assert_eq!(config["tag_prefix"].as_str(), Some("folder-watch-actor-v"));
+        assert_eq!(config["child_name"].as_str(), Some("demo-child"));
+        assert_eq!(config["tag_prefix"].as_str(), Some("demo-child-v"));
         assert_eq!(
             config["asset_name_wasm"].as_str(),
-            Some("patina_ai_child_folder_watch_actor.wasm")
+            Some("patina_ai_child_demo_child.wasm")
         );
         assert_eq!(config["asset_name_manifest"].as_str(), Some("child.toml"));
         assert_eq!(

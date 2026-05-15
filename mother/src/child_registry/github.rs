@@ -382,12 +382,11 @@ mod tests {
     #[test]
     fn release_version_from_tag_filters_and_strips_child_prefixes() {
         assert_eq!(
-            release_version_from_tag("folder-watch-actor-v0.1.0", Some("folder-watch-actor-v"))
-                .as_deref(),
+            release_version_from_tag("demo-child-v0.1.0", Some("demo-child-v")).as_deref(),
             Some("0.1.0")
         );
         assert_eq!(
-            release_version_from_tag("folder-watch-actor-v0.1.0", Some("watch-null-sink-v")),
+            release_version_from_tag("demo-child-v0.1.0", Some("other-child-v")),
             None
         );
     }

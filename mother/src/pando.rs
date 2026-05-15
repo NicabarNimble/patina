@@ -505,21 +505,21 @@ name = "schema-enforcer"
 id = "se"
 
 [[children]]
-name = "watch-null-sink"
+name = "dead-letter-sink"
 id = "dlq"
 
 [composition]
 
 [composition.dead-letter]
 child = "dlq"
-toy = "patina:watch/events"
+toy = "patina:events/sink"
 "#;
 
         let manifest = parse_manifest_str(raw).unwrap();
         let composition = manifest.composition.unwrap();
         let dead_letter = composition.dead_letter.expect("dead-letter should parse");
         assert_eq!(dead_letter.child, "dlq");
-        assert_eq!(dead_letter.toy.as_deref(), Some("patina:watch/events"));
+        assert_eq!(dead_letter.toy.as_deref(), Some("patina:events/sink"));
     }
 
     #[test]

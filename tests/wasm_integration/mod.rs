@@ -6,5 +6,3 @@ mod session_writer;
 mod trap_handling;
 mod wasm_models;
 mod wasm_repos;
-mod watch_actor;
-mod watch_sink;

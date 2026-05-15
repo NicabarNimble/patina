@@ -114,24 +114,24 @@ fn manifest_parses_ingress_policy_and_contract_allowlist() {
     let f = write_temp_manifest(
         r#"
 [child]
-name = "folder-watch-actor"
+name = "fixture-control-child"
 kind = "child"
 
 [child.ingress]
 mode = "hybrid"
 
 [child.contract]
-default = "patina:watch/control.status"
+default = "patina:fixture/control.status"
 allow = [
-  "patina:watch/control.configure",
-  "patina:watch/control.status",
+  "patina:fixture/control.configure",
+  "patina:fixture/control.status",
 ]
 
 [needs]
 toys = ["logging"]
 
 [provides]
-child = "folder-watch-actor"
+child = "fixture-control-child"
 "#,
     );
 
@@ -139,13 +139,13 @@ child = "folder-watch-actor"
     assert_eq!(m.ingress_mode, ChildIngressMode::Hybrid);
     assert_eq!(
         m.contract_default_operation,
-        Some("patina:watch/control.status".to_string())
+        Some("patina:fixture/control.status".to_string())
     );
     assert_eq!(
         m.contract_allow_operations,
         vec![
-            "patina:watch/control.configure".to_string(),
-            "patina:watch/control.status".to_string(),
+            "patina:fixture/control.configure".to_string(),
+            "patina:fixture/control.status".to_string(),
         ]
     );
 }
