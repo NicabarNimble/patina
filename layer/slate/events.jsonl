@@ -186,3 +186,5 @@
 {"created_at":"1778870182","event_type":"created","payload":{"status":"draft"},"work_id":"watcher-monorepo-retirement"}
 {"created_at":"1778870547","event_type":"promoted","payload":{"force":false,"from":"draft","to":"ready"},"work_id":"watcher-child-bundle-contract"}
 {"created_at":"1778870548","event_type":"promoted","payload":{"force":false,"from":"ready","to":"active"},"work_id":"watcher-child-bundle-contract"}
+{"created_at":"1778870682","event_type":"completed","payload":{"force":false},"work_id":"watcher-child-bundle-contract"}
+{"created_at":"1778870694","event_type":"completed","payload":{"force":false},"work_id":"watcher-child-bundle-contract"}
