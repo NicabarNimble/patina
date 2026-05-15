@@ -19,6 +19,7 @@ proof_plan = [
 closure_evidence = [
     "Created Slate-local Allium anchor `layer/slate/work/children-storage-cleanup/allium/children-storage-cleanup.allium` and generated `children-storage-cleanup.plan.json`; `allium check` and `allium analyse` pass cleanly.",
     "Initial inventory found repo children split across `sdk/patina-sdk` push-pure WIT/export children and `sdk/patina-sdk-legacy` handle/trait children; installed runtime state is split between flat `~/.patina/children` and command-child `~/.patina/plugins` roots.",
+    "Split watcher extraction into sub-Slates: `watcher-child-bundle-contract`, `watcher-bundle-standalone-build`, `mother-multi-child-bundle-registry`, and `watcher-monorepo-retirement`, treating folder-watch-actor plus watch-null-sink as a child-bundle ecosystem like Slate rather than unrelated in-tree children.",
 ]
 blocked_by = []
 implementation_plan = [
@@ -26,6 +27,7 @@ implementation_plan = [
 [x] Create the `children-storage-cleanup` Slate and link its Slate-local Allium file through `allium_anchors`.
 [x] Draft and validate Slate-local Allium covering inventory, storage cleanup, config contract, WIT-only config reads, dry-run/backup, and legacy compatibility.
 [ ] Capture a durable child inventory artifact summarizing repo children, installed children, plugin/command children, SDK lanes, package extras, duplicate installs, and manifest drift.
+[x] Split watcher-system externalization into focused sub-Slates so cleanup can proceed subtractively without bundling storage, registry, external build, and monorepo removal into one risky change.
 [ ] Decide target storage layout names and invariants for immutable package store, installed current pointers, Mother-owned config, assignments, and project overrides.
 [ ] Define child config schema/default/effective-config contract and how `patina:config` WIT should expose feature flags without filesystem assumptions.
 [ ] Design migration commands or doctor checks for dry-run inventory, backup, adoption/copy, duplicate detection, legacy compatibility reads, and rollback.

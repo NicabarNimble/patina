@@ -1,0 +1,31 @@
+id = "watcher-child-bundle-contract"
+title = "Define watcher child bundle contract"
+kind = "build"
+status = "draft"
+human_request = "Define the watcher system as a child bundle repo: one external repository that owns the core folder-watch actor, the watch-null-sink downstream, shared watch WIT contracts, release-unit rules, and room for future downstream children such as email or database sinks."
+allium_anchors = []
+user_alignment = "User wants watcher children to follow the Slate external-child model while treating folder-watch-actor and watch-null-sink as a bundle/ecosystem rather than unrelated children."
+belief_refs = []
+proof_plan = [
+    """
+[ ] Bundle vocabulary is defined: child-bundle repo, release unit, child package, producer actor, downstream sink, shared WIT contract, and optional skills/config artifacts.
+[ ] Current watcher pair is classified: `folder-watch-actor` is the core producer/service actor; `watch-null-sink` is the reference/null downstream sink; future sinks are expected to be owned by the same watcher ecosystem unless proven otherwise.
+[ ] Target repo layout for `/Users/nicabar/Projects/Patina/patina-child-watcher-system` is documented, including multiple child crates, shared WIT, release workflow, README/RELEASING, and optional skills/config schema/default files.
+[ ] Release-unit strategy is chosen for two children in one repo, including version alignment, asset names, checksums, and how Mother should distinguish child artifacts.
+[ ] The contract explicitly says this Slate is design/contract only and does not remove in-tree Patina children.
+""",
+]
+closure_evidence = []
+blocked_by = []
+implementation_plan = [
+    """
+[x] Review Slate extraction history and identify reusable proof gates: packageability, external repo, install/smoke, then monorepo removal.
+[x] Identify watcher pair as a bundle/ecosystem rather than unrelated children.
+[ ] Inventory current `children/folder-watch-actor` and `children/watch-null-sink` manifests, WIT, SDK deps, installs, and relationship.
+[ ] Write a watcher bundle contract artifact under this Slate describing repo layout, release units, shared WIT, downstream extension model, and non-goals.
+[ ] Decide whether v1 uses per-child release tags, per-child asset selectors, or a bundle manifest for Mother registry discovery.
+[ ] Update parent cleanup Slate evidence with the watcher bundle split.
+""",
+]
+created_at = "1778870179"
+updated_at = "1778870179"

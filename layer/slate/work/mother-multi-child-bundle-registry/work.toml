@@ -1,0 +1,30 @@
+id = "mother-multi-child-bundle-registry"
+title = "Support multi-child bundle registry releases"
+kind = "build"
+status = "draft"
+human_request = "Teach Mother registry/install flow how to discover/install multiple child release units from one child-bundle repository so watcher-system can publish folder-watch-actor and watch-null-sink from the same repo."
+allium_anchors = []
+user_alignment = "Watcher-system should be one bundle repo with two children now and more downstream children later, so Mother needs a clean way to consume multi-child release assets."
+belief_refs = []
+proof_plan = [
+    """
+[ ] Mother can represent a single source repository that publishes multiple child release units without conflating their manifests, WASM artifacts, checksums, or versions.
+[ ] Registry sync discovers both watcher children from the watcher-system repo or clearly supports configured per-child asset selection/tag filtering.
+[ ] Install verification remains hash-based and fail-closed for each child release unit.
+[ ] Assignment remains per child and per project; installing a bundle does not implicitly grant all children unless explicitly requested.
+[ ] Tests or durable fixtures cover at least two children from one source repo and preserve existing single-child GitHub release behavior such as Slate.
+""",
+]
+closure_evidence = []
+blocked_by = ["watcher-child-bundle-contract"]
+implementation_plan = [
+    """
+[ ] Read current GitHub child registry provider and identify the smallest extension for multi-child repos: asset-name selectors, tag prefixes, or a bundle manifest.
+[ ] Decide v1 registry model for watcher-system based on the bundle contract.
+[ ] Implement source configuration and discovery changes while preserving existing Slate registry behavior.
+[ ] Add tests for two watcher child release units from one repo/source.
+[ ] Verify `patina mother children sync/search/approve/install/assign` can handle the watcher pair independently.
+""",
+]
+created_at = "1778870181"
+updated_at = "1778870181"

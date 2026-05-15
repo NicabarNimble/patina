@@ -1,0 +1,33 @@
+id = "watcher-bundle-standalone-build"
+title = "Build watcher children externally"
+kind = "build"
+status = "draft"
+human_request = "Move/copy folder-watch-actor and watch-null-sink into ~/Projects/Patina/patina-child-watcher-system and make both children buildable/installable from that external repo using published patina-sdk and clean child manifests."
+allium_anchors = []
+user_alignment = "User already has an empty watcher-system repo and wants the existing non-legacy watcher children moved there like Slate, without breaking Patina core during extraction."
+belief_refs = []
+proof_plan = [
+    """
+[ ] `/Users/nicabar/Projects/Patina/patina-child-watcher-system` contains standalone child packages for `folder-watch-actor` and `watch-null-sink` with no monorepo-relative `patina-sdk` path dependencies.
+[ ] Both children have normalized `child.toml` metadata, including name, version, kind, role, ingress/contract where applicable, needs/toys/scopes, and Patina minimum when decided.
+[ ] Both children build from the external repo with `cargo component build --release` or documented per-child build commands.
+[ ] Both children install locally via `patina child install <child-package> --wasm <artifact> --force` without manual file copying.
+[ ] Local smoke proves the actor and null sink can be loaded/called from installed external artifacts.
+[ ] Patina monorepo sources remain untouched except for documentation/evidence until external proof is complete.
+""",
+]
+closure_evidence = []
+blocked_by = ["watcher-child-bundle-contract"]
+implementation_plan = [
+    """
+[ ] Copy `children/folder-watch-actor` and `children/watch-null-sink` into the external watcher-system repo according to the bundle contract.
+[ ] Convert each child from local path `patina-sdk` dependency to a published SDK version.
+[ ] Normalize manifests and align child manifest versions with Cargo package versions.
+[ ] Tighten WIT dependency layout so external `cargo component build` resolves without monorepo assumptions.
+[ ] Build and test both children in the external repo.
+[ ] Install both children locally from the external repo and run smoke checks.
+[ ] Commit/push the external watcher-system repo changes separately from Patina core changes.
+""",
+]
+created_at = "1778870180"
+updated_at = "1778870180"
