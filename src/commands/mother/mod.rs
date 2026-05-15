@@ -604,6 +604,30 @@ pub enum ChildrenSourceProviderCommands {
         #[arg(long)]
         child_name: Option<String>,
 
+        /// Only consider release tags with this prefix; stripped before deriving version
+        #[arg(long)]
+        tag_prefix: Option<String>,
+
+        /// Exact WASM asset name to select from matching releases
+        #[arg(long)]
+        asset_name_wasm: Option<String>,
+
+        /// Exact manifest asset name to select from matching releases
+        #[arg(long)]
+        asset_name_manifest: Option<String>,
+
+        /// Exact checksums asset name to select from matching releases
+        #[arg(long)]
+        asset_name_checksums: Option<String>,
+
+        /// Include prerelease GitHub releases
+        #[arg(long)]
+        include_prerelease: bool,
+
+        /// Minimum Patina version hint for discovered entries
+        #[arg(long)]
+        patina_min: Option<String>,
+
         /// Add as disabled source
         #[arg(long)]
         disabled: bool,

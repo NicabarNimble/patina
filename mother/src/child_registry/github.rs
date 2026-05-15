@@ -55,6 +55,12 @@ impl ChildRegistryProvider for GitHubChildRegistryProvider {
                 continue;
             }
 
+            let Some(version) =
+                release_version_from_tag(&release.tag_name, config.tag_prefix.as_deref())
+            else {
+                continue;
+            };
+
             let wasm_asset =
                 match select_asset(&release.assets, config.asset_name_wasm.as_deref(), |name| {
                     name.ends_with(".wasm")
@@ -92,12 +98,6 @@ impl ChildRegistryProvider for GitHubChildRegistryProvider {
                 .clone()
                 .or_else(|| wasm_asset.name.strip_suffix(".wasm").map(|s| s.to_string()))
                 .unwrap_or_else(|| config.repo.clone());
-            let version = release
-                .tag_name
-                .strip_prefix('v')
-                .unwrap_or(&release.tag_name)
-                .to_string();
-
             discovered.push(DiscoveredChildRelease {
                 child_name,
                 version,
@@ -243,6 +243,8 @@ struct GitHubSourceConfig {
     #[serde(default)]
     child_name: Option<String>,
     #[serde(default)]
+    tag_prefix: Option<String>,
+    #[serde(default)]
     asset_name_wasm: Option<String>,
     #[serde(default)]
     asset_name_manifest: Option<String>,
@@ -267,6 +269,19 @@ struct GitHubRelease {
 struct GitHubReleaseAsset {
     name: String,
     browser_download_url: String,
+}
+
+fn release_version_from_tag(tag_name: &str, tag_prefix: Option<&str>) -> Option<String> {
+    let version = match tag_prefix {
+        Some(prefix) => tag_name.strip_prefix(prefix)?,
+        None => tag_name,
+    };
+    let version = version.strip_prefix('v').unwrap_or(version);
+    if version.is_empty() {
+        None
+    } else {
+        Some(version.to_string())
+    }
 }
 
 fn select_asset<'a>(
@@ -351,6 +366,31 @@ fn github_token() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_version_from_tag_preserves_single_child_v_tags() {
+        assert_eq!(
+            release_version_from_tag("v0.2.0", None).as_deref(),
+            Some("0.2.0")
+        );
+        assert_eq!(
+            release_version_from_tag("0.2.0", None).as_deref(),
+            Some("0.2.0")
+        );
+    }
+
+    #[test]
+    fn release_version_from_tag_filters_and_strips_child_prefixes() {
+        assert_eq!(
+            release_version_from_tag("folder-watch-actor-v0.1.0", Some("folder-watch-actor-v"))
+                .as_deref(),
+            Some("0.1.0")
+        );
+        assert_eq!(
+            release_version_from_tag("folder-watch-actor-v0.1.0", Some("watch-null-sink-v")),
+            None
+        );
+    }
 
     #[test]
     fn parse_checksums_supports_common_formats() {
