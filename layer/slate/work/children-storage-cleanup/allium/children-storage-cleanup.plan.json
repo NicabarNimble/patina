@@ -1,0 +1,806 @@
+{
+  "obligations": [
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on ChildStorageRoot are present with correct types",
+      "detail": {
+        "fields": [
+          "path",
+          "root_kind",
+          "mutable",
+          "legacy_compat"
+        ]
+      },
+      "id": "entity-fields.ChildStorageRoot",
+      "source_construct": "ChildStorageRoot",
+      "source_span": {
+        "end": 715,
+        "start": 507
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on ChildPackageArtifact are present with correct types",
+      "detail": {
+        "fields": [
+          "child_name",
+          "version",
+          "manifest_path",
+          "wasm_path",
+          "bundle_path",
+          "sdk_lane",
+          "storage_root",
+          "has_manifest",
+          "has_wasm",
+          "has_skills",
+          "has_wit",
+          "has_config_schema",
+          "has_default_config"
+        ]
+      },
+      "id": "entity-fields.ChildPackageArtifact",
+      "source_construct": "ChildPackageArtifact",
+      "source_span": {
+        "end": 1141,
+        "start": 717
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildPackageArtifact.version accepts null and non-null values",
+      "id": "entity-optional.ChildPackageArtifact.version",
+      "source_construct": "ChildPackageArtifact.version",
+      "source_span": {
+        "end": 1141,
+        "start": 717
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildPackageArtifact.wasm_path accepts null and non-null values",
+      "id": "entity-optional.ChildPackageArtifact.wasm_path",
+      "source_construct": "ChildPackageArtifact.wasm_path",
+      "source_span": {
+        "end": 1141,
+        "start": 717
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildPackageArtifact.bundle_path accepts null and non-null values",
+      "id": "entity-optional.ChildPackageArtifact.bundle_path",
+      "source_construct": "ChildPackageArtifact.bundle_path",
+      "source_span": {
+        "end": 1141,
+        "start": 717
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on ChildInstallState are present with correct types",
+      "detail": {
+        "fields": [
+          "child_name",
+          "installed_version",
+          "runtime_lane",
+          "current_artifact",
+          "config_path",
+          "assignments_path",
+          "classification"
+        ]
+      },
+      "id": "entity-fields.ChildInstallState",
+      "source_construct": "ChildInstallState",
+      "source_span": {
+        "end": 1524,
+        "start": 1143
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildInstallState.installed_version accepts null and non-null values",
+      "id": "entity-optional.ChildInstallState.installed_version",
+      "source_construct": "ChildInstallState.installed_version",
+      "source_span": {
+        "end": 1524,
+        "start": 1143
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildInstallState.current_artifact accepts null and non-null values",
+      "id": "entity-optional.ChildInstallState.current_artifact",
+      "source_construct": "ChildInstallState.current_artifact",
+      "source_span": {
+        "end": 1524,
+        "start": 1143
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildInstallState.config_path accepts null and non-null values",
+      "id": "entity-optional.ChildInstallState.config_path",
+      "source_construct": "ChildInstallState.config_path",
+      "source_span": {
+        "end": 1524,
+        "start": 1143
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildInstallState.assignments_path accepts null and non-null values",
+      "id": "entity-optional.ChildInstallState.assignments_path",
+      "source_construct": "ChildInstallState.assignments_path",
+      "source_span": {
+        "end": 1524,
+        "start": 1143
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on ChildConfigContract are present with correct types",
+      "detail": {
+        "fields": [
+          "child_name",
+          "schema_path",
+          "default_config_path",
+          "mother_config_path",
+          "project_override_path",
+          "child_declares_config_toy",
+          "effective_config_owned_by_mother",
+          "child_reads_config_via_wit",
+          "grants_extra_capabilities"
+        ]
+      },
+      "id": "entity-fields.ChildConfigContract",
+      "source_construct": "ChildConfigContract",
+      "source_span": {
+        "end": 1869,
+        "start": 1526
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildConfigContract.schema_path accepts null and non-null values",
+      "id": "entity-optional.ChildConfigContract.schema_path",
+      "source_construct": "ChildConfigContract.schema_path",
+      "source_span": {
+        "end": 1869,
+        "start": 1526
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildConfigContract.default_config_path accepts null and non-null values",
+      "id": "entity-optional.ChildConfigContract.default_config_path",
+      "source_construct": "ChildConfigContract.default_config_path",
+      "source_span": {
+        "end": 1869,
+        "start": 1526
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildConfigContract.mother_config_path accepts null and non-null values",
+      "id": "entity-optional.ChildConfigContract.mother_config_path",
+      "source_construct": "ChildConfigContract.mother_config_path",
+      "source_span": {
+        "end": 1869,
+        "start": 1526
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildConfigContract.project_override_path accepts null and non-null values",
+      "id": "entity-optional.ChildConfigContract.project_override_path",
+      "source_construct": "ChildConfigContract.project_override_path",
+      "source_span": {
+        "end": 1869,
+        "start": 1526
+      }
+    },
+    {
+      "category": "entity_fields",
+      "description": "Verify all declared fields on ChildCleanupPlan are present with correct types",
+      "detail": {
+        "fields": [
+          "id",
+          "dry_run",
+          "apply",
+          "backup_path",
+          "inventory_count",
+          "duplicate_count",
+          "legacy_count",
+          "migration_action_count",
+          "outcome"
+        ]
+      },
+      "id": "entity-fields.ChildCleanupPlan",
+      "source_construct": "ChildCleanupPlan",
+      "source_span": {
+        "end": 2147,
+        "start": 1871
+      }
+    },
+    {
+      "category": "entity_optional",
+      "description": "Verify optional field ChildCleanupPlan.backup_path accepts null and non-null values",
+      "id": "entity-optional.ChildCleanupPlan.backup_path",
+      "source_construct": "ChildCleanupPlan.backup_path",
+      "source_span": {
+        "end": 2147,
+        "start": 1871
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageRootDiscovered"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule InventoryKnownChildRoots succeeds when all preconditions are met",
+      "id": "rule-success.InventoryKnownChildRoots",
+      "source_construct": "InventoryKnownChildRoots",
+      "source_span": {
+        "end": 2604,
+        "start": 2149
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildAuthoringPatternRecorded",
+          "ChildSdkLinkRecorded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ClassifyPushPureSdkChildren succeeds when all preconditions are met",
+      "id": "rule-success.ClassifyPushPureSdkChildren",
+      "source_construct": "ClassifyPushPureSdkChildren",
+      "source_span": {
+        "end": 2937,
+        "start": 2606
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildAuthoringPatternRecorded",
+          "ChildSdkLinkRecorded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ClassifyPushPureSdkChildren is rejected when requires clause fails",
+      "id": "rule-failure.ClassifyPushPureSdkChildren.1",
+      "source_construct": "ClassifyPushPureSdkChildren",
+      "source_span": {
+        "end": 2738,
+        "start": 2695
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildAuthoringPatternRecorded",
+          "ChildSdkLinkRecorded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ClassifyLegacyHandleSdkChildren succeeds when all preconditions are met",
+      "id": "rule-success.ClassifyLegacyHandleSdkChildren",
+      "source_construct": "ClassifyLegacyHandleSdkChildren",
+      "source_span": {
+        "end": 3285,
+        "start": 2939
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildAuthoringPatternRecorded",
+          "ChildSdkLinkRecorded"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ClassifyLegacyHandleSdkChildren is rejected when requires clause fails",
+      "id": "rule-failure.ClassifyLegacyHandleSdkChildren.1",
+      "source_construct": "ClassifyLegacyHandleSdkChildren",
+      "source_span": {
+        "end": 3079,
+        "start": 3032
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageDriftDetected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule DetectDuplicateChildrenAcrossRuntimeRoots succeeds when all preconditions are met",
+      "id": "rule-success.DetectDuplicateChildrenAcrossRuntimeRoots",
+      "source_construct": "DetectDuplicateChildrenAcrossRuntimeRoots",
+      "source_span": {
+        "end": 3684,
+        "start": 3287
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageDriftDetected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule DetectDuplicateChildrenAcrossRuntimeRoots is rejected when requires clause fails",
+      "id": "rule-failure.DetectDuplicateChildrenAcrossRuntimeRoots.1",
+      "source_construct": "DetectDuplicateChildrenAcrossRuntimeRoots",
+      "source_span": {
+        "end": 3434,
+        "start": 3390
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageDriftDetected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule DetectDuplicateChildrenAcrossRuntimeRoots is rejected when requires clause fails",
+      "id": "rule-failure.DetectDuplicateChildrenAcrossRuntimeRoots.2",
+      "source_construct": "DetectDuplicateChildrenAcrossRuntimeRoots",
+      "source_span": {
+        "end": 3488,
+        "start": 3439
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageDriftDetected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule DetectPackageBundleMissingFromFlatMotherInstall succeeds when all preconditions are met",
+      "id": "rule-success.DetectPackageBundleMissingFromFlatMotherInstall",
+      "source_construct": "DetectPackageBundleMissingFromFlatMotherInstall",
+      "source_span": {
+        "end": 4157,
+        "start": 3686
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageDriftDetected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule DetectPackageBundleMissingFromFlatMotherInstall is rejected when requires clause fails",
+      "id": "rule-failure.DetectPackageBundleMissingFromFlatMotherInstall.1",
+      "source_construct": "DetectPackageBundleMissingFromFlatMotherInstall",
+      "source_span": {
+        "end": 3837,
+        "start": 3791
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageDriftDetected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule DetectPackageBundleMissingFromFlatMotherInstall is rejected when requires clause fails",
+      "id": "rule-failure.DetectPackageBundleMissingFromFlatMotherInstall.2",
+      "source_construct": "DetectPackageBundleMissingFromFlatMotherInstall",
+      "source_span": {
+        "end": 3883,
+        "start": 3842
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageDriftDetected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule DetectPackageBundleMissingFromFlatMotherInstall is rejected when requires clause fails",
+      "id": "rule-failure.DetectPackageBundleMissingFromFlatMotherInstall.3",
+      "source_construct": "DetectPackageBundleMissingFromFlatMotherInstall",
+      "source_span": {
+        "end": 3931,
+        "start": 3888
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageDriftDetected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule DetectPackageBundleMissingFromFlatMotherInstall is rejected when requires clause fails",
+      "id": "rule-failure.DetectPackageBundleMissingFromFlatMotherInstall.4",
+      "source_construct": "DetectPackageBundleMissingFromFlatMotherInstall",
+      "source_span": {
+        "end": 3985,
+        "start": 3936
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageDriftDetected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule DetectPackageBundleMissingFromFlatMotherInstall is rejected when requires clause fails",
+      "id": "rule-failure.DetectPackageBundleMissingFromFlatMotherInstall.5",
+      "source_construct": "DetectPackageBundleMissingFromFlatMotherInstall",
+      "source_span": {
+        "end": 4036,
+        "start": 3990
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildStorageRootDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule FutureStoreSeparatesImmutablePackageFromMutableInstall succeeds when all preconditions are met",
+      "id": "rule-success.FutureStoreSeparatesImmutablePackageFromMutableInstall",
+      "source_construct": "FutureStoreSeparatesImmutablePackageFromMutableInstall",
+      "source_span": {
+        "end": 4930,
+        "start": 4159
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildConfigLayerDeclared"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule EffectiveConfigIsMotherOwned succeeds when all preconditions are met",
+      "id": "rule-success.EffectiveConfigIsMotherOwned",
+      "source_construct": "EffectiveConfigIsMotherOwned",
+      "source_span": {
+        "end": 5401,
+        "start": 4932
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildFilesystemConfigPathAssumptionRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ChildReadsConfigThroughWitOnly succeeds when all preconditions are met",
+      "id": "rule-success.ChildReadsConfigThroughWitOnly",
+      "source_construct": "ChildReadsConfigThroughWitOnly",
+      "source_span": {
+        "end": 5685,
+        "start": 5403
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildFilesystemConfigPathAssumptionRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ChildReadsConfigThroughWitOnly is rejected when requires clause fails",
+      "id": "rule-failure.ChildReadsConfigThroughWitOnly.1",
+      "source_construct": "ChildReadsConfigThroughWitOnly",
+      "source_span": {
+        "end": 5537,
+        "start": 5493
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildConfigRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ConfigCannotGrantUndeclaredCapabilities succeeds when all preconditions are met",
+      "id": "rule-success.ConfigCannotGrantUndeclaredCapabilities",
+      "source_construct": "ConfigCannotGrantUndeclaredCapabilities",
+      "source_span": {
+        "end": 5946,
+        "start": 5687
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildConfigRejected"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule ConfigCannotGrantUndeclaredCapabilities is rejected when requires clause fails",
+      "id": "rule-failure.ConfigCannotGrantUndeclaredCapabilities.1",
+      "source_construct": "ConfigCannotGrantUndeclaredCapabilities",
+      "source_span": {
+        "end": 5830,
+        "start": 5786
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildCleanupBackupRequired",
+          "ChildCleanupDryRunRequired"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule CleanupMigrationRequiresDryRunAndBackup succeeds when all preconditions are met",
+      "id": "rule-success.CleanupMigrationRequiresDryRunAndBackup",
+      "source_construct": "CleanupMigrationRequiresDryRunAndBackup",
+      "source_span": {
+        "end": 6171,
+        "start": 5948
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildCleanupBackupRequired",
+          "ChildCleanupDryRunRequired"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule CleanupMigrationRequiresDryRunAndBackup is rejected when requires clause fails",
+      "id": "rule-failure.CleanupMigrationRequiresDryRunAndBackup.1",
+      "source_construct": "CleanupMigrationRequiresDryRunAndBackup",
+      "source_span": {
+        "end": 6059,
+        "start": 6039
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "LegacyChildInventoryPreserved",
+          "LegacyReadCompatibilityMaintained"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule LegacyCompatibilityIsPreservedDuringCleanup succeeds when all preconditions are met",
+      "id": "rule-success.LegacyCompatibilityIsPreservedDuringCleanup",
+      "source_construct": "LegacyCompatibilityIsPreservedDuringCleanup",
+      "source_span": {
+        "end": 6421,
+        "start": 6173
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "LegacyChildInventoryPreserved",
+          "LegacyReadCompatibilityMaintained"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule LegacyCompatibilityIsPreservedDuringCleanup is rejected when requires clause fails",
+      "id": "rule-failure.LegacyCompatibilityIsPreservedDuringCleanup.1",
+      "source_construct": "LegacyCompatibilityIsPreservedDuringCleanup",
+      "source_span": {
+        "end": 6299,
+        "start": 6268
+      }
+    },
+    {
+      "category": "rule_success",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildCleanupBlocked"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule CleanupPlanBlocksOnAmbiguousCurrentVersion succeeds when all preconditions are met",
+      "id": "rule-success.CleanupPlanBlocksOnAmbiguousCurrentVersion",
+      "source_construct": "CleanupPlanBlocksOnAmbiguousCurrentVersion",
+      "source_span": {
+        "end": 6694,
+        "start": 6423
+      }
+    },
+    {
+      "category": "rule_failure",
+      "dependencies": {
+        "trigger_emissions": [
+          "ChildCleanupBlocked"
+        ],
+        "trigger_source": "external"
+      },
+      "description": "Verify rule CleanupPlanBlocksOnAmbiguousCurrentVersion is rejected when requires clause fails",
+      "id": "rule-failure.CleanupPlanBlocksOnAmbiguousCurrentVersion.1",
+      "source_construct": "CleanupPlanBlocksOnAmbiguousCurrentVersion",
+      "source_span": {
+        "end": 6565,
+        "start": 6517
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface ChildStorageCleanupCLI is accessible only to the specified actor",
+      "id": "surface-actor.ChildStorageCleanupCLI",
+      "source_construct": "ChildStorageCleanupCLI",
+      "source_span": {
+        "end": 7163,
+        "start": 6696
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on ChildStorageCleanupCLI is accessible",
+      "detail": {
+        "items": [
+          "id",
+          "dry_run",
+          "apply",
+          "backup_path",
+          "inventory_count",
+          "duplicate_count",
+          "legacy_count",
+          "migration_action_count",
+          "outcome"
+        ],
+        "surface": "ChildStorageCleanupCLI"
+      },
+      "id": "surface-exposure.ChildStorageCleanupCLI",
+      "source_construct": "ChildStorageCleanupCLI",
+      "source_span": {
+        "end": 7030,
+        "start": 6800
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on ChildStorageCleanupCLI appear/hide based on when conditions",
+      "id": "surface-provides.ChildStorageCleanupCLI",
+      "source_construct": "ChildStorageCleanupCLI",
+      "source_span": {
+        "end": 7161,
+        "start": 7036
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface ChildPackageInventoryView is accessible only to the specified actor",
+      "id": "surface-actor.ChildPackageInventoryView",
+      "source_construct": "ChildPackageInventoryView",
+      "source_span": {
+        "end": 8134,
+        "start": 7165
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on ChildPackageInventoryView is accessible",
+      "detail": {
+        "items": [
+          "child_name",
+          "version",
+          "manifest_path",
+          "wasm_path",
+          "bundle_path",
+          "sdk_lane",
+          "path",
+          "root_kind",
+          "mutable",
+          "legacy_compat",
+          "has_manifest",
+          "has_wasm",
+          "has_skills",
+          "has_wit",
+          "has_config_schema",
+          "has_default_config",
+          "child_name",
+          "installed_version",
+          "runtime_lane",
+          "config_path",
+          "assignments_path",
+          "classification"
+        ],
+        "surface": "ChildPackageInventoryView"
+      },
+      "id": "surface-exposure.ChildPackageInventoryView",
+      "source_construct": "ChildPackageInventoryView",
+      "source_span": {
+        "end": 8016,
+        "start": 7323
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on ChildPackageInventoryView appear/hide based on when conditions",
+      "id": "surface-provides.ChildPackageInventoryView",
+      "source_construct": "ChildPackageInventoryView",
+      "source_span": {
+        "end": 8132,
+        "start": 8022
+      }
+    },
+    {
+      "category": "surface_actor",
+      "description": "Verify surface ChildConfigContractView is accessible only to the specified actor",
+      "id": "surface-actor.ChildConfigContractView",
+      "source_construct": "ChildConfigContractView",
+      "source_span": {
+        "end": 8671,
+        "start": 8136
+      }
+    },
+    {
+      "category": "surface_exposure",
+      "description": "Verify each exposed item on ChildConfigContractView is accessible",
+      "detail": {
+        "items": [
+          "child_name",
+          "schema_path",
+          "default_config_path",
+          "mother_config_path",
+          "project_override_path",
+          "child_declares_config_toy",
+          "effective_config_owned_by_mother",
+          "child_reads_config_via_wit",
+          "grants_extra_capabilities"
+        ],
+        "surface": "ChildConfigContractView"
+      },
+      "id": "surface-exposure.ChildConfigContractView",
+      "source_construct": "ChildConfigContractView",
+      "source_span": {
+        "end": 8608,
+        "start": 8251
+      }
+    },
+    {
+      "category": "surface_provides",
+      "description": "Verify provided operations on ChildConfigContractView appear/hide based on when conditions",
+      "id": "surface-provides.ChildConfigContractView",
+      "source_construct": "ChildConfigContractView",
+      "source_span": {
+        "end": 8669,
+        "start": 8614
+      }
+    }
+  ],
+  "version": 3
+}

@@ -1,0 +1,238 @@
+-- allium: 3
+-- children-storage-cleanup.allium
+
+-- Slate-local spec for `children-storage-cleanup`.
+-- Purpose: serve completion of this Slate only.
+-- Scope: inventory current child storage drift, define a safe cleanup/migration shape,
+--   and describe the child config contract needed for feature activation without recompiling.
+-- Excludes:
+--   - final durable project Allium policy
+--   - remote registry trust beyond already-verified artifact hashes
+--   - HITL skill projection lifecycle behavior
+
+entity ChildStorageRoot {
+    path: String
+    root_kind: mother_runtime_children | command_children_compat | repo_children | sdk_template | pipeline_children
+    mutable: Boolean
+    legacy_compat: Boolean
+}
+
+entity ChildPackageArtifact {
+    child_name: String
+    version: String?
+    manifest_path: String
+    wasm_path: String?
+    bundle_path: String?
+    sdk_lane: push_pure_sdk | legacy_handle_sdk | external_command_child | unknown
+    storage_root: ChildStorageRoot
+
+    has_manifest: Boolean
+    has_wasm: Boolean
+    has_skills: Boolean
+    has_wit: Boolean
+    has_config_schema: Boolean
+    has_default_config: Boolean
+}
+
+entity ChildInstallState {
+    child_name: String
+    installed_version: String?
+    runtime_lane: mother_daemon | command_child | pipeline | legacy_plugin
+    current_artifact: ChildPackageArtifact?
+    config_path: String?
+    assignments_path: String?
+    classification: current | duplicate | drifted | legacy_only | missing_bundle | missing_manifest | missing_wasm | unknown
+}
+
+entity ChildConfigContract {
+    child_name: String
+    schema_path: String?
+    default_config_path: String?
+    mother_config_path: String?
+    project_override_path: String?
+
+    child_declares_config_toy: Boolean
+    effective_config_owned_by_mother: Boolean
+    child_reads_config_via_wit: Boolean
+    grants_extra_capabilities: Boolean
+}
+
+entity ChildCleanupPlan {
+    id: String
+    dry_run: Boolean
+    apply: Boolean
+    backup_path: String?
+    inventory_count: Integer
+    duplicate_count: Integer
+    legacy_count: Integer
+    migration_action_count: Integer
+    outcome: planned | applied | blocked | error
+}
+
+rule InventoryKnownChildRoots {
+    when: ChildCleanupInventoryRequested()
+    ensures: ChildStorageRootDiscovered(path: "~/.patina/children", root_kind: mother_runtime_children)
+    ensures: ChildStorageRootDiscovered(path: "~/.patina/plugins", root_kind: command_children_compat)
+    ensures: ChildStorageRootDiscovered(path: "children/", root_kind: repo_children)
+    ensures: ChildStorageRootDiscovered(path: "sdk/template", root_kind: sdk_template)
+}
+
+rule ClassifyPushPureSdkChildren {
+    when: ChildPackageArtifactInspected(artifact)
+    requires: artifact.sdk_lane = push_pure_sdk
+    ensures: ChildSdkLinkRecorded(child_name: artifact.child_name, sdk: "sdk/patina-sdk")
+    ensures: ChildAuthoringPatternRecorded(child_name: artifact.child_name, pattern: "wit_bindgen_export")
+}
+
+rule ClassifyLegacyHandleSdkChildren {
+    when: ChildPackageArtifactInspected(artifact)
+    requires: artifact.sdk_lane = legacy_handle_sdk
+    ensures: ChildSdkLinkRecorded(child_name: artifact.child_name, sdk: "sdk/patina-sdk-legacy")
+    ensures: ChildAuthoringPatternRecorded(child_name: artifact.child_name, pattern: "legacy_child_trait")
+}
+
+rule DetectDuplicateChildrenAcrossRuntimeRoots {
+    when: ChildInstallStateInspected(left, right)
+    requires: left.child_name = right.child_name
+    requires: left.runtime_lane != right.runtime_lane
+    ensures: ChildStorageDriftDetected(child_name: left.child_name, reason: "duplicate_runtime_roots")
+    ensures: left.classification = duplicate
+    ensures: right.classification = duplicate
+}
+
+rule DetectPackageBundleMissingFromFlatMotherInstall {
+    when: ChildInstallStateInspected(install)
+    requires: install.runtime_lane = mother_daemon
+    requires: exists install.current_artifact
+    requires: install.current_artifact.has_wasm
+    requires: not install.current_artifact.has_skills
+    requires: not install.current_artifact.has_wit
+    ensures: ChildStorageDriftDetected(child_name: install.child_name, reason: "flat_install_missing_optional_bundle")
+}
+
+rule FutureStoreSeparatesImmutablePackageFromMutableInstall {
+    when: ChildStorageLayoutDesigned()
+    ensures: ChildStorageRootDeclared(path: "~/.patina/mother/children/store", root_kind: mother_runtime_children, mutable: false)
+    ensures: ChildStorageRootDeclared(path: "~/.patina/mother/children/installed", root_kind: mother_runtime_children, mutable: true)
+    ensures: ChildStorageRootDeclared(path: "~/.patina/mother/children/projects", root_kind: mother_runtime_children, mutable: true)
+    @guidance
+        -- Immutable package artifacts include child.toml, child.wasm, checksums, WIT,
+        -- skills, config.schema.toml, and default.config.toml. Mutable install state
+        -- includes current-version pointers, Mother-owned config, and assignments.
+}
+
+rule EffectiveConfigIsMotherOwned {
+    when: ChildConfigContractDesigned(contract)
+    ensures: contract.effective_config_owned_by_mother = true
+    ensures: ChildConfigLayerDeclared(child_name: contract.child_name, layer: "child_default_config")
+    ensures: ChildConfigLayerDeclared(child_name: contract.child_name, layer: "mother_installed_child_config")
+    ensures: ChildConfigLayerDeclared(child_name: contract.child_name, layer: "project_assignment_override")
+}
+
+rule ChildReadsConfigThroughWitOnly {
+    when: ChildConfigContractDesigned(contract)
+    requires: contract.child_declares_config_toy
+    ensures: contract.child_reads_config_via_wit = true
+    ensures: ChildFilesystemConfigPathAssumptionRejected(child_name: contract.child_name)
+}
+
+rule ConfigCannotGrantUndeclaredCapabilities {
+    when: ChildConfigContractDesigned(contract)
+    requires: contract.grants_extra_capabilities
+    ensures: ChildConfigRejected(child_name: contract.child_name, reason: "config_cannot_grant_undeclared_needs")
+}
+
+rule CleanupMigrationRequiresDryRunAndBackup {
+    when: ChildCleanupPlanCreated(plan)
+    requires: plan.apply
+    ensures: ChildCleanupDryRunRequired(plan: plan.id)
+    ensures: ChildCleanupBackupRequired(plan: plan.id)
+}
+
+rule LegacyCompatibilityIsPreservedDuringCleanup {
+    when: ChildCleanupPlanCreated(plan)
+    requires: plan.legacy_count > 0
+    ensures: LegacyChildInventoryPreserved(plan: plan.id)
+    ensures: LegacyReadCompatibilityMaintained(plan: plan.id)
+}
+
+rule CleanupPlanBlocksOnAmbiguousCurrentVersion {
+    when: ChildCleanupPlanCreated(plan)
+    requires: AmbiguousCurrentChildVersionDetected()
+    ensures: plan.outcome = blocked
+    ensures: ChildCleanupBlocked(plan: plan.id, reason: "ambiguous_current_child_version")
+}
+
+surface ChildStorageCleanupCLI {
+    facing _: ChildCleanupPlan
+    context plan: ChildCleanupPlan
+
+    exposes:
+        plan.id
+        plan.dry_run
+        plan.apply
+        plan.backup_path
+        plan.inventory_count
+        plan.duplicate_count
+        plan.legacy_count
+        plan.migration_action_count
+        plan.outcome
+
+    provides:
+        ChildCleanupInventoryRequested()
+        ChildStorageLayoutDesigned()
+        ChildCleanupPlanCreated(plan)
+}
+
+surface ChildPackageInventoryView {
+    facing _: ChildPackageArtifact
+    context artifact: ChildPackageArtifact
+    context install: ChildInstallState
+
+    exposes:
+        artifact.child_name
+        artifact.version
+        artifact.manifest_path
+        artifact.wasm_path
+        artifact.bundle_path
+        artifact.sdk_lane
+        artifact.storage_root.path
+        artifact.storage_root.root_kind
+        artifact.storage_root.mutable
+        artifact.storage_root.legacy_compat
+        artifact.has_manifest
+        artifact.has_wasm
+        artifact.has_skills
+        artifact.has_wit
+        artifact.has_config_schema
+        artifact.has_default_config
+        install.child_name
+        install.installed_version
+        install.runtime_lane
+        install.config_path
+        install.assignments_path
+        install.classification
+
+    provides:
+        ChildPackageArtifactInspected(artifact)
+        ChildInstallStateInspected(install, install)
+}
+
+surface ChildConfigContractView {
+    facing _: ChildConfigContract
+    context contract: ChildConfigContract
+
+    exposes:
+        contract.child_name
+        contract.schema_path
+        contract.default_config_path
+        contract.mother_config_path
+        contract.project_override_path
+        contract.child_declares_config_toy
+        contract.effective_config_owned_by_mother
+        contract.child_reads_config_via_wit
+        contract.grants_extra_capabilities
+
+    provides:
+        ChildConfigContractDesigned(contract)
+}
