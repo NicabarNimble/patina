@@ -1,0 +1,27 @@
+id = "jon-gjengset-quickwins-audit"
+title = "Audit PR quick wins through a Jon Gjengset lens"
+kind = "design"
+status = "draft"
+human_request = "Create a quick-wins audit of the merged Patina PR through a Jon Gjengset-style review lens: identify reviewability, API boundary, testability, install-root, and Mother-scope concerns; separate must-fix-before-next-merge items from follow-up Slates; do not change code in this Slate."
+allium_anchors = []
+user_alignment = "User wants a reasoning surface for cleanup priorities after merging the watcher/Mother PR, using the Jon Gjengset lens as a practical reviewer heuristic rather than as a code-change request."
+belief_refs = []
+proof_plan = ["""
+[ ] Audit artifact identifies reviewability, API boundary, testability, install-root, Mother-scope, and process concerns from the merged PR.
+[ ] Each concern is classified as one of: immediate quick win, next cleanup Slate, deeper design Slate, or accepted trade-off.
+[ ] Audit explicitly separates watcher/Mother follow-ups from the separate future `mother-child-bundle-install-model` idea.
+[ ] Audit produces a recommended next action for continuing `children-storage-cleanup` without expanding scope.
+"""]
+closure_evidence = [
+    "Created `layer/slate/work/jon-gjengset-quickwins-audit/jon-gjengset-quickwins-audit.md` with reviewability, selector, hermetic-test, dual-install-root, Mother-scope, and Allium/Slate process concerns.",
+    "Recommended the next child cleanup slice as a read-only child install inventory/report before any migration.",
+]
+blocked_by = []
+implementation_plan = ["""
+[x] Write `jon-gjengset-quickwins-audit.md` with the reviewer-lens observations.
+[x] Identify likely quick wins before further child cleanup.
+[x] Map non-quick wins to existing or proposed Slates.
+[x] Use the audit to choose the next child cleanup slice.
+"""]
+created_at = "1778880822"
+updated_at = "1778880822"
