@@ -1,31 +1,27 @@
 id = "watcher-monorepo-retirement"
 title = "Retire in-tree watcher children"
 kind = "refactor"
-status = "draft"
+status = "active"
 human_request = "After external watcher-system build, install, and registry proof succeeds, remove the in-tree folder-watch-actor and watch-null-sink sources from Patina core and update workspace/docs/tests to use the external child bundle as source of truth."
 allium_anchors = []
-user_alignment = "User wants to shrink Patina core by moving child behavior out like Slate, but only after proof gates show the external watcher bundle works."
+user_alignment = "User wants to shrink Patina core by moving child behavior out like Slate, but only after proof gates show the external watcher bundle works. No behavior change is intended: watcher behavior remains available through the external GitHub releases already installed and smoke-tested."
 belief_refs = []
-proof_plan = [
-    """
+proof_plan = ["""
 [ ] `children/folder-watch-actor` and `children/watch-null-sink` are no longer tracked in-tree source-of-truth children in the Patina monorepo.
 [ ] Root workspace metadata, lockfile, tests, docs, and fixtures no longer require those in-tree crates.
 [ ] External watcher-system repo is documented as the source of truth and is clean/pushed at the removal point.
 [ ] Installed external watcher children still load and pass relevant smoke checks after in-tree removal.
 [ ] Patina core keeps only generic Mother/SDK support needed to host watcher children, not watcher-specific domain behavior.
-""",
-]
+"""]
 closure_evidence = []
-blocked_by = ["watcher-github-release-install-proof"]
-implementation_plan = [
-    """
+blocked_by = []
+implementation_plan = ["""
 [ ] Confirm external watcher-system build/install/registry proof is complete before touching monorepo sources.
 [ ] Remove in-tree watcher child crates and generated artifacts from the Patina workspace.
 [ ] Refactor or remove tests that directly depend on in-tree watcher crates, replacing with fixtures or installed-child smoke where appropriate.
 [ ] Update docs such as `children/README.md` to point watcher development at `/Users/nicabar/Projects/Patina/patina-child-watcher-system`.
 [ ] Run cargo checks/tests and installed external-child smoke checks.
 [ ] Archive this Slate only after the monorepo is clean and watcher behavior is still available externally.
-""",
-]
+"""]
 created_at = "1778870182"
-updated_at = "1778870182"
+updated_at = "1778875886"

@@ -199,3 +199,5 @@
 {"created_at":"1778874792","event_type":"promoted","payload":{"force":false,"from":"ready","to":"active"},"work_id":"watcher-github-release-install-proof"}
 {"created_at":"1778875408","event_type":"completed","payload":{"force":false},"work_id":"watcher-github-release-install-proof"}
 {"created_at":"1778875415","event_type":"archived","payload":{"force":false,"tag":"slate/watcher-github-release-install-proof"},"work_id":"watcher-github-release-install-proof"}
+{"created_at":"1778875885","event_type":"promoted","payload":{"force":false,"from":"draft","to":"ready"},"work_id":"watcher-monorepo-retirement"}
+{"created_at":"1778875886","event_type":"promoted","payload":{"force":false,"from":"ready","to":"active"},"work_id":"watcher-monorepo-retirement"}
