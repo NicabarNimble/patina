@@ -1,0 +1,162 @@
+-- allium: 3
+-- watcher-child-bundle-contract.allium
+
+-- Slate-local spec for `watcher-child-bundle-contract`.
+-- Purpose: align the watcher-system bundle design before code movement.
+-- Scope: one external child-bundle repository containing a core watcher actor,
+--   reference downstream sink, shared watch WIT contracts, release units, and
+--   extension path for future downstream sinks.
+-- Excludes:
+--   - copying/building the external repo
+--   - Mother registry implementation
+--   - removing in-tree Patina children
+--   - broad Patina kernel extraction
+
+entity WatcherBundleRepo {
+    path: String
+    owns_shared_wit: Boolean
+    owns_release_workflow: Boolean
+    owns_downstream_examples: Boolean
+}
+
+entity WatcherChildPackage {
+    bundle: WatcherBundleRepo
+    name: String
+    role: producer_actor | downstream_sink
+    required: Boolean
+    reference_implementation: Boolean
+    manifest_path: String
+    cargo_path: String
+    wit_path: String
+}
+
+entity WatcherReleaseUnit {
+    bundle: WatcherBundleRepo
+    child_name: String
+    version: String
+    wasm_asset_name: String
+    manifest_asset_name: String
+    checksums_asset_name: String
+    independently_installable: Boolean
+}
+
+entity WatcherBundleContractDecision {
+    repo_path: String
+    release_strategy: per_child_tag | asset_selector | bundle_manifest | undecided
+    version_alignment: shared_bundle_version | per_child_version | undecided
+    mother_registry_change_required: Boolean
+    remove_monorepo_sources_now: Boolean
+}
+
+given {
+    bundle: WatcherBundleRepo
+}
+
+rule BundleRepoOwnsWatcherSystem {
+    when: WatcherBundleContractDrafted(decision)
+    ensures: bundle.path = decision.repo_path
+    ensures: bundle.owns_shared_wit = true
+    ensures: bundle.owns_release_workflow = true
+    ensures: bundle.owns_downstream_examples = true
+}
+
+rule FolderWatchActorIsCoreProducer {
+    when: WatcherBundleContractDrafted(_)
+    ensures: WatcherChildPackage.created(
+        bundle: bundle,
+        name: "folder-watch-actor",
+        role: producer_actor,
+        required: true,
+        reference_implementation: false,
+        manifest_path: "children/folder-watch-actor/child.toml",
+        cargo_path: "children/folder-watch-actor/Cargo.toml",
+        wit_path: "children/folder-watch-actor/wit"
+    )
+}
+
+rule WatchNullSinkIsReferenceDownstream {
+    when: WatcherBundleContractDrafted(_)
+    ensures: WatcherChildPackage.created(
+        bundle: bundle,
+        name: "watch-null-sink",
+        role: downstream_sink,
+        required: false,
+        reference_implementation: true,
+        manifest_path: "children/watch-null-sink/child.toml",
+        cargo_path: "children/watch-null-sink/Cargo.toml",
+        wit_path: "children/watch-null-sink/wit"
+    )
+}
+
+rule BundleSupportsFutureDownstreams {
+    when: WatcherBundleContractDrafted(_)
+    ensures: FutureDownstreamChildAllowed(kind: "email_sink")
+    ensures: FutureDownstreamChildAllowed(kind: "database_sink")
+    ensures: FutureDownstreamChildAllowed(kind: "webhook_sink")
+    ensures: FutureDownstreamMustImplementSharedWatchEventsContract()
+}
+
+rule ReleaseUnitsAreIndependentlyInstallable {
+    when: WatcherReleaseUnitDeclared(unit)
+    ensures: unit.independently_installable = true
+    ensures: WatcherReleaseAssetDeclared(child_name: unit.child_name, asset: unit.wasm_asset_name)
+    ensures: WatcherReleaseAssetDeclared(child_name: unit.child_name, asset: unit.manifest_asset_name)
+    ensures: WatcherReleaseAssetDeclared(child_name: unit.child_name, asset: unit.checksums_asset_name)
+}
+
+rule BundleContractDoesNotRemoveMonorepoSources {
+    when: WatcherBundleContractDrafted(decision)
+    requires: decision.remove_monorepo_sources_now
+    ensures: WatcherBundleContractRejected(reason: "monorepo_removal_belongs_to_later_proof_gate")
+}
+
+rule MotherRegistryImplicationIsExplicit {
+    when: WatcherBundleContractDrafted(decision)
+    requires: decision.release_strategy in {asset_selector, bundle_manifest}
+    ensures: decision.mother_registry_change_required = true
+    ensures: MotherRegistryFollowupRequired(slate: "mother-multi-child-bundle-registry")
+}
+
+rule PerChildTagStrategyCanAvoidRegistryChangeForFirstBuild {
+    when: WatcherBundleContractDrafted(decision)
+    requires: decision.release_strategy = per_child_tag
+    ensures: decision.mother_registry_change_required = false
+    ensures: WatcherBundleCanUseExistingSingleChildRegistryPathTemporarily()
+}
+
+surface WatcherBundleContractSurface {
+    facing _: WatcherBundleRepo
+    context decision: WatcherBundleContractDecision
+    context child: WatcherChildPackage
+    context unit: WatcherReleaseUnit
+
+    exposes:
+        bundle.path
+        bundle.owns_shared_wit
+        bundle.owns_release_workflow
+        bundle.owns_downstream_examples
+        decision.repo_path
+        decision.release_strategy
+        decision.version_alignment
+        decision.mother_registry_change_required
+        decision.remove_monorepo_sources_now
+        child.bundle.path
+        child.name
+        child.role
+        child.required
+        child.reference_implementation
+        child.manifest_path
+        child.cargo_path
+        child.wit_path
+        unit.bundle.path
+        unit.child_name
+        unit.version
+        unit.wasm_asset_name
+        unit.manifest_asset_name
+        unit.checksums_asset_name
+        unit.independently_installable
+
+    provides:
+        WatcherBundleContractDrafted(decision)
+        WatcherReleaseUnitDeclared(unit)
+}

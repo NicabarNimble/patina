@@ -20,6 +20,7 @@ closure_evidence = [
     "Created Slate-local Allium anchor `layer/slate/work/children-storage-cleanup/allium/children-storage-cleanup.allium` and generated `children-storage-cleanup.plan.json`; `allium check` and `allium analyse` pass cleanly.",
     "Initial inventory found repo children split across `sdk/patina-sdk` push-pure WIT/export children and `sdk/patina-sdk-legacy` handle/trait children; installed runtime state is split between flat `~/.patina/children` and command-child `~/.patina/plugins` roots.",
     "Split watcher extraction into sub-Slates: `watcher-child-bundle-contract`, `watcher-bundle-standalone-build`, `mother-multi-child-bundle-registry`, and `watcher-monorepo-retirement`, treating folder-watch-actor plus watch-null-sink as a child-bundle ecosystem like Slate rather than unrelated in-tree children.",
+    "Watcher bundle contract selected per-child release tags as v1 (`folder-watch-actor-v0.1.0`, `watch-null-sink-v0.1.0`) to keep standalone build/local install unblocked while `mother-multi-child-bundle-registry` handles richer multi-child registry discovery later.",
 ]
 blocked_by = []
 implementation_plan = [
