@@ -208,3 +208,4 @@
 {"created_at":"1778876951","event_type":"promoted","payload":{"force":false,"from":"draft","to":"ready"},"work_id":"pre-push-clippy-cleanup"}
 {"created_at":"1778876952","event_type":"promoted","payload":{"force":false,"from":"ready","to":"active"},"work_id":"pre-push-clippy-cleanup"}
 {"created_at":"1778877266","event_type":"completed","payload":{"force":false},"work_id":"pre-push-clippy-cleanup"}
+{"created_at":"1778877298","event_type":"archived","payload":{"force":false,"tag":"slate/pre-push-clippy-cleanup"},"work_id":"pre-push-clippy-cleanup"}
