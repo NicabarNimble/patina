@@ -1,27 +1,40 @@
 id = "watcher-github-release-install-proof"
 title = "Prove watcher GitHub release install parity"
 kind = "build"
-status = "active"
+status = "complete"
 human_request = "Finish the watcher extraction proof by making folder-watch-actor and watch-null-sink installable from GitHub release assets like Slate, using minimal per-child source selection rather than the future child-bundle installer model."
 allium_anchors = ["layer/slate/work/watcher-github-release-install-proof/allium/watcher-github-release-install-proof.allium"]
 user_alignment = "User wants watcher release/install parity with the external Slate child before removing in-tree watcher sources; the richer Mother child-bundle install model is parked in a separate top-level Slate."
 belief_refs = []
 proof_plan = ["""
-[ ] Watcher external repo publishes Slate-style GitHub release assets for `folder-watch-actor-v0.1.0` and `watch-null-sink-v0.1.0`: WASM, WASM SHA-256 sidecar, `child.toml`, manifest SHA-256 sidecar, and `checksums.txt`.
-[ ] Mother registry source configuration can select one child release stream from a shared GitHub repo using configured asset names and tag prefixes without changing single-child Slate behavior.
-[ ] Registry sync discovers `folder-watch-actor@0.1.0` and `watch-null-sink@0.1.0` from the watcher repo as independent child entries with hash verification.
-[ ] Approve/install flow installs both watcher children from registry release assets without manual file copying.
-[ ] Local smoke proves installed registry artifacts load and typed-call correctly.
-[ ] The richer child-bundle installer/config prompt model remains deferred to `mother-child-bundle-install-model` and is not required for watcher monorepo retirement.
+[x] Watcher external repo publishes Slate-style GitHub release assets for `folder-watch-actor-v0.1.0` and `watch-null-sink-v0.1.0`: WASM, WASM SHA-256 sidecar, `child.toml`, manifest SHA-256 sidecar, and `checksums.txt`.
+[x] Mother registry source configuration can select one child release stream from a shared GitHub repo using configured asset names and tag prefixes without changing single-child Slate behavior.
+[x] Registry sync discovers `folder-watch-actor@0.1.0` and `watch-null-sink@0.1.0` from the watcher repo as independent child entries with hash verification.
+[x] Approve/install flow installs both watcher children from registry release assets without manual file copying.
+[x] Local smoke proves installed registry artifacts load and typed-call correctly.
+[x] The richer child-bundle installer/config prompt model remains deferred to `mother-child-bundle-install-model` and is not required for watcher monorepo retirement.
 """]
-closure_evidence = []
+closure_evidence = [
+    "External watcher repo release workflow added in [[commit-526dbf1]] and pushed to `https://github.com/NicabarNimble/patina-child-watcher-system`.",
+    "GitHub Actions Release workflow succeeded for tags `folder-watch-actor-v0.1.0` (run `25938334308`) and `watch-null-sink-v0.1.0` (run `25938334375`).",
+    "GitHub releases publish Slate-style assets for each child: `.wasm`, `.wasm.sha256`, `child.toml`, `child.toml.sha256`, and `checksums.txt`.",
+    "Added minimal Mother GitHub source selector support in [[commit-14f2df48]]: CLI-configurable `tag_prefix`, exact asset names, prerelease inclusion, and Patina minimum metadata; provider strips tag prefixes so `folder-watch-actor-v0.1.0` and `watch-null-sink-v0.1.0` discover as version `0.1.0`.",
+    "Validation passed: `cargo check`, `cargo test -p mother release_version_from_tag -- --nocapture`, and `cargo test github_source_config_records_release_selectors -- --nocapture`.",
+    "Added registry sources `src_github_nicabarnimble_patina_child_watcher_system_folder_watch_actor` and `src_github_nicabarnimble_patina_child_watcher_system_watch_null_sink`; sync discovered one entry each with verified release/hash metadata.",
+    "Approved and installed `folder-watch-actor@0.1.0` and `watch-null-sink@0.1.0` from Mother registry release assets; installed paths are under `/Users/nicabar/.patina/children/` with expected SHA-256 values.",
+    "Assigned both watcher children to project UID `2bdc808e` with reason `watcher GitHub release install proof`, matching the Slate-style approve/install/assign flow.",
+    "For typed-call smoke with the current command-child caller, installed the registry-downloaded WASM artifacts into the command-child compat root using `patina child install ... --wasm /Users/nicabar/.patina/children/<child>.wasm --force`; SHA-256 values match between `/Users/nicabar/.patina/children/` and `/Users/nicabar/.patina/plugins/`.",
+    """Local typed-call smoke passed: `patina child call folder-watch-actor 'patina:watch/control@0.1.0.status' '[]'` returned watcher stats and `patina child call watch-null-sink 'patina:watch/events@0.1.0.emit' '[{...}]'` returned `{ "ok": null }`.""",
+]
 blocked_by = []
 implementation_plan = ["""
-[ ] Add a watcher release workflow modeled after Slate, with per-child tag prefixes and release assets.
-[ ] Tag/publish `folder-watch-actor-v0.1.0` and `watch-null-sink-v0.1.0` releases from the external watcher repo.
-[ ] Add minimal Mother GitHub source selector support where missing, especially tag-prefix version extraction and CLI-configurable asset names.
-[ ] Add tests for tag-prefix version extraction and GitHub source configuration serialization.
-[ ] Sync/add two watcher registry sources, approve/install both entries, and run typed-call smoke checks.
+[x] Add a watcher release workflow modeled after Slate, with per-child tag prefixes and release assets.
+[x] Tag/publish `folder-watch-actor-v0.1.0` and `watch-null-sink-v0.1.0` releases from the external watcher repo.
+[x] Add minimal Mother GitHub source selector support where missing, especially tag-prefix version extraction and CLI-configurable asset names.
+[x] Add tests for tag-prefix version extraction and GitHub source configuration serialization.
+[x] Sync/add two watcher registry sources, approve/install both entries, and run typed-call smoke checks.
 """]
+belief_harvest_decision = "no new belief required; this Slate proves watcher release/install parity and deliberately defers the broader child-bundle installer model to `mother-child-bundle-install-model`"
 created_at = "1778870181"
-updated_at = "1778874792"
+updated_at = "1778875408"
+closed_at = "1778875408"

@@ -22,6 +22,7 @@ closure_evidence = [
     "Split watcher extraction into sub-Slates: `watcher-child-bundle-contract`, `watcher-bundle-standalone-build`, `mother-multi-child-bundle-registry`, and `watcher-monorepo-retirement`, treating folder-watch-actor plus watch-null-sink as a child-bundle ecosystem like Slate rather than unrelated in-tree children.",
     "Watcher bundle contract selected per-child release tags as v1 (`folder-watch-actor-v0.1.0`, `watch-null-sink-v0.1.0`) to keep standalone build/local install unblocked while `mother-multi-child-bundle-registry` handles richer multi-child registry discovery later.",
     "Watcher standalone build proof succeeded externally in `/Users/nicabar/Projects/Patina/patina-child-watcher-system` at [[commit-d2be416]]: both watcher children build with published `patina-sdk = \"0.22.0\"`, install through `patina child install`, and pass typed-call smoke checks.",
+    "Watcher GitHub release/install parity proof succeeded: external release workflow [[commit-526dbf1]] published per-child releases `folder-watch-actor-v0.1.0` and `watch-null-sink-v0.1.0`; Mother registry selectors in [[commit-14f2df48]] discovered/approved/installed/assigned both as independent child entries from one source repo.",
 ]
 blocked_by = []
 implementation_plan = [
