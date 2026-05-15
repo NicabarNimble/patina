@@ -189,3 +189,5 @@
 {"created_at":"1778870682","event_type":"completed","payload":{"force":false},"work_id":"watcher-child-bundle-contract"}
 {"created_at":"1778870694","event_type":"completed","payload":{"force":false},"work_id":"watcher-child-bundle-contract"}
 {"created_at":"1778870700","event_type":"archived","payload":{"force":false,"tag":"slate/watcher-child-bundle-contract"},"work_id":"watcher-child-bundle-contract"}
+{"created_at":"1778871471","event_type":"promoted","payload":{"force":false,"from":"draft","to":"ready"},"work_id":"watcher-bundle-standalone-build"}
+{"created_at":"1778871486","event_type":"promoted","payload":{"force":false,"from":"ready","to":"active"},"work_id":"watcher-bundle-standalone-build"}
