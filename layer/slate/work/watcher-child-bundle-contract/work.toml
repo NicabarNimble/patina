@@ -6,6 +6,7 @@ human_request = "Define the watcher system as a child bundle repo: one external 
 allium_anchors = ["layer/slate/work/watcher-child-bundle-contract/allium/watcher-child-bundle-contract.allium"]
 user_alignment = "User wants watcher children to follow the Slate external-child model while treating folder-watch-actor and watch-null-sink as a bundle/ecosystem rather than unrelated children."
 belief_refs = []
+belief_harvest_decision = "no new belief required; this contract applies the existing external-child extraction pattern from Slate to the watcher bundle and records the design decision as Slate-local evidence"
 proof_plan = ["""
 [x] Bundle vocabulary is defined: child-bundle repo, release unit, child package, producer actor, downstream sink, shared WIT contract, and optional skills/config artifacts.
 [x] Current watcher pair is classified: `folder-watch-actor` is the core producer/service actor; `watch-null-sink` is the reference/null downstream sink; future sinks are expected to be owned by the same watcher ecosystem unless proven otherwise.
