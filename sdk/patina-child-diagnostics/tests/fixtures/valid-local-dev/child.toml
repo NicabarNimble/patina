@@ -1,0 +1,9 @@
+[child]
+name = "valid-local-dev"
+version = "0.1.0"
+description = "Valid local-dev diagnostic fixture"
+kind = "child"
+role = "app"
+
+[needs]
+toys = ["logging"]

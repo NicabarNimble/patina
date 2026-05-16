@@ -1,0 +1,6 @@
+package patina:legacy-manifest@0.1.0;
+
+world legacy-manifest {
+    import wasi:logging/logging@0.1.0;
+    export run: func();
+}

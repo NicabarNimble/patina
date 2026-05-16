@@ -1,0 +1,5 @@
+package wasi:logging@0.1.0;
+
+interface logging {
+    log: func(message: string);
+}
