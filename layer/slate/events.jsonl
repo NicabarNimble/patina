@@ -223,3 +223,4 @@
 {"created_at":"1779126234","event_type":"promoted","payload":{"force":false,"from":"ready","to":"active"},"work_id":"pai-dev-sdk-entrypoint"}
 {"created_at":"1779126683","event_type":"set","payload":{"field":"belief_harvest_decision","value":"No new belief file created. This first pai-dev slice applies existing core values (`read-code-before-write-code`, `scalpel-commits`, `patina-identity`, `unix-philosophy`, `dependable-rust`, `contract-first-execution`, `explicit-fail-closed-over-hidden-fallbacks`, `safety-boundaries`, `spec-driven-design`) to introduce a separate SDK developer entry point without moving Mother runtime behavior."},"work_id":"pai-dev-sdk-entrypoint"}
 {"created_at":"1779126684","event_type":"completed","payload":{"force":false},"work_id":"pai-dev-sdk-entrypoint"}
+{"created_at":"1779126706","event_type":"archived","payload":{"force":false,"tag":"slate/pai-dev-sdk-entrypoint"},"work_id":"pai-dev-sdk-entrypoint"}
