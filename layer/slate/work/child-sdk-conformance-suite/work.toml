@@ -86,5 +86,6 @@ implementation_plan = ["""
 [x] Add CI/report documentation for child authors showing how to run the suite and publish conformance artifacts for local-dev, component-built, and release-candidate stages.
 [x] Update Rust child templates/scaffolds to consume the diagnostics crate through a standalone checks package and repo-local `.patina/children-dev.toml`.
 """]
+belief_harvest_decision = "No new belief files created in this slice. The work is anchored to existing layer/core value IDs (`read-code-before-write-code`, `scalpel-commits`, `contract-first-execution`, `explicit-fail-closed-over-hidden-fallbacks`, `unix-philosophy`, `dependable-rust`, `safety-boundaries`, `spec-driven-design`, `patina-identity`) and existing belief `mother-harness-separates-child-fixtures-from-scenarios`; candidate public doctrine can be harvested later if the user wants a dedicated belief pass."
 created_at = "1778761031"
 updated_at = "1779121484"
