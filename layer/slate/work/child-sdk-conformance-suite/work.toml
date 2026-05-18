@@ -36,6 +36,11 @@ closure_evidence = [
     "Established `.patina/dev/` as the ignored repo-local SDK dev artifact root so generated component/check outputs can be cleaned without assuming Rust Cargo `target/` layout.",
     "Added children-dev aggregate reporting that runs existing local-dev manifest/WIT diagnostics for each configured child root and warns when configured component paths are outside repo-local `.patina/dev/`.",
     "Added single-child and multi-child children-dev fixtures and tests proving the config works with optional component paths and `.patina/dev/components/<child>.wasm` conventions without requiring built artifacts.",
+    "Added component-built diagnostics using explicit component artifact paths from `CheckOptions`, `check_component_built`, or `.patina/children-dev.toml` via `check_children_dev_components`.",
+    "Implemented component inspection with `wasmparser`, rejecting core WASM modules, reporting unreadable/malformed artifacts, collecting top-level component imports/exports, and mapping component toy imports to `[needs].toys`.",
+    "Refactored WIT diagnostics to retain resolved import/export/toy information so built component contracts can be compared against declared WIT worlds without live Mother.",
+    "Added component-built tests for missing explicit artifact path, core-module rejection, matching component contracts, import/export drift, missing toy authority requests, and `.patina/children-dev.toml` component path usage.",
+    "Validated component-built slice with `cargo test -p patina-child-diagnostics`, `cargo clippy -p patina-child-diagnostics --all-targets -- -D warnings`, `cargo fmt --check`, and `allium check layer/slate/work/child-sdk-conformance-suite/allium`.",
 ]
 blocked_by = []
 implementation_plan = ["""
@@ -44,10 +49,10 @@ implementation_plan = ["""
 [x] Add manifest conformance parser/validator for language-neutral `child.toml` packages.
 [x] Add repo-local `.patina/children-dev.toml` parser/config for one-or-more child roots and optional `.patina/dev/components/<child>.wasm` artifact paths.
 [ ] Add skills bundle validator for `skills/*/SKILL.md` package structure and metadata.
-[ ] Add WASM component introspection helpers that expose imports/exports for tests without requiring live Mother.
-[x] Add toy/capability matching from WIT imports to manifest `[needs].toys` declarations using local toy mapping as policy input.
+[x] Add WASM component introspection helpers that expose imports/exports for tests without requiring live Mother.
+[x] Add toy/capability matching from WIT and built component imports to manifest `[needs].toys` declarations using local toy mapping as policy input.
 [ ] Add sandbox smoke harness design and first fixture-backed smoke checks where host imports can be satisfied locally.
 [ ] Add CI/report documentation for child authors showing how to run the suite and publish conformance artifacts.
 """]
 created_at = "1778761031"
-updated_at = "1779102097"
+updated_at = "1779109301"
