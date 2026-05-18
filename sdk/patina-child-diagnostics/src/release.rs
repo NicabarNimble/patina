@@ -54,6 +54,7 @@ pub(crate) fn check_release(
         ));
     }
 
+    check_release_wasm_matches_component(wasm_asset.as_deref(), component_path, &mut findings)?;
     check_manifest_sidecar(&manifest_asset, &mut findings)?;
     check_checksums(
         &checksums_asset,
@@ -112,6 +113,37 @@ fn single_or_none(mut paths: Vec<PathBuf>) -> Option<PathBuf> {
     } else {
         None
     }
+}
+
+fn check_release_wasm_matches_component(
+    wasm_asset: Option<&Path>,
+    component_path: Option<&Path>,
+    findings: &mut Vec<DiagnosticFinding>,
+) -> Result<()> {
+    let (Some(wasm_asset), Some(component_path)) = (wasm_asset, component_path) else {
+        return Ok(());
+    };
+
+    if !wasm_asset.exists() || !component_path.exists() {
+        return Ok(());
+    }
+
+    let release_hash = sha256_file(wasm_asset)?;
+    let component_hash = sha256_file(component_path)?;
+    if !hash_eq(&release_hash, &component_hash) {
+        findings.push(DiagnosticFinding::error(
+            DiagnosticPhase::Release,
+            "PTN-RELEASE-009",
+            Some(wasm_asset.to_path_buf()),
+            "release WASM asset does not match the inspected component artifact",
+            Some(
+                "copy the same component artifact checked by component-built diagnostics into the release bundle before publishing"
+                    .to_string(),
+            ),
+        ));
+    }
+
+    Ok(())
 }
 
 fn check_manifest_sidecar(

@@ -157,6 +157,32 @@ fn release_candidate_reports_missing_manifest_and_checksums() {
 }
 
 #[test]
+fn release_candidate_reports_release_wasm_that_differs_from_inspected_component() {
+    let repo = temp_repo("stale-release-wasm");
+    let component_path = repo.join(".patina/dev/components/valid-local-dev.wasm");
+    let stale_component_path = repo.join("stale/valid-local-dev.wasm");
+    let release_dir = repo.join("release");
+    matching_component(&component_path);
+    write_component(
+        &stale_component_path,
+        &["wasi:logging/logging@0.1.0"],
+        &["other-run"],
+    );
+    write_release_bundle(&release_dir, "valid-local-dev.wasm", &stale_component_path);
+
+    let report = check_release_candidate(fixture("valid-local-dev"), &component_path, &release_dir);
+
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.code == "PTN-RELEASE-009"),
+        "{}",
+        report.render_text()
+    );
+}
+
+#[test]
 fn release_candidate_reports_checksum_coverage_and_hash_mismatch() {
     let repo = temp_repo("bad-checksums");
     let component_path = repo.join("valid-local-dev.wasm");
