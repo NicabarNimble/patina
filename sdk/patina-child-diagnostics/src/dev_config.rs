@@ -11,6 +11,7 @@ use crate::{check_package, CheckOptions};
 pub const CHILDREN_DEV_CONFIG_RELATIVE_PATH: &str = ".patina/children-dev.toml";
 pub const PATINA_DEV_RELATIVE_PATH: &str = ".patina/dev";
 pub const PATINA_DEV_COMPONENTS_RELATIVE_PATH: &str = ".patina/dev/components";
+pub const PATINA_DEV_RELEASES_RELATIVE_PATH: &str = ".patina/dev/releases";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -25,6 +26,10 @@ pub struct ChildDevConfig {
     pub root: PathBuf,
     #[serde(default)]
     pub component: Option<PathBuf>,
+    #[serde(default)]
+    pub release: Option<PathBuf>,
+    #[serde(default)]
+    pub tag: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +59,8 @@ pub struct ChildDevReport {
     pub name: String,
     pub root: PathBuf,
     pub component: Option<PathBuf>,
+    pub release: Option<PathBuf>,
+    pub tag: Option<String>,
     pub report: DiagnosticReport,
 }
 
@@ -201,6 +208,10 @@ pub fn check_children_dev_config_with_options(
             .component
             .as_ref()
             .map(|component| resolve_repo_path(&repo_root, component));
+        let release = child
+            .release
+            .as_ref()
+            .map(|release| resolve_repo_path(&repo_root, release));
 
         if !child_root.exists() {
             report.push(DiagnosticFinding::error(
@@ -242,17 +253,39 @@ pub fn check_children_dev_config_with_options(
             }
         }
 
+        if let Some(release) = &release {
+            let patina_dev_root = repo_root.join(PATINA_DEV_RELATIVE_PATH);
+            if !release.starts_with(&patina_dev_root) {
+                report.push(DiagnosticFinding::warning(
+                    DiagnosticPhase::Release,
+                    "PTN-DEV-008",
+                    Some(release.clone()),
+                    format!(
+                        "children-dev entry `{name}` release bundle is outside repo-local .patina/dev/"
+                    ),
+                    Some(
+                        "prefer .patina/dev/releases/<child>/ so generated release-candidate assets are language-neutral and easy to clean"
+                            .to_string(),
+                    ),
+                ));
+            }
+        }
+
         let child_report = check_package(
             &child_root,
             CheckOptions {
                 stage: options.stage,
                 component_path: component.clone(),
+                release_path: release.clone(),
+                release_tag: child.tag.clone(),
             },
         );
         report.children.push(ChildDevReport {
             name,
             root: child_root,
             component,
+            release,
+            tag: child.tag,
             report: child_report,
         });
     }
@@ -265,6 +298,15 @@ pub fn check_children_dev_components(repo_root: impl AsRef<Path>) -> ChildrenDev
         repo_root,
         ChildrenDevCheckOptions {
             stage: DiagnosticStage::ComponentBuilt,
+        },
+    )
+}
+
+pub fn check_children_dev_release_candidates(repo_root: impl AsRef<Path>) -> ChildrenDevReport {
+    check_children_dev_config_with_options(
+        repo_root,
+        ChildrenDevCheckOptions {
+            stage: DiagnosticStage::ReleaseCandidate,
         },
     )
 }

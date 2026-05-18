@@ -9,6 +9,8 @@ use crate::report::{DiagnosticFinding, DiagnosticPhase};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManifestInfo {
     pub path: PathBuf,
+    pub name: Option<String>,
+    pub version: Option<String>,
     pub declared_toys: BTreeSet<String>,
 }
 
@@ -170,6 +172,8 @@ pub fn check_manifest(root: &Path) -> Result<(Option<ManifestInfo>, Vec<Diagnost
     Ok((
         Some(ManifestInfo {
             path: manifest_path,
+            name: child_name.map(ToOwned::to_owned),
+            version: child_version.map(ToOwned::to_owned),
             declared_toys,
         }),
         findings,

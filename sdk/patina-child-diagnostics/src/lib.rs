@@ -11,15 +11,17 @@ use anyhow::Result;
 mod component;
 mod dev_config;
 mod manifest;
+mod release;
 pub mod report;
 mod wit;
 
 pub use dev_config::{
     check_children_dev_components, check_children_dev_config,
-    check_children_dev_config_with_options, children_dev_config_path, load_children_dev_config,
-    parse_children_dev_config, ChildDevConfig, ChildDevReport, ChildrenDevCheckOptions,
-    ChildrenDevConfig, ChildrenDevReport, CHILDREN_DEV_CONFIG_RELATIVE_PATH,
-    PATINA_DEV_COMPONENTS_RELATIVE_PATH, PATINA_DEV_RELATIVE_PATH,
+    check_children_dev_config_with_options, check_children_dev_release_candidates,
+    children_dev_config_path, load_children_dev_config, parse_children_dev_config, ChildDevConfig,
+    ChildDevReport, ChildrenDevCheckOptions, ChildrenDevConfig, ChildrenDevReport,
+    CHILDREN_DEV_CONFIG_RELATIVE_PATH, PATINA_DEV_COMPONENTS_RELATIVE_PATH,
+    PATINA_DEV_RELATIVE_PATH, PATINA_DEV_RELEASES_RELATIVE_PATH,
 };
 pub use report::{
     DiagnosticFinding, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, DiagnosticStage,
@@ -29,6 +31,8 @@ pub use report::{
 pub struct CheckOptions {
     pub stage: DiagnosticStage,
     pub component_path: Option<PathBuf>,
+    pub release_path: Option<PathBuf>,
+    pub release_tag: Option<String>,
 }
 
 impl CheckOptions {
@@ -36,7 +40,26 @@ impl CheckOptions {
         Self {
             stage: DiagnosticStage::ComponentBuilt,
             component_path: Some(component_path.into()),
+            release_path: None,
+            release_tag: None,
         }
+    }
+
+    pub fn release_candidate(
+        component_path: impl Into<PathBuf>,
+        release_path: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            stage: DiagnosticStage::ReleaseCandidate,
+            component_path: Some(component_path.into()),
+            release_path: Some(release_path.into()),
+            release_tag: None,
+        }
+    }
+
+    pub fn with_release_tag(mut self, release_tag: impl Into<String>) -> Self {
+        self.release_tag = Some(release_tag.into());
+        self
     }
 }
 
@@ -45,6 +68,8 @@ impl Default for CheckOptions {
         Self {
             stage: DiagnosticStage::LocalDev,
             component_path: None,
+            release_path: None,
+            release_tag: None,
         }
     }
 }
@@ -62,6 +87,29 @@ pub fn check_component_built(
     component_path: impl Into<PathBuf>,
 ) -> DiagnosticReport {
     check_package(root, CheckOptions::component_built(component_path))
+}
+
+pub fn check_release_candidate(
+    root: impl AsRef<Path>,
+    component_path: impl Into<PathBuf>,
+    release_path: impl Into<PathBuf>,
+) -> DiagnosticReport {
+    check_package(
+        root,
+        CheckOptions::release_candidate(component_path, release_path),
+    )
+}
+
+pub fn check_release_candidate_with_tag(
+    root: impl AsRef<Path>,
+    component_path: impl Into<PathBuf>,
+    release_path: impl Into<PathBuf>,
+    release_tag: impl Into<String>,
+) -> DiagnosticReport {
+    check_package(
+        root,
+        CheckOptions::release_candidate(component_path, release_path).with_release_tag(release_tag),
+    )
 }
 
 pub fn check_package(root: impl AsRef<Path>, options: CheckOptions) -> DiagnosticReport {
@@ -101,6 +149,16 @@ fn run_checks(root: &Path, options: &CheckOptions) -> Result<Vec<DiagnosticFindi
             options.component_path.as_deref(),
             wit.as_ref(),
             &declared_toys,
+        )?);
+    }
+
+    if options.stage == DiagnosticStage::ReleaseCandidate {
+        findings.extend(release::check_release(
+            root,
+            options.release_path.as_deref(),
+            manifest.as_ref(),
+            options.component_path.as_deref(),
+            options.release_tag.as_deref(),
         )?);
     }
 

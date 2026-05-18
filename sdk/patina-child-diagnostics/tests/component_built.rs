@@ -100,6 +100,8 @@ fn component_built_requires_explicit_component_path() {
         CheckOptions {
             stage: DiagnosticStage::ComponentBuilt,
             component_path: None,
+            release_path: None,
+            release_tag: None,
         },
     );
 
