@@ -46,6 +46,13 @@ closure_evidence = [
     "Implemented release bundle checks for `.wasm` asset presence, `child.toml`, `child.toml.sha256`, `checksums.txt`, checksum coverage for WASM and manifest assets, checksum/hash matches, release child.toml version drift, and optional release tag/version alignment.",
     "Added release-candidate tests for missing release path, valid Mother-intake bundle, missing manifest/checksums, checksum coverage/mismatch, tag mismatch, and `.patina/children-dev.toml` release bundle usage.",
     "Validated release-candidate slice with `cargo test -p patina-child-diagnostics`, `cargo clippy -p patina-child-diagnostics --all-targets -- -D warnings`, `cargo fmt --check`, and `allium check layer/slate/work/child-sdk-conformance-suite/allium`.",
+    "Folded the Rust child template DX cleanup into this Slate rather than creating a blocker Slate, because it directly closes the child diagnostics adoption path for Rust child authors.",
+    "Updated `sdk/template/child.toml` from legacy `log` toy naming to `logging`, aligning the template manifest with its `wasi:logging/logging` WIT import and the diagnostic toy model.",
+    "Added `.patina/children-dev.toml` and README guidance to the cargo-generate Rust child template, documenting local-dev, component-built, and release-candidate diagnostic flow plus `.patina/dev/` cleanup semantics.",
+    "Added a standalone generated diagnostics package under `checks/diagnostics/` rather than a top-level integration test, avoiding host-link failures for WASM component crates while still giving child authors `cargo test --manifest-path checks/diagnostics/Cargo.toml`.",
+    "Updated embedded `patina child init` typed templates to emit README, `.patina/children-dev.toml`, and the standalone diagnostics check package, keeping the CLI scaffold aligned with the SDK cargo-generate template.",
+    "Extended scaffold/template tests to assert diagnostics files and children-dev config are generated, and proved the generated typed scaffold builds for `wasm32-wasip2` and passes its standalone diagnostics package.",
+    "Validated Rust template DX cleanup with `cargo test child::scaffold --lib`, `cargo test --test child_init_typed_default`, `cargo test --test template_end_to_end`, `cargo test -p patina-child-diagnostics`, relevant clippy checks, `cargo fmt --check`, and the Slate-local Allium check.",
 ]
 blocked_by = []
 implementation_plan = ["""
@@ -59,6 +66,7 @@ implementation_plan = ["""
 [x] Add release-candidate diagnostics for Mother-intake release assets, checksums, and optional tag/version alignment.
 [ ] Add sandbox smoke harness design and first fixture-backed smoke checks where host imports can be satisfied locally.
 [x] Add CI/report documentation for child authors showing how to run the suite and publish conformance artifacts for local-dev, component-built, and release-candidate stages.
+[x] Update Rust child templates/scaffolds to consume the diagnostics crate through a standalone checks package and repo-local `.patina/children-dev.toml`.
 """]
 created_at = "1778761031"
-updated_at = "1779113885"
+updated_at = "1779120216"
