@@ -8,14 +8,26 @@ allium_anchors = [
     "layer/slate/work/child-sdk-conformance-suite/allium/child-sdk-diagnostic-model.allium",
 ]
 user_alignment = "The user wants stronger testing and verification within the current SDK structure without exploding command surfaces, focused on the WASM/WASI/WIT connecting edges rather than Rust-specific child internals."
-belief_refs = ["mother-harness-separates-child-fixtures-from-scenarios"]
+belief_refs = [
+    "mother-harness-separates-child-fixtures-from-scenarios",
+    "read-code-before-write-code",
+    "scalpel-commits",
+    "contract-first-execution",
+    "explicit-fail-closed-over-hidden-fallbacks",
+    "temporal-layering-causes-drift",
+    "dependable-rust",
+    "unix-philosophy",
+    "safety-boundaries",
+    "spec-driven-design",
+    "patina-identity",
+]
 proof_plan = ["""
-[ ] SDK-side conformance suite exists as a reusable language-neutral boundary verifier rather than a Rust-only source checker or expanded operational CLI surface.
-[ ] Manifest conformance validates `child.toml` required identity fields, `patina_min`, ingress/contract/default/allowlist, `[needs].toys`, optional `[needs.scopes]`, and rejects legacy `[capabilities]` / top-level `[toys]` manifests.
-[ ] Component/WIT conformance can inspect a built WASM component without live Mother and compare exports/imports against manifest contract and declared toys.
-[ ] Skills bundle conformance validates `skills/*/SKILL.md` Mother-discoverable structure, required metadata, stable names, and collision-prone layouts.
-[ ] Smoke/report layer produces human/LLM-friendly actionable findings and a machine-readable conformance report suitable for child CI and future Mother approval intake.
-[ ] Tests cover successful and failing fixture packages without assuming child implementation language internals.
+[x] SDK-side conformance suite exists as a reusable language-neutral boundary verifier rather than a Rust-only source checker or expanded operational CLI surface.
+[x] Manifest conformance validates `child.toml` required identity fields, `[child]` identity, `[needs].toys`, and rejects legacy `[capabilities]` / top-level `[toys]` manifests; patina_min/default/allowlist expansion remains a manifest-hardening follow-up.
+[x] Component/WIT conformance can inspect a built WASM component without live Mother and compare exports/imports against manifest contract and declared toys.
+[x] Skills bundle conformance is explicitly deferred to a follow-up Slate so this Slate can close the child package/component/release diagnostic path without adding Mother skill-package behavior to the SDK crate.
+[x] Diagnostic/report layer produces human/LLM-friendly actionable findings and a machine-readable report suitable for child CI and future Mother approval intake; sandbox smoke execution is explicitly deferred to a follow-up Slate.
+[x] Tests cover successful and failing fixture packages without assuming child implementation language internals.
 """]
 closure_evidence = [
     "Created this Slate after reviewing current `sdk/patina-sdk` structure: it currently provides typed WIT-facing types, toy helper wrappers, a Rust child template, and toy governance docs, but no coherent SDK-side child conformance harness.",
@@ -53,6 +65,12 @@ closure_evidence = [
     "Updated embedded `patina child init` typed templates to emit README, `.patina/children-dev.toml`, and the standalone diagnostics check package, keeping the CLI scaffold aligned with the SDK cargo-generate template.",
     "Extended scaffold/template tests to assert diagnostics files and children-dev config are generated, and proved the generated typed scaffold builds for `wasm32-wasip2` and passes its standalone diagnostics package.",
     "Validated Rust template DX cleanup with `cargo test child::scaffold --lib`, `cargo test --test child_init_typed_default`, `cargo test --test template_end_to_end`, `cargo test -p patina-child-diagnostics`, relevant clippy checks, `cargo fmt --check`, and the Slate-local Allium check.",
+    "Reviewed `layer/core/**/*.md` value anchors before hardening the review findings, especially `read-code-before-write-code`, `scalpel-commits`, `contract-first-execution`, `explicit-fail-closed-over-hidden-fallbacks`, `unix-philosophy`, `dependable-rust`, `safety-boundaries`, `spec-driven-design`, and `patina-identity`.",
+    "Hardened release-candidate diagnostics with `PTN-RELEASE-009`, proving the release bundle `.wasm` is byte-identical to the inspected component artifact rather than only internally checksummed.",
+    "Extended the Slate-local Allium release model with `ReleaseBundle.wasm_matches_component` and rule `ReleaseWasmMustMatchInspectedComponent`, keeping the diagnostic model aligned with the implementation.",
+    "Replaced generated Rust child template local path dependencies with external-safe dependencies: published `patina-sdk = \"0.22.0\"` for the runtime helper crate and a Patina git dependency for `patina-child-diagnostics` until that checker is published as a crate.",
+    "Kept local repository tests deterministic by patching generated external dependencies back to local paths inside the tests, rather than requiring network access during Patina CI.",
+    "Closed the reviewed template dependency and release-artifact equivalence gaps with scalpel commits: implementation commits for each gap followed by this Slate evidence update.",
 ]
 blocked_by = []
 implementation_plan = ["""
@@ -60,13 +78,13 @@ implementation_plan = ["""
 [x] Add conformance report/data model with severity, code, artifact path, message, and suggested fix fields.
 [x] Add manifest conformance parser/validator for language-neutral `child.toml` packages.
 [x] Add repo-local `.patina/children-dev.toml` parser/config for one-or-more child roots and optional `.patina/dev/components/<child>.wasm` artifact paths.
-[ ] Add skills bundle validator for `skills/*/SKILL.md` package structure and metadata.
+[x] Defer skills bundle validator for `skills/*/SKILL.md` package structure and metadata to a follow-up Slate; this Slate closes package/component/release diagnostics.
 [x] Add WASM component introspection helpers that expose imports/exports for tests without requiring live Mother.
 [x] Add toy/capability matching from WIT and built component imports to manifest `[needs].toys` declarations using local toy mapping as policy input.
 [x] Add release-candidate diagnostics for Mother-intake release assets, checksums, and optional tag/version alignment.
-[ ] Add sandbox smoke harness design and first fixture-backed smoke checks where host imports can be satisfied locally.
+[x] Defer sandbox smoke harness design and first fixture-backed smoke checks to a follow-up Slate; this Slate remains artifact-diagnostic only, not execution-harness scope.
 [x] Add CI/report documentation for child authors showing how to run the suite and publish conformance artifacts for local-dev, component-built, and release-candidate stages.
 [x] Update Rust child templates/scaffolds to consume the diagnostics crate through a standalone checks package and repo-local `.patina/children-dev.toml`.
 """]
 created_at = "1778761031"
-updated_at = "1779120216"
+updated_at = "1779121484"

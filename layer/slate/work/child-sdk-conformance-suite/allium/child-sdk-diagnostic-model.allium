@@ -121,6 +121,7 @@ entity ReleaseBundle {
     manifest_version: String?
 
     has_wasm_asset: Boolean
+    wasm_matches_component: Boolean
     has_manifest_asset: Boolean
     has_manifest_sha256: Boolean
     has_checksums: Boolean
@@ -547,6 +548,21 @@ rule ReleaseChecksumsMustCoverManifest {
         location: bundle.root_path,
         message: "checksums.txt does not cover child.toml",
         help: "add the child.toml hash to checksums.txt"
+    )
+}
+
+rule ReleaseWasmMustMatchInspectedComponent {
+    when: bundle: ReleaseBundle.created
+    requires: bundle.has_wasm_asset
+    requires: not bundle.wasm_matches_component
+    ensures: DiagnosticFinding.created(
+        package: bundle.package,
+        phase: release,
+        severity: error,
+        code: "PTN-RELEASE-009",
+        location: bundle.root_path,
+        message: "release WASM asset does not match the inspected component artifact",
+        help: "copy the same component artifact checked by component-built diagnostics into the release bundle before publishing"
     )
 }
 
