@@ -1,0 +1,5 @@
+[children.{{ child_name }}]
+root = "."
+component = ".patina/dev/components/{{ child_name }}.wasm"
+release = ".patina/dev/releases/{{ child_name }}"
+tag = "{{ child_name }}-v0.1.0"

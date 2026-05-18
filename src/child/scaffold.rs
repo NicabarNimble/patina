@@ -21,6 +21,14 @@ mod templates {
         pub const MANIFEST_TOML: &str =
             include_str!("../../resources/templates/child/child/child.toml.tmpl");
         pub const LIB_RS: &str = include_str!("../../resources/templates/child/child/lib.rs.tmpl");
+        pub const README_MD: &str =
+            include_str!("../../resources/templates/child/child/README.md.tmpl");
+        pub const DIAGNOSTICS_CARGO_TOML: &str =
+            include_str!("../../resources/templates/child/child/diagnostics-Cargo.toml.tmpl");
+        pub const DIAGNOSTICS_TEST_RS: &str =
+            include_str!("../../resources/templates/child/child/diagnostics-test.rs.tmpl");
+        pub const CHILDREN_DEV_TOML: &str =
+            include_str!("../../resources/templates/child/child/children-dev.toml.tmpl");
         pub const WORLD_WIT: &str =
             include_str!("../../resources/templates/child/child/world.wit.tmpl");
         pub const DEPS_LOGGING_WIT: &str =
@@ -129,6 +137,10 @@ struct TemplateSet {
     cargo_toml: &'static str,
     manifest_toml: &'static str,
     lib_rs: &'static str,
+    readme_md: Option<&'static str>,
+    diagnostics_cargo_toml: Option<&'static str>,
+    diagnostics_test_rs: Option<&'static str>,
+    children_dev_toml: Option<&'static str>,
     world_wit: Option<&'static str>,
     wit_deps: &'static [(&'static str, &'static str)],
 }
@@ -139,6 +151,10 @@ fn typed_templates(world: &ChildKind) -> Result<TemplateSet> {
             cargo_toml: templates::typed_child::CARGO_TOML,
             manifest_toml: templates::typed_child::MANIFEST_TOML,
             lib_rs: templates::typed_child::LIB_RS,
+            readme_md: Some(templates::typed_child::README_MD),
+            diagnostics_cargo_toml: Some(templates::typed_child::DIAGNOSTICS_CARGO_TOML),
+            diagnostics_test_rs: Some(templates::typed_child::DIAGNOSTICS_TEST_RS),
+            children_dev_toml: Some(templates::typed_child::CHILDREN_DEV_TOML),
             world_wit: Some(templates::typed_child::WORLD_WIT),
             wit_deps: &[
                 ("logging.wit", templates::typed_child::DEPS_LOGGING_WIT),
@@ -166,6 +182,10 @@ fn legacy_templates(world: &ChildKind) -> TemplateSet {
             cargo_toml: templates::legacy_child::CARGO_TOML,
             manifest_toml: templates::legacy_child::MANIFEST_TOML,
             lib_rs: templates::legacy_child::LIB_RS,
+            readme_md: None,
+            diagnostics_cargo_toml: None,
+            diagnostics_test_rs: None,
+            children_dev_toml: None,
             world_wit: None,
             wit_deps: &[],
         },
@@ -173,6 +193,10 @@ fn legacy_templates(world: &ChildKind) -> TemplateSet {
             cargo_toml: templates::legacy_pipeline::CARGO_TOML,
             manifest_toml: templates::legacy_pipeline::MANIFEST_TOML,
             lib_rs: templates::legacy_pipeline::LIB_RS,
+            readme_md: None,
+            diagnostics_cargo_toml: None,
+            diagnostics_test_rs: None,
+            children_dev_toml: None,
             world_wit: None,
             wit_deps: &[],
         },
@@ -218,6 +242,35 @@ pub fn scaffold(
         substitute(templates.manifest_toml, name),
     )?;
     std::fs::write(src_dir.join("lib.rs"), substitute(templates.lib_rs, name))?;
+
+    if let Some(readme_md) = templates.readme_md {
+        std::fs::write(project_dir.join("README.md"), substitute(readme_md, name))?;
+    }
+
+    if let (Some(diagnostics_cargo_toml), Some(diagnostics_test_rs)) = (
+        templates.diagnostics_cargo_toml,
+        templates.diagnostics_test_rs,
+    ) {
+        let diagnostics_dir = project_dir.join("checks/diagnostics");
+        std::fs::create_dir_all(diagnostics_dir.join("tests"))?;
+        std::fs::write(
+            diagnostics_dir.join("Cargo.toml"),
+            substitute(diagnostics_cargo_toml, name),
+        )?;
+        std::fs::write(
+            diagnostics_dir.join("tests/diagnostics.rs"),
+            substitute(diagnostics_test_rs, name),
+        )?;
+    }
+
+    if let Some(children_dev_toml) = templates.children_dev_toml {
+        let patina_dir = project_dir.join(".patina");
+        std::fs::create_dir_all(&patina_dir)?;
+        std::fs::write(
+            patina_dir.join("children-dev.toml"),
+            substitute(children_dev_toml, name),
+        )?;
+    }
 
     if let Some(world_wit) = templates.world_wit {
         let wit_dir = project_dir.join("wit");
@@ -295,6 +348,12 @@ mod tests {
         assert!(project.join("Cargo.toml").exists());
         assert!(project.join("child.toml").exists());
         assert!(project.join("src/lib.rs").exists());
+        assert!(project.join("README.md").exists());
+        assert!(project.join("checks/diagnostics/Cargo.toml").exists());
+        assert!(project
+            .join("checks/diagnostics/tests/diagnostics.rs")
+            .exists());
+        assert!(project.join(".patina/children-dev.toml").exists());
         assert!(project.join("wit/world.wit").exists());
         assert!(project.join("wit/deps/logging.wit").exists());
         assert!(project.join("wit/deps/patina-measure.wit").exists());
@@ -308,6 +367,16 @@ mod tests {
         let manifest = std::fs::read_to_string(project.join("child.toml")).unwrap();
         assert!(manifest.contains("kind = \"child\""));
         assert!(manifest.contains("toys = [\"logging\", \"measure\"]"));
+
+        let diagnostics =
+            std::fs::read_to_string(project.join("checks/diagnostics/tests/diagnostics.rs"))
+                .unwrap();
+        assert!(diagnostics.contains("patina_child_diagnostics::check_local_dev"));
+
+        let children_dev =
+            std::fs::read_to_string(project.join(".patina/children-dev.toml")).unwrap();
+        assert!(children_dev.contains("[children.test-plugin]"));
+        assert!(children_dev.contains(".patina/dev/components/test-plugin.wasm"));
     }
 
     #[test]

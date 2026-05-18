@@ -5,4 +5,4 @@ description = "{{ description }}"
 kind = "{{ child_kind }}"
 
 [needs]
-toys = ["log"]
+toys = ["logging"]

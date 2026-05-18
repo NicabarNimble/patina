@@ -1,0 +1,10 @@
+[package]
+name = "{{ package_name }}-diagnostics"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dev-dependencies]
+patina-child-diagnostics = { path = "../../../patina-child-diagnostics" }

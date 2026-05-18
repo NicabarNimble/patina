@@ -50,12 +50,38 @@ fn cargo_generate_template_builds_for_wasm() {
     assert!(generated.join("Cargo.toml").exists());
     assert!(generated.join("child.toml").exists());
     assert!(generated.join("src/lib.rs").exists());
+    assert!(generated.join("README.md").exists());
+    assert!(generated.join("checks/diagnostics/Cargo.toml").exists());
+    assert!(generated
+        .join("checks/diagnostics/tests/diagnostics.rs")
+        .exists());
+    assert!(generated.join(".patina/children-dev.toml").exists());
 
     let cargo_toml = generated.join("Cargo.toml");
     let original = std::fs::read_to_string(&cargo_toml).expect("read generated Cargo.toml");
     let sdk_path = repo_root.join("sdk/patina-sdk");
     let patched = original.replace("../../sdk/patina-sdk", &sdk_path.to_string_lossy());
     std::fs::write(&cargo_toml, patched).expect("patch sdk path in generated Cargo.toml");
+
+    let diagnostics_cargo_toml = generated.join("checks/diagnostics/Cargo.toml");
+    let diagnostics_original =
+        std::fs::read_to_string(&diagnostics_cargo_toml).expect("read diagnostics Cargo.toml");
+    let diagnostics_path = repo_root.join("sdk/patina-child-diagnostics");
+    let diagnostics_patched = diagnostics_original
+        .replace(
+            "../../../../sdk/patina-child-diagnostics",
+            &diagnostics_path.to_string_lossy(),
+        )
+        .replace(
+            "../../../sdk/patina-child-diagnostics",
+            &diagnostics_path.to_string_lossy(),
+        )
+        .replace(
+            "../../../patina-child-diagnostics",
+            &diagnostics_path.to_string_lossy(),
+        );
+    std::fs::write(&diagnostics_cargo_toml, diagnostics_patched)
+        .expect("patch diagnostics sdk path in generated Cargo.toml");
 
     let check = Command::new("cargo")
         .current_dir(&generated)
@@ -68,5 +94,23 @@ fn cargo_generate_template_builds_for_wasm() {
         "generated child check failed:\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&check.stdout),
         String::from_utf8_lossy(&check.stderr)
+    );
+
+    let diagnostics = Command::new("cargo")
+        .current_dir(&generated)
+        .args([
+            "test",
+            "--manifest-path",
+            "checks/diagnostics/Cargo.toml",
+            "--quiet",
+        ])
+        .output()
+        .expect("run cargo test diagnostics for generated child");
+
+    assert!(
+        diagnostics.status.success(),
+        "generated child diagnostics test failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&diagnostics.stdout),
+        String::from_utf8_lossy(&diagnostics.stderr)
     );
 }
