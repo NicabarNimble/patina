@@ -15,7 +15,9 @@ The first diagnostic slice covers the local development stage:
 - WIT imports/exports
 - WIT toy imports compared to `[needs].toys`
 
-It does not yet inspect built WASM components or release assets.
+The component-built stage also inspects an explicit WebAssembly component artifact and compares its top-level imports/exports/toy imports to WIT plus `child.toml` declarations.
+
+It does not yet inspect release assets.
 
 ## Single-child package example
 
@@ -47,12 +49,31 @@ root = "children/watch-null-sink"
 component = ".patina/dev/components/watch-null-sink.wasm"
 ```
 
-The `component` field is optional for local-dev checks. Generated SDK dev artifacts should live under `.patina/dev/` so they can be cleaned without knowing whether the child was built by Rust, C, Go, TypeScript, or another toolchain.
+The `component` field is optional for local-dev checks and required for component-built checks. Generated SDK dev artifacts should live under `.patina/dev/` so they can be cleaned without knowing whether the child was built by Rust, C, Go, TypeScript, or another toolchain.
 
 ```rust
 #[test]
 fn children_dev_config_conforms_locally() {
     patina_child_diagnostics::check_children_dev_config(".")
         .assert_ok();
+}
+
+#[test]
+fn built_components_match_declared_contracts() {
+    patina_child_diagnostics::check_children_dev_components(".")
+        .assert_ok();
+}
+```
+
+For lower-level tests or CI jobs that already know the artifact path:
+
+```rust
+#[test]
+fn built_component_matches_declared_contract() {
+    patina_child_diagnostics::check_component_built(
+        ".",
+        ".patina/dev/components/my-child.wasm",
+    )
+    .assert_ok();
 }
 ```

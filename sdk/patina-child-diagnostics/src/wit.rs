@@ -6,8 +6,19 @@ use wit_parser::{Resolve, WorldId, WorldItem};
 
 use crate::report::{DiagnosticFinding, DiagnosticPhase};
 
-pub fn check_wit(root: &Path, declared_toys: &BTreeSet<String>) -> Result<Vec<DiagnosticFinding>> {
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct WitInfo {
+    pub imports: BTreeSet<String>,
+    pub exports: BTreeSet<String>,
+    pub toy_imports: BTreeSet<String>,
+}
+
+pub(crate) fn inspect_wit(
+    root: &Path,
+    declared_toys: &BTreeSet<String>,
+) -> Result<(Option<WitInfo>, Vec<DiagnosticFinding>)> {
     let wit_root = root.join("wit");
+    let mut info = WitInfo::default();
     let mut findings = Vec::new();
 
     if !wit_root.exists() {
@@ -18,7 +29,7 @@ pub fn check_wit(root: &Path, declared_toys: &BTreeSet<String>) -> Result<Vec<Di
             "push-pure child package is missing a WIT world",
             Some("add wit/world.wit so the component imports and exports are explicit".to_string()),
         ));
-        return Ok(findings);
+        return Ok((None, findings));
     }
 
     let mut resolve = Resolve::default();
@@ -34,7 +45,7 @@ pub fn check_wit(root: &Path, declared_toys: &BTreeSet<String>) -> Result<Vec<Di
                     "fix package, interface, use, import, and export names until standard WIT tooling can resolve the world: {error:#}"
                 )),
             ));
-            return Ok(findings);
+            return Ok((None, findings));
         }
     };
 
@@ -47,14 +58,21 @@ pub fn check_wit(root: &Path, declared_toys: &BTreeSet<String>) -> Result<Vec<Di
             "WIT package contains no world",
             Some("add a world that declares child imports and exports".to_string()),
         ));
-        return Ok(findings);
+        return Ok((None, findings));
     }
 
     for (_name, world_id) in &package.worlds {
-        check_world(&resolve, *world_id, &wit_root, declared_toys, &mut findings)?;
+        check_world(
+            &resolve,
+            *world_id,
+            &wit_root,
+            declared_toys,
+            &mut info,
+            &mut findings,
+        )?;
     }
 
-    Ok(findings)
+    Ok((Some(info), findings))
 }
 
 fn check_world(
@@ -62,6 +80,7 @@ fn check_world(
     world_id: WorldId,
     wit_root: &Path,
     declared_toys: &BTreeSet<String>,
+    info: &mut WitInfo,
     findings: &mut Vec<DiagnosticFinding>,
 ) -> Result<()> {
     let world = &resolve.worlds[world_id];
@@ -80,20 +99,20 @@ fn check_world(
         ));
     }
 
+    for (key, _item) in &world.exports {
+        let export_name = resolve.name_world_key(key);
+        if contains_backend_specific_name(&export_name) {
+            findings.push(backend_specific_name_finding(location.clone()));
+        }
+        info.exports.insert(export_name);
+    }
+
     for (key, item) in &world.imports {
         let import_name = resolve.name_world_key(key);
+        info.imports.insert(import_name.clone());
 
         if contains_backend_specific_name(&import_name) {
-            findings.push(DiagnosticFinding::warning(
-                DiagnosticPhase::Wit,
-                "PTN-WIT-004",
-                Some(location.clone()),
-                "WIT world contains orchestration-backend-specific names",
-                Some(
-                    "keep child contracts backend-neutral; place Mother/Rivet/queue-specific adaptation outside child business WIT"
-                        .to_string(),
-                ),
-            ));
+            findings.push(backend_specific_name_finding(location.clone()));
         }
 
         let Some(toy_name) = toy_for_import(resolve, item, &import_name)? else {
@@ -111,6 +130,8 @@ fn check_world(
             ));
             continue;
         };
+
+        info.toy_imports.insert(toy_name.clone());
 
         if !declared_toys.contains(&toy_name) {
             findings.push(DiagnosticFinding::error(
@@ -139,6 +160,19 @@ fn wit_location(wit_root: &Path) -> PathBuf {
     }
 }
 
+fn backend_specific_name_finding(location: PathBuf) -> DiagnosticFinding {
+    DiagnosticFinding::warning(
+        DiagnosticPhase::Wit,
+        "PTN-WIT-004",
+        Some(location),
+        "WIT world contains orchestration-backend-specific names",
+        Some(
+            "keep child contracts backend-neutral; place Mother/Rivet/queue-specific adaptation outside child business WIT"
+                .to_string(),
+        ),
+    )
+}
+
 fn toy_for_import(
     resolve: &Resolve,
     item: &WorldItem,
@@ -154,7 +188,7 @@ fn toy_for_import(
     Ok(toy_name_from_interface_id(&canonical))
 }
 
-fn toy_name_from_interface_id(interface_id: &str) -> Option<String> {
+pub(crate) fn toy_name_from_interface_id(interface_id: &str) -> Option<String> {
     let without_version = interface_id.split('@').next().unwrap_or(interface_id);
     let (namespace, rest) = without_version.split_once(':')?;
     let (package, interface) = rest.split_once('/')?;

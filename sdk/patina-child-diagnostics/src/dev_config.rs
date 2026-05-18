@@ -27,6 +27,19 @@ pub struct ChildDevConfig {
     pub component: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChildrenDevCheckOptions {
+    pub stage: DiagnosticStage,
+}
+
+impl Default for ChildrenDevCheckOptions {
+    fn default() -> Self {
+        Self {
+            stage: DiagnosticStage::LocalDev,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChildrenDevReport {
     pub repo_root: PathBuf,
@@ -117,13 +130,16 @@ pub fn load_children_dev_config(
 }
 
 pub fn check_children_dev_config(repo_root: impl AsRef<Path>) -> ChildrenDevReport {
+    check_children_dev_config_with_options(repo_root, ChildrenDevCheckOptions::default())
+}
+
+pub fn check_children_dev_config_with_options(
+    repo_root: impl AsRef<Path>,
+    options: ChildrenDevCheckOptions,
+) -> ChildrenDevReport {
     let repo_root = repo_root.as_ref().to_path_buf();
     let config_path = children_dev_config_path(&repo_root);
-    let mut report = ChildrenDevReport::new(
-        repo_root.clone(),
-        config_path.clone(),
-        DiagnosticStage::LocalDev,
-    );
+    let mut report = ChildrenDevReport::new(repo_root.clone(), config_path.clone(), options.stage);
 
     let content = match std::fs::read_to_string(&config_path) {
         Ok(content) => content,
@@ -226,7 +242,13 @@ pub fn check_children_dev_config(repo_root: impl AsRef<Path>) -> ChildrenDevRepo
             }
         }
 
-        let child_report = check_package(&child_root, CheckOptions::default());
+        let child_report = check_package(
+            &child_root,
+            CheckOptions {
+                stage: options.stage,
+                component_path: component.clone(),
+            },
+        );
         report.children.push(ChildDevReport {
             name,
             root: child_root,
@@ -236,6 +258,15 @@ pub fn check_children_dev_config(repo_root: impl AsRef<Path>) -> ChildrenDevRepo
     }
 
     report
+}
+
+pub fn check_children_dev_components(repo_root: impl AsRef<Path>) -> ChildrenDevReport {
+    check_children_dev_config_with_options(
+        repo_root,
+        ChildrenDevCheckOptions {
+            stage: DiagnosticStage::ComponentBuilt,
+        },
+    )
 }
 
 fn resolve_repo_path(repo_root: &Path, path: &Path) -> PathBuf {

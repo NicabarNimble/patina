@@ -4,20 +4,22 @@
 //! `patina` binary. The first supported stage is local development: manifest
 //! shape, WIT resolution, and WIT toy imports compared with `[needs].toys`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
+mod component;
 mod dev_config;
 mod manifest;
 pub mod report;
 mod wit;
 
 pub use dev_config::{
-    check_children_dev_config, children_dev_config_path, load_children_dev_config,
-    parse_children_dev_config, ChildDevConfig, ChildDevReport, ChildrenDevConfig,
-    ChildrenDevReport, CHILDREN_DEV_CONFIG_RELATIVE_PATH, PATINA_DEV_COMPONENTS_RELATIVE_PATH,
-    PATINA_DEV_RELATIVE_PATH,
+    check_children_dev_components, check_children_dev_config,
+    check_children_dev_config_with_options, children_dev_config_path, load_children_dev_config,
+    parse_children_dev_config, ChildDevConfig, ChildDevReport, ChildrenDevCheckOptions,
+    ChildrenDevConfig, ChildrenDevReport, CHILDREN_DEV_CONFIG_RELATIVE_PATH,
+    PATINA_DEV_COMPONENTS_RELATIVE_PATH, PATINA_DEV_RELATIVE_PATH,
 };
 pub use report::{
     DiagnosticFinding, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, DiagnosticStage,
@@ -26,12 +28,23 @@ pub use report::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckOptions {
     pub stage: DiagnosticStage,
+    pub component_path: Option<PathBuf>,
+}
+
+impl CheckOptions {
+    pub fn component_built(component_path: impl Into<PathBuf>) -> Self {
+        Self {
+            stage: DiagnosticStage::ComponentBuilt,
+            component_path: Some(component_path.into()),
+        }
+    }
 }
 
 impl Default for CheckOptions {
     fn default() -> Self {
         Self {
             stage: DiagnosticStage::LocalDev,
+            component_path: None,
         }
     }
 }
@@ -42,6 +55,13 @@ pub fn check_current_package() -> DiagnosticReport {
 
 pub fn check_local_dev(root: impl AsRef<Path>) -> DiagnosticReport {
     check_package(root, CheckOptions::default())
+}
+
+pub fn check_component_built(
+    root: impl AsRef<Path>,
+    component_path: impl Into<PathBuf>,
+) -> DiagnosticReport {
+    check_package(root, CheckOptions::component_built(component_path))
 }
 
 pub fn check_package(root: impl AsRef<Path>, options: CheckOptions) -> DiagnosticReport {
@@ -63,12 +83,26 @@ pub fn check_package(root: impl AsRef<Path>, options: CheckOptions) -> Diagnosti
     report
 }
 
-fn run_checks(root: &Path, _options: &CheckOptions) -> Result<Vec<DiagnosticFinding>> {
+fn run_checks(root: &Path, options: &CheckOptions) -> Result<Vec<DiagnosticFinding>> {
     let (manifest, mut findings) = manifest::check_manifest(root)?;
     let declared_toys = manifest
         .as_ref()
         .map(|manifest| manifest.declared_toys.clone())
         .unwrap_or_default();
-    findings.extend(wit::check_wit(root, &declared_toys)?);
+    let (wit, wit_findings) = wit::inspect_wit(root, &declared_toys)?;
+    findings.extend(wit_findings);
+
+    if matches!(
+        options.stage,
+        DiagnosticStage::ComponentBuilt | DiagnosticStage::ReleaseCandidate
+    ) {
+        findings.extend(component::check_component(
+            root,
+            options.component_path.as_deref(),
+            wit.as_ref(),
+            &declared_toys,
+        )?);
+    }
+
     Ok(findings)
 }
