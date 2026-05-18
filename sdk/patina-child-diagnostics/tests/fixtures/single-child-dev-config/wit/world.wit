@@ -1,0 +1,5 @@
+package patina:single-child@0.1.0;
+
+world single-child {
+    export run: func();
+}

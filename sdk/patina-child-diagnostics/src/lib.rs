@@ -8,10 +8,17 @@ use std::path::Path;
 
 use anyhow::Result;
 
+mod dev_config;
 mod manifest;
 pub mod report;
 mod wit;
 
+pub use dev_config::{
+    check_children_dev_config, children_dev_config_path, load_children_dev_config,
+    parse_children_dev_config, ChildDevConfig, ChildDevReport, ChildrenDevConfig,
+    ChildrenDevReport, CHILDREN_DEV_CONFIG_RELATIVE_PATH, PATINA_DEV_COMPONENTS_RELATIVE_PATH,
+    PATINA_DEV_RELATIVE_PATH,
+};
 pub use report::{
     DiagnosticFinding, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, DiagnosticStage,
 };

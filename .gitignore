@@ -39,6 +39,9 @@ docker-compose.yml.backup/
 .patina/logs/
 .patina/schemas/
 
+# Patina SDK dev artifacts (regeneratable child components/check outputs)
+.patina/dev/
+
 # Generated code
 src/generated/
 
