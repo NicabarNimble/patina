@@ -1,7 +1,7 @@
 id = "child-sdk-conformance-suite"
 title = "Build child SDK conformance suite"
 kind = "build"
-status = "active"
+status = "complete"
 human_request = "Create a full language-neutral SDK-side child conformance suite so child developers can verify package, manifest, WIT/component, toys/scopes, skills, smoke behavior, and release artifacts have not drifted from Patina usability boundaries."
 allium_anchors = [
     "layer/allium/mother/mother-mct-test-harness.allium",
@@ -68,7 +68,7 @@ closure_evidence = [
     "Reviewed `layer/core/**/*.md` value anchors before hardening the review findings, especially `read-code-before-write-code`, `scalpel-commits`, `contract-first-execution`, `explicit-fail-closed-over-hidden-fallbacks`, `unix-philosophy`, `dependable-rust`, `safety-boundaries`, `spec-driven-design`, and `patina-identity`.",
     "Hardened release-candidate diagnostics with `PTN-RELEASE-009`, proving the release bundle `.wasm` is byte-identical to the inspected component artifact rather than only internally checksummed.",
     "Extended the Slate-local Allium release model with `ReleaseBundle.wasm_matches_component` and rule `ReleaseWasmMustMatchInspectedComponent`, keeping the diagnostic model aligned with the implementation.",
-    "Replaced generated Rust child template local path dependencies with external-safe dependencies: published `patina-sdk = \"0.22.0\"` for the runtime helper crate and a Patina git dependency for `patina-child-diagnostics` until that checker is published as a crate.",
+    'Replaced generated Rust child template local path dependencies with external-safe dependencies: published `patina-sdk = "0.22.0"` for the runtime helper crate and a Patina git dependency for `patina-child-diagnostics` until that checker is published as a crate.',
     "Kept local repository tests deterministic by patching generated external dependencies back to local paths inside the tests, rather than requiring network access during Patina CI.",
     "Closed the reviewed template dependency and release-artifact equivalence gaps with scalpel commits: implementation commits for each gap followed by this Slate evidence update.",
 ]
@@ -88,4 +88,5 @@ implementation_plan = ["""
 """]
 belief_harvest_decision = "No new belief files created in this slice. The work is anchored to existing layer/core value IDs (`read-code-before-write-code`, `scalpel-commits`, `contract-first-execution`, `explicit-fail-closed-over-hidden-fallbacks`, `unix-philosophy`, `dependable-rust`, `safety-boundaries`, `spec-driven-design`, `patina-identity`) and existing belief `mother-harness-separates-child-fixtures-from-scenarios`; candidate public doctrine can be harvested later if the user wants a dedicated belief pass."
 created_at = "1778761031"
-updated_at = "1779121484"
+updated_at = "1779121612"
+closed_at = "1779121612"
