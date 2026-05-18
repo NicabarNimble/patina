@@ -213,3 +213,4 @@
 {"created_at":"1778896575","event_type":"promoted","payload":{"force":false,"from":"draft","to":"ready"},"work_id":"child-sdk-conformance-suite"}
 {"created_at":"1778896581","event_type":"promoted","payload":{"force":false,"from":"ready","to":"active"},"work_id":"child-sdk-conformance-suite"}
 {"created_at":"1779121613","event_type":"completed","payload":{"force":false},"work_id":"child-sdk-conformance-suite"}
+{"created_at":"1779121663","event_type":"archived","payload":{"force":false,"tag":"slate/child-sdk-conformance-suite"},"work_id":"child-sdk-conformance-suite"}
