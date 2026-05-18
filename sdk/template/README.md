@@ -12,6 +12,8 @@ cargo test --manifest-path checks/diagnostics/Cargo.toml
 
 These checks validate `child.toml`, `wit/`, and `.patina/children-dev.toml` from a standalone diagnostics package, so host-side diagnostics do not try to link the WebAssembly component crate. They do not require a built `.wasm` component.
 
+The generated child depends on the published `patina-sdk` crate. The standalone diagnostics package uses the Patina git repository until `patina-child-diagnostics` is published as its own crate; contributors working in a local Patina checkout may replace that dependency with a local `path` dependency.
+
 ## Build component
 
 Build with your Rust component toolchain, then copy the final WebAssembly

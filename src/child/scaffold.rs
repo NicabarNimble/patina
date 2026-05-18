@@ -114,7 +114,7 @@ pub fn to_pascal_case(name: &str) -> String {
 
 /// SDK version embedded in scaffolded Cargo.toml files.
 /// Uses the patina-sdk crate version, which tracks patina-ai major.minor.
-const SDK_VERSION: &str = "0.21";
+const SDK_VERSION: &str = "0.22.0";
 
 /// Apply name and version substitutions to a template string.
 fn substitute(template: &str, name: &str) -> String {
@@ -330,7 +330,7 @@ mod tests {
         let result = substitute(template, "review-bot");
         assert_eq!(
             result,
-            "name = \"review-bot\"\nversion = \"0.21\"\nstruct ReviewBot;"
+            "name = \"review-bot\"\nversion = \"0.22.0\"\nstruct ReviewBot;"
         );
     }
 

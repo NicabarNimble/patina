@@ -173,16 +173,21 @@ fn typed_scaffold_contract_stays_aligned_with_sdk_template() {
     }
 
     assert!(
-        embedded_cargo.contains("path = \"../sdk/patina-sdk\""),
-        "embedded cargo missing local sdk path dependency"
+        embedded_cargo.contains("patina-sdk = \"__SDK_VERSION__\""),
+        "embedded cargo should use scaffold-substituted published SDK version"
     );
     assert!(
-        embedded_diagnostics_cargo.contains("patina-child-diagnostics"),
-        "embedded diagnostics cargo missing diagnostics dev dependency"
+        sdk_template_cargo.contains("patina-sdk = \"0.22.0\""),
+        "sdk template cargo should use published SDK version"
     );
     assert!(
-        sdk_template_diagnostics_cargo.contains("patina-child-diagnostics"),
-        "sdk template diagnostics cargo missing diagnostics dev dependency"
+        embedded_diagnostics_cargo.contains("git = \"https://github.com/NicabarNimble/patina\""),
+        "embedded diagnostics cargo should use external-safe git dependency"
+    );
+    assert!(
+        sdk_template_diagnostics_cargo
+            .contains("git = \"https://github.com/NicabarNimble/patina\""),
+        "sdk template diagnostics cargo should use external-safe git dependency"
     );
 
     for marker in [
@@ -273,7 +278,10 @@ fn typed_scaffold_builds_for_wasm32_wasip2_when_target_installed() {
     let original = std::fs::read_to_string(&cargo_toml_path).expect("read generated Cargo.toml");
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let sdk_path = repo.join("sdk/patina-sdk");
-    let patched = original.replace("../sdk/patina-sdk", &sdk_path.to_string_lossy());
+    let patched = original.replace(
+        "patina-sdk = \"0.22.0\"",
+        &format!("patina-sdk = {{ path = \"{}\" }}", sdk_path.display()),
+    );
     std::fs::write(&cargo_toml_path, patched).expect("patch sdk path in generated Cargo.toml");
 
     let diagnostics_cargo_toml_path = project.join("checks/diagnostics/Cargo.toml");
@@ -281,8 +289,11 @@ fn typed_scaffold_builds_for_wasm32_wasip2_when_target_installed() {
         .expect("read generated diagnostics Cargo.toml");
     let diagnostics_path = repo.join("sdk/patina-child-diagnostics");
     let diagnostics_patched = diagnostics_original.replace(
-        "../../../sdk/patina-child-diagnostics",
-        &diagnostics_path.to_string_lossy(),
+        "patina-child-diagnostics = { git = \"https://github.com/NicabarNimble/patina\", package = \"patina-child-diagnostics\" }",
+        &format!(
+            "patina-child-diagnostics = {{ path = \"{}\" }}",
+            diagnostics_path.display()
+        ),
     );
     std::fs::write(&diagnostics_cargo_toml_path, diagnostics_patched)
         .expect("patch diagnostics sdk path in generated Cargo.toml");

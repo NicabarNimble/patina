@@ -60,26 +60,23 @@ fn cargo_generate_template_builds_for_wasm() {
     let cargo_toml = generated.join("Cargo.toml");
     let original = std::fs::read_to_string(&cargo_toml).expect("read generated Cargo.toml");
     let sdk_path = repo_root.join("sdk/patina-sdk");
-    let patched = original.replace("../../sdk/patina-sdk", &sdk_path.to_string_lossy());
+    let patched = original.replace(
+        "patina-sdk = \"0.22.0\"",
+        &format!("patina-sdk = {{ path = \"{}\" }}", sdk_path.display()),
+    );
     std::fs::write(&cargo_toml, patched).expect("patch sdk path in generated Cargo.toml");
 
     let diagnostics_cargo_toml = generated.join("checks/diagnostics/Cargo.toml");
     let diagnostics_original =
         std::fs::read_to_string(&diagnostics_cargo_toml).expect("read diagnostics Cargo.toml");
     let diagnostics_path = repo_root.join("sdk/patina-child-diagnostics");
-    let diagnostics_patched = diagnostics_original
-        .replace(
-            "../../../../sdk/patina-child-diagnostics",
-            &diagnostics_path.to_string_lossy(),
-        )
-        .replace(
-            "../../../sdk/patina-child-diagnostics",
-            &diagnostics_path.to_string_lossy(),
-        )
-        .replace(
-            "../../../patina-child-diagnostics",
-            &diagnostics_path.to_string_lossy(),
-        );
+    let diagnostics_patched = diagnostics_original.replace(
+        "patina-child-diagnostics = { git = \"https://github.com/NicabarNimble/patina\", package = \"patina-child-diagnostics\" }",
+        &format!(
+            "patina-child-diagnostics = {{ path = \"{}\" }}",
+            diagnostics_path.display()
+        ),
+    );
     std::fs::write(&diagnostics_cargo_toml, diagnostics_patched)
         .expect("patch diagnostics sdk path in generated Cargo.toml");
 

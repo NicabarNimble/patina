@@ -7,4 +7,4 @@ publish = false
 [workspace]
 
 [dev-dependencies]
-patina-child-diagnostics = { path = "../../../patina-child-diagnostics" }
+patina-child-diagnostics = { git = "https://github.com/NicabarNimble/patina", package = "patina-child-diagnostics" }

@@ -8,7 +8,7 @@ description = "{{ description }}"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-patina-sdk = { path = "../patina-sdk" }
+patina-sdk = "0.22.0"
 wit-bindgen = "0.41.0"
 
 [package.metadata.component]
