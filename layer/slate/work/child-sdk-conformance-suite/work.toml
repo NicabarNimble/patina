@@ -41,6 +41,11 @@ closure_evidence = [
     "Refactored WIT diagnostics to retain resolved import/export/toy information so built component contracts can be compared against declared WIT worlds without live Mother.",
     "Added component-built tests for missing explicit artifact path, core-module rejection, matching component contracts, import/export drift, missing toy authority requests, and `.patina/children-dev.toml` component path usage.",
     "Validated component-built slice with `cargo test -p patina-child-diagnostics`, `cargo clippy -p patina-child-diagnostics --all-targets -- -D warnings`, `cargo fmt --check`, and `allium check layer/slate/work/child-sdk-conformance-suite/allium`.",
+    "Added release-candidate diagnostics using explicit release bundle paths from `CheckOptions`, `check_release_candidate`, `check_release_candidate_with_tag`, or `.patina/children-dev.toml` via `check_children_dev_release_candidates`.",
+    "Extended `.patina/children-dev.toml` entries with optional `release` and `tag` fields while preserving low-friction local-dev behavior where component/release/tag are not required.",
+    "Implemented release bundle checks for `.wasm` asset presence, `child.toml`, `child.toml.sha256`, `checksums.txt`, checksum coverage for WASM and manifest assets, checksum/hash matches, release child.toml version drift, and optional release tag/version alignment.",
+    "Added release-candidate tests for missing release path, valid Mother-intake bundle, missing manifest/checksums, checksum coverage/mismatch, tag mismatch, and `.patina/children-dev.toml` release bundle usage.",
+    "Validated release-candidate slice with `cargo test -p patina-child-diagnostics`, `cargo clippy -p patina-child-diagnostics --all-targets -- -D warnings`, `cargo fmt --check`, and `allium check layer/slate/work/child-sdk-conformance-suite/allium`.",
 ]
 blocked_by = []
 implementation_plan = ["""
@@ -51,8 +56,9 @@ implementation_plan = ["""
 [ ] Add skills bundle validator for `skills/*/SKILL.md` package structure and metadata.
 [x] Add WASM component introspection helpers that expose imports/exports for tests without requiring live Mother.
 [x] Add toy/capability matching from WIT and built component imports to manifest `[needs].toys` declarations using local toy mapping as policy input.
+[x] Add release-candidate diagnostics for Mother-intake release assets, checksums, and optional tag/version alignment.
 [ ] Add sandbox smoke harness design and first fixture-backed smoke checks where host imports can be satisfied locally.
-[ ] Add CI/report documentation for child authors showing how to run the suite and publish conformance artifacts.
+[x] Add CI/report documentation for child authors showing how to run the suite and publish conformance artifacts for local-dev, component-built, and release-candidate stages.
 """]
 created_at = "1778761031"
-updated_at = "1779109301"
+updated_at = "1779113885"
