@@ -1,0 +1,37 @@
+id = "pai-dev-sdk-entrypoint"
+title = "Add pai-dev SDK entrypoint"
+kind = "build"
+status = "active"
+human_request = "Introduce pai-dev as the Patina SDK/developer command entry point, starting with child diagnostics so child authoring and checking move out of the main patina binary without boiling the ocean."
+allium_anchors = ["layer/slate/work/pai-dev-sdk-entrypoint/allium/pai-dev-sdk-entrypoint.allium"]
+user_alignment = "The user wants patina to shrink toward knowledge/interface duties, pai to later absorb Mother/runtime/child operation surfaces, and pai-dev to become the SDK developer entry point. This first slice should be additive, scalpel-sized, and avoid moving Mother yet."
+belief_refs = [
+    "read-code-before-write-code",
+    "scalpel-commits",
+    "patina-identity",
+    "unix-philosophy",
+    "dependable-rust",
+    "contract-first-execution",
+    "explicit-fail-closed-over-hidden-fallbacks",
+    "safety-boundaries",
+    "spec-driven-design",
+]
+proof_plan = [
+    "[ ] `cargo run --bin pai-dev -- --help` shows SDK/developer-focused surface without Mother runtime commands.",
+    "[ ] `cargo run --bin pai-dev -- child check local-dev <fixture>` succeeds for a valid child fixture.",
+    "[ ] `cargo run --bin pai-dev -- child check local-dev <bad-fixture>` fails closed and prints diagnostic codes.",
+    "[ ] `cargo test --test pai_dev_cli` passes deterministic success/failure coverage.",
+    "[ ] Existing diagnostics and template tests still pass.",
+    "[ ] No Mother CLI behavior is moved in this slice.",
+]
+closure_evidence = []
+blocked_by = []
+implementation_plan = [
+    "[ ] Add a `pai-dev` binary target that is separate from the main `patina` binary.",
+    "[ ] Implement minimal SDK/developer command surface for child diagnostics only: local-dev, component-built, release-candidate, and children-dev aggregate forms.",
+    "[ ] Keep diagnostics logic in `patina-child-diagnostics`; `pai-dev` must be a thin CLI wrapper.",
+    "[ ] Update Rust child template docs to prefer `pai-dev` when installed while preserving standalone diagnostics package fallback.",
+    "[ ] Add integration tests for `pai-dev` help and local-dev diagnostics using existing fixtures.",
+]
+created_at = "1779126160"
+updated_at = "1779126234"
