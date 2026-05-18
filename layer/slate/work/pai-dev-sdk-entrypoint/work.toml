@@ -17,21 +17,32 @@ belief_refs = [
     "spec-driven-design",
 ]
 proof_plan = [
-    "[ ] `cargo run --bin pai-dev -- --help` shows SDK/developer-focused surface without Mother runtime commands.",
-    "[ ] `cargo run --bin pai-dev -- child check local-dev <fixture>` succeeds for a valid child fixture.",
-    "[ ] `cargo run --bin pai-dev -- child check local-dev <bad-fixture>` fails closed and prints diagnostic codes.",
-    "[ ] `cargo test --test pai_dev_cli` passes deterministic success/failure coverage.",
-    "[ ] Existing diagnostics and template tests still pass.",
-    "[ ] No Mother CLI behavior is moved in this slice.",
+    "[x] `cargo run -p pai-dev --bin pai-dev -- --help` shows SDK/developer-focused surface without Mother runtime commands.",
+    "[x] `cargo run -p pai-dev --bin pai-dev -- child check local-dev <fixture>` succeeds for a valid child fixture.",
+    "[x] `cargo run -p pai-dev --bin pai-dev -- child check local-dev <bad-fixture>` fails closed and prints diagnostic codes.",
+    "[x] `cargo test -p pai-dev --test pai_dev_cli` passes deterministic success/failure coverage.",
+    "[x] Existing diagnostics and template tests still pass.",
+    "[x] No Mother CLI behavior is moved in this slice.",
 ]
-closure_evidence = []
+closure_evidence = [
+    "Read core value anchors under `layer/core/**/*.md` before implementation, with `read-code-before-write-code`, `scalpel-commits`, `patina-identity`, `unix-philosophy`, `dependable-rust`, `contract-first-execution`, `explicit-fail-closed-over-hidden-fallbacks`, `safety-boundaries`, and `spec-driven-design` grounding the split.",
+    "Created Slate-local Allium at `layer/slate/work/pai-dev-sdk-entrypoint/allium/pai-dev-sdk-entrypoint.allium` modeling `pai-dev` as an SDK/developer entry point that owns child-dev checks and does not own Mother runtime in this first slice.",
+    "Added new workspace package and binary `sdk/pai-dev`, separate from the main `patina` binary, with a minimal `pai-dev` CLI focused on child diagnostics only.",
+    "Implemented `pai-dev child check <local-dev|component-built|release-candidate>` for one child root using `patina-child-diagnostics::check_package` and explicit component/release/tag options.",
+    "Implemented `pai-dev children check <local-dev|component-built|release-candidate>` for repo-local `.patina/children-dev.toml` aggregate checks using `patina-child-diagnostics::check_children_dev_config_with_options`.",
+    "Added `sdk/pai-dev/tests/pai_dev_cli.rs` covering SDK-focused help output, valid local-dev success, invalid local-dev fail-closed diagnostics, and children-dev aggregate checks.",
+    "Updated Rust child template README files to prefer `pai-dev children check ...` while preserving the standalone `checks/diagnostics` fallback for repos without `pai-dev` installed.",
+    "Committed implementation as `[[commit-7c94be6d]]` and docs as `[[commit-e459cc37]]`, keeping this slice separate from Slate evidence updates.",
+    "Validated with `cargo run -p pai-dev --bin pai-dev -- --help`, `cargo run -p pai-dev --bin pai-dev -- child check local-dev sdk/patina-child-diagnostics/tests/fixtures/valid-local-dev`, and fail-closed legacy manifest command returning diagnostics.",
+    "Validated tests with `cargo test -p pai-dev`, `cargo test -p patina-child-diagnostics`, `cargo test --test child_init_typed_default`, `cargo test --test template_end_to_end`, and relevant clippy/fmt checks.",
+]
 blocked_by = []
 implementation_plan = [
-    "[ ] Add a `pai-dev` binary target that is separate from the main `patina` binary.",
-    "[ ] Implement minimal SDK/developer command surface for child diagnostics only: local-dev, component-built, release-candidate, and children-dev aggregate forms.",
-    "[ ] Keep diagnostics logic in `patina-child-diagnostics`; `pai-dev` must be a thin CLI wrapper.",
-    "[ ] Update Rust child template docs to prefer `pai-dev` when installed while preserving standalone diagnostics package fallback.",
-    "[ ] Add integration tests for `pai-dev` help and local-dev diagnostics using existing fixtures.",
+    "[x] Add a `pai-dev` binary target that is separate from the main `patina` binary.",
+    "[x] Implement minimal SDK/developer command surface for child diagnostics only: local-dev, component-built, release-candidate, and children-dev aggregate forms.",
+    "[x] Keep diagnostics logic in `patina-child-diagnostics`; `pai-dev` must be a thin CLI wrapper.",
+    "[x] Update Rust child template docs to prefer `pai-dev` when installed while preserving standalone diagnostics package fallback.",
+    "[x] Add integration tests for `pai-dev` help and local-dev diagnostics using existing fixtures.",
 ]
 created_at = "1779126160"
-updated_at = "1779126234"
+updated_at = "1779126575"
