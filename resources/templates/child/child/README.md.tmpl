@@ -7,10 +7,16 @@ Patina push-pure child generated from the Rust child template.
 Run the low-friction local-dev checks before building a component:
 
 ```sh
+pai-dev children check local-dev .
+```
+
+If `pai-dev` is not installed yet, use the standalone diagnostics package fallback:
+
+```sh
 cargo test --manifest-path checks/diagnostics/Cargo.toml
 ```
 
-These checks validate `child.toml`, `wit/`, and `.patina/children-dev.toml` from a standalone diagnostics package, so host-side diagnostics do not try to link the WebAssembly component crate. They do not require a built `.wasm` component.
+These checks validate `child.toml`, `wit/`, and `.patina/children-dev.toml` without linking the WebAssembly component crate. They do not require a built `.wasm` component.
 
 The generated child depends on the published `patina-sdk` crate. The standalone diagnostics package uses the Patina git repository until `patina-child-diagnostics` is published as its own crate; contributors working in a local Patina checkout may replace that dependency with a local `path` dependency.
 
@@ -24,10 +30,10 @@ mkdir -p .patina/dev/components
 cp <built-component>.wasm .patina/dev/components/__NAME__.wasm
 ```
 
-Then run component-built diagnostics from a test or CI job:
+Then run component-built diagnostics:
 
-```rust
-patina_child_diagnostics::check_children_dev_components(".").assert_ok();
+```sh
+pai-dev children check component-built .
 ```
 
 ## Prepare release candidate
@@ -47,8 +53,8 @@ shasum -a 256 .patina/dev/releases/__NAME__/child.toml > .patina/dev/releases/__
 
 Then run release-candidate diagnostics:
 
-```rust
-patina_child_diagnostics::check_children_dev_release_candidates(".").assert_ok();
+```sh
+pai-dev children check release-candidate .
 ```
 
 `.patina/dev/` is generated output and can be deleted safely.
