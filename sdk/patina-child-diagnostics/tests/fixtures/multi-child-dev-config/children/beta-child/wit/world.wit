@@ -1,0 +1,5 @@
+package patina:beta-child@0.1.0;
+
+world beta-child {
+    export run: func();
+}

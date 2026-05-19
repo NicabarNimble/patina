@@ -1,0 +1,10 @@
+[child]
+name = "legacy-manifest"
+version = "0.1.0"
+kind = "child"
+
+[capabilities]
+host_log = true
+
+[toys]
+log = true

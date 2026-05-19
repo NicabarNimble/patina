@@ -1,0 +1,6 @@
+package patina:valid-local-dev@0.1.0;
+
+world valid-local-dev {
+    import wasi:logging/logging@0.1.0;
+    export run: func();
+}

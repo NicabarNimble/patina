@@ -1,0 +1,6 @@
+package patina:unresolved-wit@0.1.0;
+
+world unresolved-wit {
+    import missing:dep/interface@0.1.0;
+    export run: func();
+}

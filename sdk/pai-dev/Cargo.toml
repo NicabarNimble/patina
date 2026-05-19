@@ -1,0 +1,19 @@
+[package]
+name = "pai-dev"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Patina SDK developer command entry point"
+repository = "https://github.com/NicabarNimble/patina"
+keywords = ["patina", "sdk", "wasm", "component-model", "diagnostics"]
+categories = ["development-tools", "command-line-utilities", "wasm"]
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+patina-child-diagnostics = { path = "../patina-child-diagnostics" }
+serde_json = "1.0"
+
+[[bin]]
+name = "pai-dev"
+path = "src/main.rs"

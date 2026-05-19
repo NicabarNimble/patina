@@ -54,6 +54,12 @@ fn child_init_defaults_to_typed_lane() {
     assert!(project.join("Cargo.toml").exists());
     assert!(project.join("child.toml").exists());
     assert!(project.join("src/lib.rs").exists());
+    assert!(project.join("README.md").exists());
+    assert!(project.join("checks/diagnostics/Cargo.toml").exists());
+    assert!(project
+        .join("checks/diagnostics/tests/diagnostics.rs")
+        .exists());
+    assert!(project.join(".patina/children-dev.toml").exists());
     assert!(project.join("wit/world.wit").exists());
     assert!(project.join("wit/deps/logging.wit").exists());
     assert!(project.join("wit/deps/patina-measure.wit").exists());
@@ -70,6 +76,16 @@ fn child_init_defaults_to_typed_lane() {
     assert!(manifest.contains("role = \"app\""));
     assert!(manifest.contains("[needs]"));
     assert!(manifest.contains("toys = [\"logging\", \"measure\"]"));
+
+    let diagnostics =
+        std::fs::read_to_string(project.join("checks/diagnostics/tests/diagnostics.rs"))
+            .expect("read diagnostics test");
+    assert!(diagnostics.contains("patina_child_diagnostics::check_local_dev"));
+
+    let children_dev = std::fs::read_to_string(project.join(".patina/children-dev.toml"))
+        .expect("read children-dev config");
+    assert!(children_dev.contains("[children.typed-default]"));
+    assert!(children_dev.contains(".patina/dev/components/typed-default.wasm"));
 }
 
 #[test]
@@ -112,6 +128,18 @@ fn typed_scaffold_contract_stays_aligned_with_sdk_template() {
     let embedded_world =
         std::fs::read_to_string(repo.join("resources/templates/child/child/world.wit.tmpl"))
             .expect("read embedded world template");
+    let embedded_diagnostics_cargo = std::fs::read_to_string(
+        repo.join("resources/templates/child/child/diagnostics-Cargo.toml.tmpl"),
+    )
+    .expect("read embedded diagnostics cargo template");
+    let embedded_diagnostics_test = std::fs::read_to_string(
+        repo.join("resources/templates/child/child/diagnostics-test.rs.tmpl"),
+    )
+    .expect("read embedded diagnostics test template");
+    let embedded_children_dev = std::fs::read_to_string(
+        repo.join("resources/templates/child/child/children-dev.toml.tmpl"),
+    )
+    .expect("read embedded children-dev template");
 
     let sdk_template_cargo = std::fs::read_to_string(repo.join("sdk/template/Cargo.toml"))
         .expect("read sdk template cargo");
@@ -119,6 +147,15 @@ fn typed_scaffold_contract_stays_aligned_with_sdk_template() {
         .expect("read sdk template lib");
     let sdk_template_world = std::fs::read_to_string(repo.join("sdk/template/wit/world.wit"))
         .expect("read sdk template world");
+    let sdk_template_diagnostics_cargo =
+        std::fs::read_to_string(repo.join("sdk/template/checks/diagnostics/Cargo.toml"))
+            .expect("read sdk template diagnostics cargo");
+    let sdk_template_diagnostics_test =
+        std::fs::read_to_string(repo.join("sdk/template/checks/diagnostics/tests/diagnostics.rs"))
+            .expect("read sdk template diagnostics test");
+    let sdk_template_children_dev =
+        std::fs::read_to_string(repo.join("sdk/template/.patina/children-dev.toml"))
+            .expect("read sdk template children-dev");
 
     for marker in [
         "wit-bindgen",
@@ -136,8 +173,21 @@ fn typed_scaffold_contract_stays_aligned_with_sdk_template() {
     }
 
     assert!(
-        embedded_cargo.contains("path = \"../sdk/patina-sdk\""),
-        "embedded cargo missing local sdk path dependency"
+        embedded_cargo.contains("patina-sdk = \"__SDK_VERSION__\""),
+        "embedded cargo should use scaffold-substituted published SDK version"
+    );
+    assert!(
+        sdk_template_cargo.contains("patina-sdk = \"0.22.0\""),
+        "sdk template cargo should use published SDK version"
+    );
+    assert!(
+        embedded_diagnostics_cargo.contains("git = \"https://github.com/NicabarNimble/patina\""),
+        "embedded diagnostics cargo should use external-safe git dependency"
+    );
+    assert!(
+        sdk_template_diagnostics_cargo
+            .contains("git = \"https://github.com/NicabarNimble/patina\""),
+        "sdk template diagnostics cargo should use external-safe git dependency"
     );
 
     for marker in [
@@ -166,6 +216,28 @@ fn typed_scaffold_contract_stays_aligned_with_sdk_template() {
         assert!(
             sdk_template_world.contains(marker),
             "sdk template world missing marker: {marker}"
+        );
+    }
+
+    for marker in ["check_local_dev", "check_children_dev_config"] {
+        assert!(
+            embedded_diagnostics_test.contains(marker),
+            "embedded diagnostics test missing marker: {marker}"
+        );
+        assert!(
+            sdk_template_diagnostics_test.contains(marker),
+            "sdk template diagnostics test missing marker: {marker}"
+        );
+    }
+
+    for marker in [".patina/dev/components", ".patina/dev/releases"] {
+        assert!(
+            embedded_children_dev.contains(marker),
+            "embedded children-dev missing marker: {marker}"
+        );
+        assert!(
+            sdk_template_children_dev.contains(marker),
+            "sdk template children-dev missing marker: {marker}"
         );
     }
 
@@ -204,9 +276,27 @@ fn typed_scaffold_builds_for_wasm32_wasip2_when_target_installed() {
     let project = tmp.path().join("typed-build-check");
     let cargo_toml_path = project.join("Cargo.toml");
     let original = std::fs::read_to_string(&cargo_toml_path).expect("read generated Cargo.toml");
-    let sdk_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("sdk/patina-sdk");
-    let patched = original.replace("../sdk/patina-sdk", &sdk_path.to_string_lossy());
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let sdk_path = repo.join("sdk/patina-sdk");
+    let patched = original.replace(
+        "patina-sdk = \"0.22.0\"",
+        &format!("patina-sdk = {{ path = \"{}\" }}", sdk_path.display()),
+    );
     std::fs::write(&cargo_toml_path, patched).expect("patch sdk path in generated Cargo.toml");
+
+    let diagnostics_cargo_toml_path = project.join("checks/diagnostics/Cargo.toml");
+    let diagnostics_original = std::fs::read_to_string(&diagnostics_cargo_toml_path)
+        .expect("read generated diagnostics Cargo.toml");
+    let diagnostics_path = repo.join("sdk/patina-child-diagnostics");
+    let diagnostics_patched = diagnostics_original.replace(
+        "patina-child-diagnostics = { git = \"https://github.com/NicabarNimble/patina\", package = \"patina-child-diagnostics\" }",
+        &format!(
+            "patina-child-diagnostics = {{ path = \"{}\" }}",
+            diagnostics_path.display()
+        ),
+    );
+    std::fs::write(&diagnostics_cargo_toml_path, diagnostics_patched)
+        .expect("patch diagnostics sdk path in generated Cargo.toml");
 
     let check = Command::new("cargo")
         .current_dir(&project)
@@ -219,5 +309,23 @@ fn typed_scaffold_builds_for_wasm32_wasip2_when_target_installed() {
         "typed scaffold check failed\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&check.stdout),
         String::from_utf8_lossy(&check.stderr)
+    );
+
+    let diagnostics = Command::new("cargo")
+        .current_dir(&project)
+        .args([
+            "test",
+            "--manifest-path",
+            "checks/diagnostics/Cargo.toml",
+            "--quiet",
+        ])
+        .output()
+        .expect("run diagnostics test for typed scaffold");
+
+    assert!(
+        diagnostics.status.success(),
+        "typed scaffold diagnostics test failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&diagnostics.stdout),
+        String::from_utf8_lossy(&diagnostics.stderr)
     );
 }

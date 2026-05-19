@@ -1,0 +1,6 @@
+package patina:missing-logging-need@0.1.0;
+
+world missing-logging-need {
+    import wasi:logging/logging@0.1.0;
+    export run: func();
+}

@@ -1,0 +1,8 @@
+[child]
+name = "missing-logging-need"
+version = "0.1.0"
+description = "Missing logging need fixture"
+kind = "child"
+
+[needs]
+toys = []

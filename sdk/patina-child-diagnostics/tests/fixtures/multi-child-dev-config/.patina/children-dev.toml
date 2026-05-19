@@ -1,0 +1,7 @@
+[children.alpha-child]
+root = "children/alpha-child"
+component = ".patina/dev/components/alpha-child.wasm"
+
+[children.beta-child]
+root = "children/beta-child"
+component = ".patina/dev/components/beta-child.wasm"

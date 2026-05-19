@@ -1,0 +1,7 @@
+[child]
+name = "unresolved-wit"
+version = "0.1.0"
+kind = "child"
+
+[needs]
+toys = ["logging"]

@@ -1,0 +1,5 @@
+package patina:alpha-child@0.1.0;
+
+world alpha-child {
+    export run: func();
+}

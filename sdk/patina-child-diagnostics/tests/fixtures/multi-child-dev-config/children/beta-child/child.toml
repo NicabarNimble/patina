@@ -1,0 +1,7 @@
+[child]
+name = "beta-child"
+version = "0.1.0"
+kind = "actor"
+
+[needs]
+toys = []

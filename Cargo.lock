@@ -3120,6 +3120,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pai-dev"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "patina-child-diagnostics",
+ "serde_json",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3367,6 +3377,20 @@ version = "0.1.0"
 dependencies = [
  "patina-sdk-legacy",
  "serde_json",
+]
+
+[[package]]
+name = "patina-child-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "sha2",
+ "toml 0.8.23",
+ "wasm-encoder 0.244.0",
+ "wasmparser 0.244.0",
+ "wit-parser 0.244.0",
 ]
 
 [[package]]
