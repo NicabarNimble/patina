@@ -264,7 +264,7 @@ pub fn scaffold(
     }
 
     if let Some(children_dev_toml) = templates.children_dev_toml {
-        let patina_dir = project_dir.join(".patina");
+        let patina_dir = crate::paths::project::patina_dir(&project_dir);
         std::fs::create_dir_all(&patina_dir)?;
         std::fs::write(
             patina_dir.join("children-dev.toml"),
