@@ -239,3 +239,4 @@
 {"created_at":"1779203075","event_type":"promoted","payload":{"force":false,"from":"ready","to":"active"},"work_id":"pre-push-scaffold-paths-fix"}
 {"created_at":"1779203290","event_type":"set","payload":{"field":"belief_harvest_decision","value":"No new belief file created. This work applies existing `scalpel-commits` and `read-code-before-write-code` guidance to a no-behavior-change pre-push blocker fix."},"work_id":"pre-push-scaffold-paths-fix"}
 {"created_at":"1779203291","event_type":"completed","payload":{"force":false},"work_id":"pre-push-scaffold-paths-fix"}
+{"created_at":"1779203301","event_type":"archived","payload":{"force":false,"tag":"slate/pre-push-scaffold-paths-fix"},"work_id":"pre-push-scaffold-paths-fix"}
