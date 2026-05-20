@@ -23,6 +23,16 @@ SDK provides ergonomic outside toy helpers and convenience type exports.
 - `prelude` and root exports for shared SDK-facing types
 - Toy governance canon for MCT authoring: `TOY_GOVERNANCE.md`
 
+## Filesystem project mount
+
+Children that request the `filesystem` toy operate in guest-coordinate paths. For projectful invocations Patina/Mother resolves the host project and mounts it as:
+
+```text
+/project
+```
+
+Children should not receive or construct host paths such as `/Users/...`, and should not remap host paths to guest paths themselves. Use `/project/...` in child contracts and behavior; host path selection, authorization, and mounting belong to Patina/Mother.
+
 ## Toy lanes (MCT)
 
 The SDK recognizes three practical lanes for capability contracts:

@@ -1,0 +1,16 @@
+[child]
+name = "broad-filesystem-scope"
+version = "0.1.0"
+description = "Broad filesystem scope diagnostic fixture"
+kind = "child"
+role = "app"
+
+[needs]
+toys = ["logging", "filesystem"]
+
+[needs.scopes.filesystem]
+path = "/"
+
+[needs.scopes.filesystem.project]
+path = "/Users/example/project"
+mode = "read-write"

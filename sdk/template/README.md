@@ -20,6 +20,10 @@ These checks validate `child.toml`, `wit/`, and `.patina/children-dev.toml` with
 
 The generated child depends on the published `patina-sdk` crate. The standalone diagnostics package uses the Patina git repository until `patina-child-diagnostics` is published as its own crate; contributors working in a local Patina checkout may replace that dependency with a local `path` dependency.
 
+## Filesystem project paths
+
+If this child later requests the `filesystem` toy, use guest paths in child code. Patina/Mother resolves the host project and mounts it at `/project` for projectful child invocations. Do not hard-code host paths or implement `/Users/...` to guest-path remapping in the child.
+
 ## Build component
 
 Build with your Rust component toolchain, then copy the final WebAssembly

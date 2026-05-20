@@ -1,0 +1,6 @@
+package patina:broad-filesystem-scope@0.1.0;
+
+world broad-filesystem-scope {
+    import wasi:logging/logging@0.1.0;
+    export run: func();
+}

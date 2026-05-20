@@ -19,6 +19,16 @@ The component-built stage also inspects an explicit WebAssembly component artifa
 
 The release-candidate stage checks local release bundle evidence: `.wasm`, `child.toml`, `child.toml.sha256`, `checksums.txt`, checksum coverage, checksum matches, and optional tag/version alignment.
 
+## Filesystem project mount contract
+
+Filesystem-capable children should use guest paths, not host paths. For projectful invocations Patina/Mother resolves the host project, mounts it into the WASI child at:
+
+```text
+/project
+```
+
+and passes child contracts a guest project path such as `{"project":"/project"}`. Child packages should request the `filesystem` toy only when they need filesystem authority, and should avoid release manifests that hard-code broad root scopes like `path = "/"` or project mount scopes such as `[needs.scopes.filesystem.project]`. Diagnostics warn on those patterns because `/project` is a runner-owned mount.
+
 ## Single-child package example
 
 ```rust
