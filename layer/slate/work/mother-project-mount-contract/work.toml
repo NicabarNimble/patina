@@ -1,0 +1,29 @@
+id = "mother-project-mount-contract"
+title = "Enforce project mount contract for filesystem children"
+kind = "build"
+status = "active"
+human_request = "Move host-to-guest project path mapping out of Slate child fallback logic and into Patina/Mother runner behavior so project filesystem children receive /project rather than host absolute paths."
+allium_anchors = ["layer/slate/work/mother-project-mount-contract/allium/mother-project-mount-contract.allium"]
+user_alignment = "User wants filesystem child path/mount behavior to become a Mother/runtime invariant: Patina resolves the host project, the runner mounts it at /project, children receive guest paths only, and Slate stops guessing /input/Users mappings."
+belief_refs = [
+    "control-plane-authority-distributed-execution",
+    "explicit-fail-closed-over-hidden-fallbacks",
+    "contracts-outlive-runtimes",
+    "safety-boundaries",
+]
+proof_plan = [
+    "[ ] `cargo test slate::tests` passes in Patina.",
+    "[ ] `cargo test commands::mother::daemon::tests::builtin_spec_dispatch_execute_forwards_project_route_to_slate_manager` passes in Patina.",
+    "[ ] `cargo test -p patina-ai` focused runner/loader tests pass or equivalent targeted tests pass.",
+    "[ ] `cargo test` or focused tests pass in `patina-child-slate` after removing fallback logic.",
+]
+closure_evidence = []
+blocked_by = []
+implementation_plan = [
+    "[ ] Add a canonical guest project mount constant/helper and dynamic read-write project preopen for filesystem children.",
+    "[ ] Update child runner/daemon load paths to provide the same `/project` dynamic preopen when a project is available and the child has filesystem authority.",
+    "[ ] Remove Slate child `/input/<host-absolute-path>` fallback and validate project resolution fails closed for host absolute paths inside the child.",
+    "[ ] Update `patina slate` to mount the resolved host project at `/project` and pass a guest project path to Slate.",
+]
+created_at = "1779294475"
+updated_at = "1779294505"

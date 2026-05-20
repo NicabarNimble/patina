@@ -1,0 +1,68 @@
+-- allium: 3
+-- mother-project-mount-contract.allium
+
+-- Scope: Slate-local model for the filesystem child project mount boundary.
+-- The host path is resolved by Patina/Mother; children receive a stable guest
+-- project path and must not guess host-to-guest mappings.
+
+enum PathRealm { host | guest }
+
+enum MountMode { read_only | read_write }
+
+entity HostProjectRoot {
+    path: String
+    realm: PathRealm
+    is_patina_project: Boolean
+}
+
+entity GuestProjectMount {
+    path: String
+    realm: PathRealm
+    mode: MountMode
+}
+
+entity ChildInvocationEnvelope {
+    project: String
+    project_realm: PathRealm
+}
+
+entity FilesystemChild {
+    name: String
+    has_filesystem_authority: Boolean
+    receives_host_absolute_project: Boolean
+    remaps_host_absolute_path: Boolean
+}
+
+rule HostProjectRootIsHostPath {
+    when: root: HostProjectRoot.created
+    requires: root.is_patina_project = true
+    ensures: root.realm = host
+}
+
+rule ProjectfulFilesystemChildReceivesProjectMount {
+    when: child: FilesystemChild.created
+    requires: child.has_filesystem_authority = true
+    ensures: GuestProjectMount.created(
+        path: "/project",
+        realm: guest,
+        mode: read_write
+    )
+}
+
+rule ProjectEnvelopeUsesGuestPath {
+    when: envelope: ChildInvocationEnvelope.created
+    requires: envelope.project = "/project"
+    ensures: envelope.project_realm = guest
+}
+
+rule ChildDoesNotReceiveHostAbsoluteProject {
+    when: child: FilesystemChild.created
+    requires: child.has_filesystem_authority = true
+    ensures: child.receives_host_absolute_project = false
+}
+
+rule ChildDoesNotRemapHostAbsolutePaths {
+    when: child: FilesystemChild.created
+    requires: child.has_filesystem_authority = true
+    ensures: child.remaps_host_absolute_path = false
+}
