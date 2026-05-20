@@ -84,3 +84,31 @@ fn unresolved_wit_is_reported() {
         report.render_text()
     );
 }
+
+#[test]
+fn filesystem_scope_diagnostics_point_to_project_mount_contract() {
+    let report = check_local_dev(fixture("broad-filesystem-scope"));
+    assert!(report.is_ok(), "warnings should not fail local dev checks");
+
+    let broad_root = report.findings.iter().find(|finding| {
+        finding.code == "PTN-MANIFEST-009" && finding.severity == DiagnosticSeverity::Warning
+    });
+    assert!(broad_root.is_some(), "{}", report.render_text());
+    assert!(
+        broad_root
+            .and_then(|finding| finding.help.as_deref())
+            .is_some_and(|help| help.contains("/project")),
+        "{}",
+        report.render_text()
+    );
+
+    assert!(
+        report.findings.iter().any(|finding| {
+            finding.code == "PTN-MANIFEST-010"
+                && finding.severity == DiagnosticSeverity::Warning
+                && finding.message.contains("project filesystem mount")
+        }),
+        "{}",
+        report.render_text()
+    );
+}

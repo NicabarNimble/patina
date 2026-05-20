@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use patina_child_diagnostics::{
     check_children_dev_config_with_options, check_package, CheckOptions, ChildrenDevCheckOptions,
-    DiagnosticReport, DiagnosticStage,
+    ChildrenDevReport, DiagnosticReport, DiagnosticStage,
 };
 
 #[derive(Debug, Parser)]
@@ -148,10 +148,8 @@ fn run_children(command: ChildrenCommands) -> Result<bool> {
 
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
-            } else if report.is_ok() {
-                println!("ok: children-dev diagnostics passed");
             } else {
-                print!("{}", report.render_text());
+                emit_children_text_report(&report)?;
             }
 
             Ok(report.is_ok())
@@ -162,10 +160,40 @@ fn run_children(command: ChildrenCommands) -> Result<bool> {
 fn emit_report(report: &DiagnosticReport, json: bool) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string_pretty(report)?);
-    } else if report.is_ok() {
-        println!("ok: child diagnostics passed");
+    } else {
+        emit_text_report(report, "child diagnostics")?;
+    }
+
+    Ok(())
+}
+
+fn emit_text_report(report: &DiagnosticReport, label: &str) -> Result<()> {
+    if report.findings.is_empty() {
+        println!("ok: {label} passed");
     } else {
         print!("{}", report.render_text());
+        if report.is_ok() {
+            println!("ok: {label} passed with warnings");
+        }
+    }
+
+    Ok(())
+}
+
+fn emit_children_text_report(report: &ChildrenDevReport) -> Result<()> {
+    let has_findings = !report.findings.is_empty()
+        || report
+            .children
+            .iter()
+            .any(|child| !child.report.findings.is_empty());
+
+    if has_findings {
+        print!("{}", report.render_text());
+        if report.is_ok() {
+            println!("ok: children-dev diagnostics passed with warnings");
+        }
+    } else {
+        println!("ok: children-dev diagnostics passed");
     }
 
     Ok(())

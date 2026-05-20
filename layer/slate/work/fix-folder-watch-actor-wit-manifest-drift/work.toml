@@ -1,0 +1,26 @@
+id = "fix-folder-watch-actor-wit-manifest-drift"
+title = "Fix folder-watch-actor WIT/manifest drift"
+kind = "fix"
+status = "draft"
+human_request = "Define and review a least-authority fix plan for folder-watch-actor diagnostics before changing code"
+allium_anchors = []
+user_alignment = "User requested a Slate first; review and approve the plan before implementation. Goal is least-authority WIT/manifest alignment, not broadening authority just to pass diagnostics."
+belief_refs = []
+proof_plan = [
+    "[ ] pai-dev child check local-dev passes for children/folder-watch-actor.",
+    "[ ] Existing passing local-dev checks for watch-null-sink remain passing.",
+    "[ ] folder-watch-actor Cargo component metadata matches the reduced WIT dependency surface.",
+    "[ ] folder-watch-actor still builds after WIT cleanup.",
+    "[ ] No new authority is requested unless justified by observed implementation usage.",
+]
+closure_evidence = []
+blocked_by = []
+implementation_plan = [
+    "[ ] Inspect folder-watch-actor WIT imports, manifest needs, and Rust usage to classify imports as required, implied by SDK, or stale.",
+    "[ ] Remove stale imports/dependency declarations from wit/world.wit and Cargo component metadata rather than broadening authority.",
+    "[ ] Add or keep only manifest toy needs that are actually required by implementation/runtime contract.",
+    "[ ] Re-run diagnostics and build checks; iterate until least-authority alignment passes.",
+    "[ ] Record closure evidence and any follow-up questions before completing the Slate.",
+]
+created_at = "1779291802"
+updated_at = "1779291812"

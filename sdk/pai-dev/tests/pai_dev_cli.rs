@@ -58,6 +58,29 @@ fn local_dev_check_fails_closed_for_invalid_child() {
 }
 
 #[test]
+fn local_dev_check_prints_warnings_without_failing() {
+    let output = Command::new(pai_dev())
+        .args(["child", "check", "local-dev"])
+        .arg(diagnostics_fixture("broad-filesystem-scope"))
+        .output()
+        .expect("run pai-dev local-dev on warning fixture");
+
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("PTN-MANIFEST-009"), "stdout:\n{stdout}");
+    assert!(stdout.contains("/project"), "stdout:\n{stdout}");
+    assert!(
+        stdout.contains("ok: child diagnostics passed with warnings"),
+        "stdout:\n{stdout}"
+    );
+}
+
+#[test]
 fn children_dev_check_uses_repo_config() {
     let output = Command::new(pai_dev())
         .args(["children", "check", "local-dev"])

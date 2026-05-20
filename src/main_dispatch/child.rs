@@ -364,6 +364,18 @@ fn merge_missing_tables(
     }
 }
 
+fn current_project_preopens(
+    manifest: &patina::child::engine::ChildManifest,
+) -> Vec<patina::child::engine::FilesystemPreopen> {
+    if !manifest.toys.filesystem {
+        return Vec::new();
+    }
+
+    patina::session::SessionManager::find_project_root()
+        .map(|root| vec![patina::child::engine::FilesystemPreopen::project_read_write(root)])
+        .unwrap_or_default()
+}
+
 pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
     match command {
         crate::ChildCommands::List => crate::commands::child::execute_list()?,
@@ -503,7 +515,10 @@ pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
                     let engine = patina::child::engine::ChildEngine::new()?;
                     let component = engine.load_component(&wasm_bytes)?;
                     let query_fn = make_query_dispatch(&manifest);
-                    let mut child = engine.instantiate_child(&component, &manifest, query_fn)?;
+                    let preopens = current_project_preopens(&manifest);
+                    let mut child = engine.instantiate_child_with_preopens(
+                        &component, &manifest, query_fn, &preopens,
+                    )?;
 
                     use patina::mother::MotherHost;
                     struct CliHost;
@@ -599,7 +614,9 @@ pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
             let engine = patina::child::engine::ChildEngine::new()?;
             let component = engine.load_component(&wasm_bytes)?;
             let query_fn = make_query_dispatch(&manifest);
-            let mut child = engine.instantiate_child(&component, &manifest, query_fn)?;
+            let preopens = current_project_preopens(&manifest);
+            let mut child = engine
+                .instantiate_child_with_preopens(&component, &manifest, query_fn, &preopens)?;
 
             use patina::mother::MotherHost;
             struct CliHost;

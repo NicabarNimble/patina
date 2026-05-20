@@ -169,6 +169,8 @@ pub fn check_manifest(root: &Path) -> Result<(Option<ManifestInfo>, Vec<Diagnost
         ));
     }
 
+    check_filesystem_scope_policy(needs, &manifest_path, &mut findings);
+
     Ok((
         Some(ManifestInfo {
             path: manifest_path,
@@ -178,4 +180,84 @@ pub fn check_manifest(root: &Path) -> Result<(Option<ManifestInfo>, Vec<Diagnost
         }),
         findings,
     ))
+}
+
+fn check_filesystem_scope_policy(
+    needs: Option<&Table>,
+    manifest_path: &Path,
+    findings: &mut Vec<DiagnosticFinding>,
+) {
+    let Some(filesystem) = needs
+        .and_then(|needs| needs.get("scopes"))
+        .and_then(|value| value.as_table())
+        .and_then(|scopes| scopes.get("filesystem"))
+        .and_then(|value| value.as_table())
+    else {
+        return;
+    };
+
+    if let Some(path) = filesystem
+        .get("path")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+    {
+        warn_on_filesystem_path("filesystem", path, manifest_path, findings);
+    }
+
+    for (scope_name, scope_value) in filesystem {
+        let Some(scope_table) = scope_value.as_table() else {
+            continue;
+        };
+        let path = scope_table
+            .get("path")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .unwrap_or_default();
+
+        if scope_name == "project" {
+            findings.push(DiagnosticFinding::warning(
+                DiagnosticPhase::Manifest,
+                "PTN-MANIFEST-010",
+                Some(manifest_path.to_path_buf()),
+                "child.toml declares a project filesystem mount scope",
+                Some(
+                    "do not hard-code project mounts in release child.toml; Patina/Mother resolves the host project and mounts it as `/project` at runtime"
+                        .to_string(),
+                ),
+            ));
+        }
+
+        warn_on_filesystem_path(scope_name, path, manifest_path, findings);
+    }
+}
+
+fn warn_on_filesystem_path(
+    scope_name: &str,
+    path: &str,
+    manifest_path: &Path,
+    findings: &mut Vec<DiagnosticFinding>,
+) {
+    if path == "/" {
+        findings.push(DiagnosticFinding::warning(
+            DiagnosticPhase::Manifest,
+            "PTN-MANIFEST-009",
+            Some(manifest_path.to_path_buf()),
+            format!("filesystem scope `{scope_name}` grants broad guest root access"),
+            Some(
+                "avoid broad `path = \"/\"`; projectful child invocations receive the host project mounted as `/project` by Patina/Mother"
+                    .to_string(),
+            ),
+        ));
+    } else if path == "/project" {
+        findings.push(DiagnosticFinding::warning(
+            DiagnosticPhase::Manifest,
+            "PTN-MANIFEST-010",
+            Some(manifest_path.to_path_buf()),
+            format!("filesystem scope `{scope_name}` declares the runtime project mount path"),
+            Some(
+                "`/project` is runner-owned; request the `filesystem` toy and let Patina/Mother mount the resolved host project at `/project`"
+                    .to_string(),
+            ),
+        ));
+    }
 }

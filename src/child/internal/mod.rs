@@ -19,6 +19,7 @@ mod tests;
 
 pub use child::ChildEngine;
 pub use child::FilesystemPreopen;
+pub use child::GUEST_PROJECT_ROOT;
 pub use pipeline::PipelineEngine;
 
 /// Query dispatch function type.

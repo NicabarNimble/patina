@@ -2,6 +2,18 @@ use super::*;
 use crate::commands::mother::{integrity, loader};
 use anyhow::Context;
 
+fn slate_guest_project_value(project: Option<&str>) -> Option<String> {
+    if project
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+        || patina::session::SessionManager::find_project_root().is_ok()
+    {
+        Some(patina::child::engine::GUEST_PROJECT_ROOT.to_string())
+    } else {
+        None
+    }
+}
+
 impl ServerState {
     fn ensure_builtin_view_shapes(&self) -> anyhow::Result<()> {
         for shape in mother_crate::view_buffer::builtin_view_shapes() {
@@ -565,7 +577,8 @@ impl ApiRuntime for ServerState {
                 |command: &patina::spec::SpecCommands,
                  project: Option<&str>|
                  -> anyhow::Result<(serde_json::Value, serde_json::Value, String)> {
-                    let project_value = project.map(|value| value.to_string());
+                    let host_project_value = project.map(|value| value.to_string());
+                    let project_value = slate_guest_project_value(project);
 
                     let typed_operation = match command {
                         patina::spec::SpecCommands::List { status, target, .. } => Some((
@@ -646,7 +659,7 @@ impl ApiRuntime for ServerState {
                         let command_payload = serde_json::to_value(SpecDispatchEnvelope {
                             command: command.clone(),
                             project: project_value,
-                            origin_project: envelope.origin_project.clone(),
+                            origin_project: envelope.origin_project.clone().or(host_project_value),
                             backend_mode: envelope.backend_mode.clone(),
                         })
                         .context("Failed to serialize fallback spec dispatch envelope")?;
