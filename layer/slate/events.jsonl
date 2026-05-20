@@ -261,3 +261,4 @@
 {"created_at":"1779294505","event_type":"promoted","payload":{"force":false,"from":"ready","to":"active"},"work_id":"mother-project-mount-contract"}
 {"created_at":"1779295110","event_type":"set","payload":{"field":"belief_harvest_decision","value":"No new belief file created. This work applies existing beliefs about control-plane-owned authority, explicit fail-closed boundaries, runtime-independent contracts, and safety boundaries to enforce the /project guest mount contract."},"work_id":"mother-project-mount-contract"}
 {"created_at":"1779295112","event_type":"completed","payload":{"force":false},"work_id":"mother-project-mount-contract"}
+{"created_at":"1779295123","event_type":"archived","payload":{"force":false,"tag":"slate/mother-project-mount-contract"},"work_id":"mother-project-mount-contract"}
