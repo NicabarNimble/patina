@@ -4,6 +4,18 @@ use std::time::Instant;
 use super::audit;
 use super::integrity;
 
+fn current_project_preopens(
+    manifest: &patina::child::engine::ChildManifest,
+) -> Vec<patina::child::engine::FilesystemPreopen> {
+    if !manifest.toys.filesystem {
+        return Vec::new();
+    }
+
+    patina::session::SessionManager::find_project_root()
+        .map(|root| vec![patina::child::engine::FilesystemPreopen::project_read_write(root)])
+        .unwrap_or_default()
+}
+
 pub(super) fn parse_relationship_listens(manifest_path: &std::path::Path) -> Result<Vec<String>> {
     let content = std::fs::read_to_string(manifest_path)?;
     let table: toml::Table = content.parse()?;
@@ -95,7 +107,10 @@ pub(super) fn load_wasm_child(
             );
 
             let instantiate_started = Instant::now();
-            let child = match engine.instantiate_child(&component, &manifest, None) {
+            let preopens = current_project_preopens(&manifest);
+            let child = match engine
+                .instantiate_child_with_preopens(&component, &manifest, None, &preopens)
+            {
                 Ok(child) => child,
                 Err(error) => {
                     audit::emit_outside_capability_audit(

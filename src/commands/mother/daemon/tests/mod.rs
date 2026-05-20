@@ -884,11 +884,11 @@ allow = [
             readiness: Arc::new(RwLock::new(mother_crate::runtime::ReadinessState::default())),
         });
 
-        let expected_project = project_root.display().to_string();
+        let host_project = project_root.display().to_string();
         let request = spec_dispatch_request_with_route(
             patina::spec::SpecCommands::Next { json: true },
             Some("execute"),
-            Some(expected_project.clone()),
+            Some(host_project),
             None,
         );
 
@@ -902,7 +902,7 @@ allow = [
                 .get("data")
                 .and_then(|v| v.get("project"))
                 .and_then(|v| v.as_str()),
-            Some(expected_project.as_str())
+            Some(patina::child::engine::GUEST_PROJECT_ROOT)
         );
     });
 }

@@ -822,11 +822,23 @@ pub struct ChildEngine {
     _unit: (),
 }
 
+pub const GUEST_PROJECT_ROOT: &str = "/project";
+
 #[derive(Debug, Clone)]
 pub struct FilesystemPreopen {
     pub host_path: std::path::PathBuf,
     pub guest_path: String,
     pub mode: crate::child::internal::FilesystemAccessMode,
+}
+
+impl FilesystemPreopen {
+    pub fn project_read_write(host_path: impl Into<std::path::PathBuf>) -> Self {
+        Self {
+            host_path: host_path.into(),
+            guest_path: GUEST_PROJECT_ROOT.to_string(),
+            mode: crate::child::internal::FilesystemAccessMode::ReadWrite,
+        }
+    }
 }
 
 impl ChildEngine {
@@ -1101,7 +1113,14 @@ impl ChildEngine {
         let grants = manifest.granted_capabilities();
         let http_client = super::host_support::build_http_client()?;
         let mut wasi_builder = wasmtime_wasi::WasiCtxBuilder::new();
+        let override_guest_paths = test_preopens
+            .iter()
+            .map(|mount| mount.guest_path.as_str())
+            .collect::<BTreeSet<_>>();
         for mount in &manifest.filesystem_preopens {
+            if override_guest_paths.contains(mount.guest_path.as_str()) {
+                continue;
+            }
             let host_path = std::path::PathBuf::from(&mount.host_path);
             let (dir_perms, file_perms) = match mount.mode {
                 crate::child::internal::FilesystemAccessMode::ReadOnly => (

@@ -2,8 +2,8 @@
 
 pub use crate::child::internal::{
     check_capabilities, ChildEngine, ChildKind, ChildManifest, ChildRole, CredentialMapping,
-    FilesystemAccessMode, GrantedCapabilities, InjectionLocation, PipelineEngine, QueryDispatchFn,
-    QueryScope,
+    FilesystemAccessMode, FilesystemPreopen, GrantedCapabilities, InjectionLocation,
+    PipelineEngine, QueryDispatchFn, QueryScope, GUEST_PROJECT_ROOT,
 };
 
 pub type ChildProvides = crate::child::internal::ChildProvides;

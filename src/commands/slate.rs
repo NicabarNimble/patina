@@ -3,6 +3,8 @@ use clap::Subcommand;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
+use patina::child::engine::{FilesystemPreopen, GUEST_PROJECT_ROOT};
+
 const SLATE_MANAGER: &str = "slate-manager";
 const SLATE_WIT_PREFIX: &str = "patina:slate/control@0.1.0";
 
@@ -180,15 +182,17 @@ fn call_slate_work(operation: &str, args: impl FnOnce(Value) -> Value) -> Result
         anyhow::bail!("slate-manager is not a child-world component");
     }
 
-    let project = project_hint(&manifest)?;
-    let payload = args(Value::String(project));
+    let project_root = patina::session::SessionManager::find_project_root()?;
+    let preopens = slate_project_preopens(&manifest, &project_root)?;
+    let payload = args(Value::String(GUEST_PROJECT_ROOT.to_string()));
     let operation_id = format!("{SLATE_WIT_PREFIX}.{operation}");
 
     let wasm_bytes =
         std::fs::read(&wasm_path).with_context(|| format!("read {}", wasm_path.display()))?;
     let engine = patina::child::engine::ChildEngine::new()?;
     let component = engine.load_component(&wasm_bytes)?;
-    let mut child = engine.instantiate_child(&component, &manifest, None)?;
+    let mut child =
+        engine.instantiate_child_with_preopens(&component, &manifest, None, &preopens)?;
 
     struct CliHost;
     impl patina::mother::MotherHost for CliHost {
@@ -231,36 +235,18 @@ fn ensure_slate_manager_installed(wasm_path: &Path, manifest_path: &Path) -> Res
     Ok(())
 }
 
-fn project_hint(manifest: &patina::child::engine::ChildManifest) -> Result<String> {
-    let root = patina::session::SessionManager::find_project_root()?;
-    let root = canonical_or_self(&root);
-
-    for mount in &manifest.filesystem_preopens {
-        if mount.mode != patina::child::engine::FilesystemAccessMode::ReadWrite {
-            continue;
-        }
-        let host = canonical_or_self(Path::new(&mount.host_path));
-        if host == root {
-            return Ok(mount.guest_path.clone());
-        }
-        if let Ok(relative) = root.strip_prefix(&host) {
-            let rel = relative.to_string_lossy();
-            if rel.is_empty() {
-                return Ok(mount.guest_path.clone());
-            }
-            return Ok(format!(
-                "{}/{}",
-                mount.guest_path.trim_end_matches('/'),
-                rel.replace('\\', "/")
-            ));
-        }
+fn slate_project_preopens(
+    manifest: &patina::child::engine::ChildManifest,
+    project_root: &Path,
+) -> Result<Vec<FilesystemPreopen>> {
+    if !manifest.toys.filesystem {
+        anyhow::bail!(
+            "slate-manager manifest must request the filesystem toy so Patina can mount the project at {}",
+            GUEST_PROJECT_ROOT
+        );
     }
 
-    Ok(root.to_string_lossy().to_string())
-}
-
-fn canonical_or_self(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    Ok(vec![FilesystemPreopen::project_read_write(project_root)])
 }
 
 fn unwrap_typed_call_result(payload: Value) -> Result<Value> {
@@ -419,6 +405,53 @@ mod tests {
             format!("{SLATE_WIT_PREFIX}.{}", "show-work"),
             "patina:slate/control@0.1.0.show-work"
         );
+    }
+
+    #[test]
+    fn slate_project_preopen_mounts_guest_project() {
+        let temp = tempfile::tempdir().unwrap();
+        let manifest_path = temp.path().join("slate-manager.toml");
+        std::fs::write(
+            &manifest_path,
+            r#"[child]
+name = "slate-manager"
+kind = "child"
+
+[needs]
+toys = ["filesystem"]
+"#,
+        )
+        .unwrap();
+        let manifest = patina::child::engine::ChildManifest::from_path(&manifest_path).unwrap();
+        let preopens = slate_project_preopens(&manifest, temp.path()).unwrap();
+        assert_eq!(preopens.len(), 1);
+        assert_eq!(preopens[0].host_path, temp.path());
+        assert_eq!(preopens[0].guest_path, GUEST_PROJECT_ROOT);
+        assert_eq!(
+            preopens[0].mode,
+            patina::child::engine::FilesystemAccessMode::ReadWrite
+        );
+    }
+
+    #[test]
+    fn slate_project_preopen_requires_filesystem_toy() {
+        let temp = tempfile::tempdir().unwrap();
+        let manifest_path = temp.path().join("slate-manager.toml");
+        std::fs::write(
+            &manifest_path,
+            r#"[child]
+name = "slate-manager"
+kind = "child"
+
+[needs]
+toys = ["logging"]
+"#,
+        )
+        .unwrap();
+        let manifest = patina::child::engine::ChildManifest::from_path(&manifest_path).unwrap();
+        let error = slate_project_preopens(&manifest, temp.path())
+            .expect_err("slate-manager without filesystem should fail");
+        assert!(error.to_string().contains("filesystem toy"));
     }
 
     #[test]
