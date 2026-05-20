@@ -1,7 +1,7 @@
 id = "mother-project-mount-contract"
 title = "Enforce project mount contract for filesystem children"
 kind = "build"
-status = "active"
+status = "complete"
 human_request = "Move host-to-guest project path mapping out of Slate child fallback logic and into Patina/Mother runner behavior so project filesystem children receive /project rather than host absolute paths."
 allium_anchors = ["layer/slate/work/mother-project-mount-contract/allium/mother-project-mount-contract.allium"]
 user_alignment = "User wants filesystem child path/mount behavior to become a Mother/runtime invariant: Patina resolves the host project, the runner mounts it at /project, children receive guest paths only, and Slate stops guessing /input/Users mappings."
@@ -20,7 +20,7 @@ proof_plan = [
 closure_evidence = [
     "Added canonical guest project mount `patina::child::engine::GUEST_PROJECT_ROOT` with value `/project` and `FilesystemPreopen::project_read_write(...)` for read-write dynamic project mounts.",
     "Updated child instantiation to let dynamic preopens override manifest preopens with the same guest path, so stale/local manifest `/project` scopes cannot shadow the runner-selected project mount.",
-    "Updated `patina slate` to resolve the host project root, mount it dynamically at `/project`, and pass `project = \"/project\"` to Slate instead of a host absolute path.",
+    'Updated `patina slate` to resolve the host project root, mount it dynamically at `/project`, and pass `project = "/project"` to Slate instead of a host absolute path.',
     "Updated generic `patina child run` / `patina child call` and Mother daemon child loading to add `/project` when a current Patina project is available and the child has filesystem authority.",
     "Updated builtin spec dispatch to forward `/project` to Slate while preserving the host route as `origin_project` for fallback envelopes.",
     "Removed Slate child source fallback that remapped host absolute paths to `/input/<host-path>` in `/Users/nicabar/Projects/Patina/patina-child-slate` commit `aadfba8`.",
@@ -36,5 +36,7 @@ implementation_plan = [
     "[x] Remove Slate child `/input/<host-absolute-path>` fallback and validate project resolution fails closed for host absolute paths inside the child.",
     "[x] Update `patina slate` to mount the resolved host project at `/project` and pass a guest project path to Slate.",
 ]
+belief_harvest_decision = "No new belief file created. This work applies existing beliefs about control-plane-owned authority, explicit fail-closed boundaries, runtime-independent contracts, and safety boundaries to enforce the /project guest mount contract."
 created_at = "1779294475"
-updated_at = "1779295069"
+updated_at = "1779295112"
+closed_at = "1779295112"
