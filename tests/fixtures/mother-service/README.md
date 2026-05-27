@@ -4,12 +4,8 @@ Deterministic fixtures for Mother loader tests that prove backward-safe behavior
 
 ## Provenance
 
-Generated from workspace child + manifest:
+Preserved from the retired in-repo `belief-verifier` service child.
 
-```bash
-cargo build -p patina-ai-child-belief-verifier --target wasm32-wasip2
-cp target/wasm32-wasip2/release/patina_ai_child_belief_verifier.wasm tests/fixtures/mother-service/belief-verifier-child.wasm
-cp children/belief-verifier/child.toml tests/fixtures/mother-service/belief-verifier-child.toml
-```
-
-These are checked in so tests do not depend on local `target/` artifacts at runtime.
+These fixtures are checked in so Mother loader tests continue to prove backward-safe
+handling for legacy handle-based service children without keeping the obsolete source
+crate in the workspace.
