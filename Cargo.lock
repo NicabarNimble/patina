@@ -3281,15 +3281,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "patina-ai-child-belief-verifier"
-version = "0.1.0"
-dependencies = [
- "patina-sdk-legacy",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "patina-ai-child-content-extractor"
 version = "0.1.0"
 dependencies = [
@@ -3306,14 +3297,6 @@ version = "0.1.0"
 dependencies = [
  "patina-sdk",
  "wit-bindgen 0.41.0",
-]
-
-[[package]]
-name = "patina-ai-child-doctor"
-version = "0.1.0"
-dependencies = [
- "patina-sdk-legacy",
- "serde_json",
 ]
 
 [[package]]
@@ -3361,22 +3344,6 @@ version = "0.1.0"
 dependencies = [
  "patina-sdk",
  "wit-bindgen 0.41.0",
-]
-
-[[package]]
-name = "patina-ai-child-session-writer"
-version = "0.1.0"
-dependencies = [
- "patina-sdk-legacy",
- "serde_json",
-]
-
-[[package]]
-name = "patina-ai-child-spec-manager"
-version = "0.1.0"
-dependencies = [
- "patina-sdk-legacy",
- "serde_json",
 ]
 
 [[package]]

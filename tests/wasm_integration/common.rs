@@ -41,20 +41,6 @@ pub(crate) fn with_temp_patina_home<T>(f: impl FnOnce(&std::path::Path) -> T) ->
     }
 }
 
-pub(crate) fn session_writer_component_path() -> Option<std::path::PathBuf> {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for rel in [
-        "target/wasm32-wasip1/debug/patina_ai_child_session_writer.wasm",
-        "target/wasm32-wasip1/release/patina_ai_child_session_writer.wasm",
-    ] {
-        let path = root.join(rel);
-        if path.exists() {
-            return Some(path);
-        }
-    }
-    None
-}
-
 pub(crate) fn folder_text_to_parquet_component_path() -> Option<std::path::PathBuf> {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for rel in [
@@ -288,5 +274,5 @@ pub(crate) fn load_panic_pipeline_component(
 }
 
 // =====================================================================
-// WASM integration — session-writer and canon children
+// WASM integration — canon children
 // =====================================================================

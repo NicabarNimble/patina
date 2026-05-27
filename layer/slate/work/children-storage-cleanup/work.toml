@@ -1,29 +1,31 @@
 id = "children-storage-cleanup"
 title = "Clean up child storage and config layout"
 kind = "build"
-status = "draft"
+status = "active"
 human_request = "Inventory current child storage drift, then design and implement a cleaner Mother child storage layout plus child config contract so WASM child features can be activated or deactivated without recompiling while preserving legacy children safely."
 allium_anchors = ["layer/slate/work/children-storage-cleanup/allium/children-storage-cleanup.allium"]
 user_alignment = "User observed drift between newer/correct children and plugin installs, wants child storage cleanup, SDK linkage inventory, and a Slate-local Allium file linked from the Slate."
 belief_refs = []
-proof_plan = [
-    """
+proof_plan = ["""
 [ ] Slate-local Allium file `layer/slate/work/children-storage-cleanup/allium/children-storage-cleanup.allium` captures current child storage roots, SDK lanes, duplicate/drift detection, future store separation, Mother-owned config, WIT config access, and legacy-safe cleanup constraints.
 [ ] Inventory report classifies repo children, installed Mother daemon children, command/plugin children, SDK lane (`sdk/patina-sdk` vs `sdk/patina-sdk-legacy` vs external command child), package extras, and name/version drift.
 [ ] Proposed storage layout separates immutable child package artifacts from mutable installed/current/config/assignment state, with explicit compatibility handling for legacy `~/.patina/children` and `~/.patina/plugins` roots.
 [ ] Proposed config contract supports feature activation/deactivation without recompilation while ensuring config cannot grant capabilities not declared in `child.toml` / WIT needs.
 [ ] Cleanup plan includes dry-run, backup/adoption strategy, duplicate detection, and rollback-safe migration steps for legacy children.
 [ ] Implementation, if included in this Slate, preserves existing command-child and Mother-child behavior while introducing tests or doctor-style checks for the new storage/config model.
-""",
-]
+"""]
 closure_evidence = [
     "Created Slate-local Allium anchor `layer/slate/work/children-storage-cleanup/allium/children-storage-cleanup.allium` and generated `children-storage-cleanup.plan.json`; `allium check` and `allium analyse` pass cleanly.",
     "Initial inventory found repo children split across `sdk/patina-sdk` push-pure WIT/export children and `sdk/patina-sdk-legacy` handle/trait children; installed runtime state is split between flat `~/.patina/children` and command-child `~/.patina/plugins` roots.",
     "Split watcher extraction into sub-Slates: `watcher-child-bundle-contract`, `watcher-bundle-standalone-build`, `watcher-github-release-install-proof`, and `watcher-monorepo-retirement`, treating folder-watch-actor plus watch-null-sink as a child-bundle ecosystem like Slate rather than unrelated in-tree children; future bundle-installer behavior is parked separately in `mother-child-bundle-install-model`.",
     "Watcher bundle contract selected per-child release tags as v1 (`folder-watch-actor-v0.1.0`, `watch-null-sink-v0.1.0`) to keep standalone build/local install unblocked while richer child-bundle installer UX remains deferred to `mother-child-bundle-install-model`.",
-    "Watcher standalone build proof succeeded externally in `/Users/nicabar/Projects/Patina/patina-child-watcher-system` at [[commit-d2be416]]: both watcher children build with published `patina-sdk = \"0.22.0\"`, install through `patina child install`, and pass typed-call smoke checks.",
+    'Watcher standalone build proof succeeded externally in `/Users/nicabar/Projects/Patina/patina-child-watcher-system` at [[commit-d2be416]]: both watcher children build with published `patina-sdk = "0.22.0"`, install through `patina child install`, and pass typed-call smoke checks.',
     "Watcher GitHub release/install parity proof succeeded: external release workflow [[commit-526dbf1]] published per-child releases `folder-watch-actor-v0.1.0` and `watch-null-sink-v0.1.0`; Mother registry selectors in [[commit-14f2df48]] discovered/approved/installed/assigned both as independent child entries from one source repo.",
     "Watcher monorepo retirement removed in-tree watcher source directories and WIT-dependent tests in [[commit-39f01ff5]] while installed external watcher artifacts continued to pass typed-call smoke checks.",
+    "Removed code-theater child crates `children/belief-verifier`, `children/doctor`, `children/session-writer`, and `children/spec-manager`; pruned workspace/lock entries; removed session-writer launch integration and integration test; kept checked-in `belief-verifier` Mother loader fixture only for legacy conformance coverage.",
+    "Validation passed: `cargo check --workspace`, `cargo test commands::mother::loader::tests`, `cargo test --test mother_typed_fixture_conformance`, `cargo test child_example_manifests_validate`, and `allium check layer/slate/work/children-storage-cleanup/allium/children-storage-cleanup.allium`.",
+    "Formatting gate passed: `cargo fmt --all --check`.",
+    "No-default feature gate passed: `cargo check --workspace --no-default-features --features bundled-doctor`.",
 ]
 blocked_by = []
 implementation_plan = [
@@ -37,6 +39,7 @@ implementation_plan = [
 [ ] Design migration commands or doctor checks for dry-run inventory, backup, adoption/copy, duplicate detection, legacy compatibility reads, and rollback.
 [ ] Implement first cleanup slice with tests, or split implementation into follow-up Slates if the design surface is too large.
 """,
+    "[x] Remove in-repo product-shadow child crates `belief-verifier`, `doctor`, `session-writer`, and `spec-manager`; keep Mother legacy loader fixtures for backward-safety tests.",
 ]
 created_at = "1778853772"
-updated_at = "1778853772"
+updated_at = "1779901678"

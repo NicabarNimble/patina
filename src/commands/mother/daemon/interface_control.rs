@@ -716,59 +716,7 @@ fn create_session(
         },
     )?;
 
-    if let Err(error) = patina::interface::session_writer_action(
-        &start.handle,
-        "init-session",
-        serde_json::json!({
-            "session_runtime_id": start.handle.runtime_id,
-            "session_file_id": start.handle.file_id,
-            "artifact_path": start.handle.artifact_path,
-            "branch": start.handle.branch,
-            "start_tag": start.handle.start_tag,
-        }),
-    ) {
-        eprintln!(
-            "[mother-hitl] warning: session-writer init failed for '{}': {}",
-            start.handle.runtime_id, error
-        );
-        if let Err(event_error) =
-            emit_session_writer_init_failed_event(&handshake.project_root, &start.handle, &error)
-        {
-            eprintln!(
-                "[mother-hitl] warning: failed to emit session-writer failure event for '{}': {}",
-                start.handle.runtime_id, event_error
-            );
-        }
-    }
-
     Ok(start.handle)
-}
-
-fn emit_session_writer_init_failed_event(
-    project_root: &Path,
-    handle: &patina::session::LiveSessionHandle,
-    error: &anyhow::Error,
-) -> Result<()> {
-    let conn = patina::eventlog::open_events_db_at(project_root)?;
-    let timestamp = Utc::now().to_rfc3339();
-    let payload = serde_json::json!({
-        "session_id": handle.file_id,
-        "runtime_id": handle.runtime_id,
-        "interface": handle.interface_name,
-        "artifact": handle.artifact_path,
-        "error": error.to_string(),
-    });
-
-    patina::eventlog::insert_event(
-        &conn,
-        "session-writer.init.failed",
-        &timestamp,
-        &handle.file_id,
-        Some(&handle.artifact_path.display().to_string()),
-        &payload.to_string(),
-    )?;
-
-    Ok(())
 }
 
 fn get_or_create_active_envelope_for_session(

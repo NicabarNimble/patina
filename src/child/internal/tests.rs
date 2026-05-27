@@ -498,7 +498,7 @@ child = "bad-child"
 #[test]
 fn child_example_manifests_validate() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let path = root.join("children/belief-verifier/child.toml");
+    let path = root.join("children/content-extractor/child.toml");
     let manifest = ChildManifest::from_path(&path).unwrap();
     assert_eq!(manifest.world, ChildKind::Child);
     assert!(

@@ -6,7 +6,10 @@ This directory holds first-party Patina child components.
 - `child.toml` is the canonical manifest surface (`[child]`, `kind`, and `[needs].toys`).
 - Child kinds compose with WIT contracts in `wit/toys/` and `wit/worlds/`.
 
-Current first-party children include runtime services like `ducklake`, `session-writer`, `spec-manager`, and support components like `doctor` and `belief-verifier`.
+Current in-repo children are limited to portable child/component examples and compatibility
+seams. Product-shaped behavior such as specs, sessions, doctor diagnostics, and beliefs
+is native `patina-ai`/Mother infrastructure or external child-package work, not first-party
+stub children.
 
 External child packages maintained outside this monorepo:
 
