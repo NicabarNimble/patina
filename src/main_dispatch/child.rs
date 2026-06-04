@@ -33,7 +33,7 @@ fn parse_query_params<T: serde::de::DeserializeOwned>(params: &str) -> Result<T,
 
 fn dispatch_context_query(params: &str) -> Result<String, String> {
     let args: ContextQueryParams = parse_query_params(params)?;
-    crate::commands::context::get_project_context(args.topic.as_deref())
+    crate::commands::context::get_project_context_json(args.topic.as_deref())
         .map_err(|e| format!("context: {}", e))
 }
 
@@ -189,6 +189,24 @@ mod tests {
         let error =
             dispatch_context_query("not-json").expect_err("invalid params should fail closed");
         assert!(error.contains("invalid params:"), "{error}");
+    }
+
+    #[test]
+    fn context_query_returns_structured_json() {
+        let output = dispatch_context_query(r#"{"topic":"architecture"}"#)
+            .expect("context query should return structured JSON");
+        let value: serde_json::Value =
+            serde_json::from_str(&output).expect("context query should be JSON");
+
+        assert_eq!(value["topic"], "architecture");
+        assert!(
+            value.get("core_patterns").is_some(),
+            "context JSON should expose typed pattern sections"
+        );
+        assert!(
+            value.get("recall").is_some(),
+            "context JSON should expose recall data"
+        );
     }
 }
 

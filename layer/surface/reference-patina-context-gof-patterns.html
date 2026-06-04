@@ -1,0 +1,965 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reading patina context like a Rust engineer</title>
+  <style>
+    :root {
+      --ink: #211607;
+      --muted: #211607;
+      --line: rgba(33, 22, 7, 0.18);
+      --paper: #FFFFFF;
+      --panel: #FFFFFF;
+      --good: #106345;
+      --challenge: #870B0B;
+      --warning: #C7852E;
+      --highlight: #A6361B;
+      --accent: var(--good);
+      --accent-2: var(--warning);
+      --blue: var(--ink);
+      --violet: var(--highlight);
+      --danger: var(--challenge);
+      --shadow: 0 12px 30px rgba(33, 22, 7, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    header {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 48px 24px 24px;
+    }
+
+    header p {
+      max-width: 840px;
+      color: rgba(33, 22, 7, 0.76);
+      font-size: 1.05rem;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 4vw, 4.2rem);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 1.55rem;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 1.08rem;
+      letter-spacing: 0;
+    }
+
+    a {
+      color: var(--ink);
+      text-decoration: none;
+      border-bottom: 2px solid rgba(166, 54, 27, 0.35);
+      box-shadow: inset 0 -0.16em rgba(166, 54, 27, 0.10);
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 0;
+      background: rgba(199, 133, 46, 0.16);
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      margin: 14px 0 0;
+      padding: 16px;
+      overflow-x: auto;
+      border: 1px solid #C7852E;
+      border-radius: 0;
+      background: #211607;
+      color: #FFFFFF;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    pre code {
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 24px 64px;
+    }
+
+    section {
+      margin: 28px 0;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .spine {
+      border-top: 6px solid var(--good);
+    }
+
+    .challenge {
+      border-top: 6px solid var(--danger);
+    }
+
+    .spine.challenge {
+      border-top-color: var(--danger);
+    }
+
+    .plain {
+      box-shadow: none;
+      background: transparent;
+      border: 0;
+      padding: 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+    }
+
+    .tile {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: #FFFFFF;
+    }
+
+    .tile strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--ink);
+    }
+
+    .diagram {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: 12px;
+      align-items: center;
+      overflow-x: auto;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: rgba(199, 133, 46, 0.12);
+    }
+
+    .node {
+      min-width: 180px;
+      padding: 14px;
+      border: 1px solid #C7852E;
+      border-radius: 0;
+      background: #FFFFFF;
+    }
+
+    .arrow {
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 1.3rem;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 10px;
+      border-radius: 0;
+      border: 1px solid var(--line);
+      background: #FFFFFF;
+      color: var(--ink);
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    .used {
+      border-color: rgba(16, 99, 69, 0.55);
+      color: var(--ink);
+      background: rgba(16, 99, 69, 0.12);
+    }
+
+    .partial {
+      border-color: rgba(199, 133, 46, 0.62);
+      color: var(--ink);
+      background: rgba(199, 133, 46, 0.13);
+    }
+
+    .not-used {
+      border-color: rgba(33, 22, 7, 0.35);
+      color: var(--ink);
+      background: rgba(33, 22, 7, 0.08);
+    }
+
+    .dissolve {
+      border-color: rgba(166, 54, 27, 0.50);
+      color: var(--ink);
+      background: rgba(166, 54, 27, 0.10);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: #FFFFFF;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: #211607;
+      background: rgba(199, 133, 46, 0.20);
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .callout {
+      border-left: 5px solid var(--accent);
+      padding: 14px 16px;
+      background: rgba(16, 99, 69, 0.12);
+      border-radius: 0;
+    }
+
+    .warning {
+      border-left-color: var(--danger);
+      background: rgba(199, 133, 46, 0.16);
+    }
+
+    .thesis {
+      border-left-color: var(--highlight);
+      background: rgba(166, 54, 27, 0.08);
+    }
+
+    .pattern-card {
+      border-top: 5px solid var(--accent);
+    }
+
+    .pattern-card.partial-card {
+      border-top-color: var(--accent-2);
+    }
+
+    .pattern-card.no-card {
+      border-top-color: var(--muted);
+    }
+
+    .pattern-card.dissolve-card {
+      border-top-color: var(--violet);
+    }
+
+    .small {
+      color: rgba(33, 22, 7, 0.76);
+      font-size: 0.93rem;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    @media (max-width: 760px) {
+      header,
+      main {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      section {
+        padding: 20px;
+      }
+
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+
+      .diagram {
+        grid-template-columns: 1fr;
+      }
+
+      .arrow {
+        transform: rotate(90deg);
+        justify-self: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="small">Teaching note for a third-year Rust course</p>
+    <h1>Reading <code>patina context</code> like a Rust engineer</h1>
+    <p>
+      This note walks through one real feature, <code>patina context</code>, and
+      asks the question that separates code that works from code a senior would
+      sign off on: what design forces are actually present, and what does the
+      language let you skip? We use the Gang of Four (GoF) pattern catalogue, but
+      mostly as a measuring stick. In Rust the answer is often that a pattern
+      just turns into a language feature, and some of the better decisions in
+      this code don't have a GoF name at all.
+    </p>
+    <div class="legend">
+      <span class="pill used">Pattern genuinely present</span>
+      <span class="pill partial">Pressure, not yet the pattern</span>
+      <span class="pill dissolve">Turns into a Rust feature</span>
+      <span class="pill not-used">Absent, and correctly so</span>
+    </div>
+  </header>
+
+  <main>
+<section class="spine">
+      <h2>Start here</h2>
+      <p>
+        The GoF catalogue came out in 1994, written for C++ and Smalltalk. A lot
+        of its twenty-three patterns exist to work around things those languages
+        couldn't do: no first-class functions, no sum types, no ownership, and
+        polymorphism only through inheritance. Rust has those features, so many
+        GoF patterns never become Rust code. They disappear into the language.
+        You use the feature and skip the pattern.
+      </p>
+      <div class="callout thesis">
+        When you catch yourself naming a GoF pattern in Rust, ask a different
+        question first: which language feature already covers this? Most of the
+        time the answer is an <code>enum</code>, a closure, a trait object, or
+        ownership.
+      </div>
+      <p class="small">
+        We do meet one real pattern in <code>patina context</code>: Facade. But
+        two of the lessons here aren't in the catalogue. One is separating
+        collection from rendering. The other is using types to rule out states
+        that should never exist.
+      </p>
+    </section>
+
+    <section>
+      <h2>Feature In One Sentence</h2>
+      <p>
+        <code>patina context</code> gathers project orientation data from the
+        knowledge layer, health measurements, factual search, semantic search,
+        and belief search, then exposes that result as either human-readable
+        markdown or structured JSON for child/API callers.
+      </p>
+      <div class="diagram" aria-label="Feature flow diagram">
+        <div class="node">
+          <h3>CLI or child query</h3>
+          <code>patina context</code><br>
+          <code>host_query: context</code>
+        </div>
+        <div class="arrow">-&gt;</div>
+        <div class="node">
+          <h3>Collect (typed)</h3>
+          <code>collect_project_context</code><br>
+          <code>ContextReport</code>
+        </div>
+        <div class="arrow">-&gt;</div>
+        <div class="node">
+          <h3>Render (a projection)</h3>
+          Markdown for CLI<br>
+          JSON for child/API
+        </div>
+      </div>
+      <p class="small">
+        The shape is already visible: collect once into a typed value, then
+        project it. That one boundary is the feature's most important decision,
+        and the rest of this note keeps coming back to it.
+      </p>
+    </section>
+
+    <section>
+      <h2>Source Map</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>File</th>
+            <th>What students should notice</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>CLI declaration</td>
+            <td><a href="../../src/main.rs">src/main.rs</a></td>
+            <td>The command-line enum names the user-visible command.</td>
+          </tr>
+          <tr>
+            <td>CLI dispatch</td>
+            <td><a href="../../src/main_dispatch/scrape.rs">src/main_dispatch/scrape.rs</a></td>
+            <td>A small dispatch function forwards CLI input to the feature.</td>
+          </tr>
+          <tr>
+            <td>Feature core</td>
+            <td><a href="../../src/commands/context.rs">src/commands/context.rs</a></td>
+            <td>Typed report structs, collection, rendering, logging, and focused tests live here.</td>
+          </tr>
+          <tr>
+            <td>Child/API dispatch</td>
+            <td><a href="../../src/main_dispatch/child.rs">src/main_dispatch/child.rs</a></td>
+            <td>Child context queries receive structured JSON instead of markdown text.</td>
+          </tr>
+          <tr>
+            <td>Factual search boundary</td>
+            <td><a href="../../src/commands/assay/mod.rs">src/commands/assay/mod.rs</a></td>
+            <td>Context calls public assay functions, not assay internals.</td>
+          </tr>
+          <tr>
+            <td>Health source</td>
+            <td><a href="../../src/commands/measure/internal.rs">src/commands/measure/internal.rs</a></td>
+            <td>Measurement already has a typed report API, which context consumes.</td>
+          </tr>
+          <tr>
+            <td>Knowledge sources</td>
+            <td><a href="../core/">layer/core</a> and <a href="./">layer/surface</a></td>
+            <td>Markdown pattern files are the user-facing knowledge inputs.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>What's actually here: Facade</h2>
+      <p>
+        One GoF pattern is clearly present, and it's worth naming because it does
+        real work. <code>get_project_context</code>,
+        <code>get_project_context_report</code>, and
+        <code>collect_project_context</code> put a single call in front of a pile
+        of unrelated subsystems.
+      </p>
+      <div class="grid">
+        <article class="tile pattern-card">
+          <h3>Facade <span class="pill used">present</span></h3>
+          <p>The caller says "give me context." Behind that one call:</p>
+          <ul class="small">
+            <li>layer file reads (<code>layer/core</code>, <code>layer/surface</code>)</li>
+            <li>health measurement (<code>measure</code>)</li>
+            <li>factual keyword search (<code>assay</code>)</li>
+            <li>semantic retrieval (<code>scry</code> / <code>QueryEngine</code>)</li>
+            <li>belief search</li>
+            <li>event logging</li>
+          </ul>
+          <p class="small">
+            This one fits. It cuts the caller's coupling to six subsystems down
+            to a single entry point.
+          </p>
+        </article>
+        <article class="tile pattern-card no-card">
+          <h3>The aggregate that is <em>not</em> Composite</h3>
+          <p>
+            It's tempting to call <code>ContextReport</code> a Composite. It
+            isn't. Composite means leaves and containers share one interface and
+            get handled the same way. <code>ContextReport</code> is a flat record
+            of named fields, and every caller reads those fields by name.
+          </p>
+          <p class="small">
+            The accurate label is a typed aggregate, or report model (a DTO /
+            view-model). There's pressure toward a uniform section model, but the
+            pattern isn't there yet, and calling it Composite would teach the
+            wrong thing.
+          </p>
+        </article>
+      </div>
+      <pre><code>// src/commands/context.rs — the real shape: a record, not a tree.
+pub struct ContextReport {
+    pub topic: Option&lt;String&gt;,
+    pub project_health: Option&lt;ContextHealth&gt;,
+    pub core_patterns: Vec&lt;ContextPattern&gt;,
+    pub surface_patterns: Vec&lt;ContextPattern&gt;,
+    pub factual_matches: Vec&lt;ContextMatch&gt;,
+    pub semantic_matches: Vec&lt;ContextMatch&gt;,
+    pub beliefs: ContextBeliefs,
+    pub recall: RecallDirective,
+    pub diagnostics: Vec&lt;String&gt;,   // watch this line
+}</code></pre>
+    </section>
+
+    <section class="spine">
+      <h2>Collect first, then render</h2>
+      <p>
+        The biggest improvement in this feature has no GoF name. It's plain
+        separation of concerns: collect the data, then render it.
+      </p>
+      <div class="callout thesis">
+        The markdown string used to be the API. Now <code>ContextReport</code> is
+        the contract, and markdown and JSON are two ways of projecting it.
+      </div>
+      <div class="two-col">
+        <div class="tile">
+          <h3>Before</h3>
+          <p>
+            The feature built one large markdown string. The data shape existed
+            only in the order of <code>push_str</code> calls, so a child tool
+            that wanted the data had to parse prose.
+          </p>
+          <pre><code>fn get_project_context(topic) -&gt; String {
+    let mut out = String::new();
+    if measure_ok() { out += render_health(); }
+    out += render_patterns("layer/core");
+    out += render_patterns("layer/surface");
+    // ... the markdown *is* the API. Yikes.
+    out
+}</code></pre>
+        </div>
+        <div class="tile">
+          <h3>After</h3>
+          <p>
+            Collection returns a typed value. Rendering is a separate function
+            over that value. The same collected data now serves the CLI,
+            child/API JSON, tests, and later Mother orchestration.
+          </p>
+          <pre><code>fn get_project_context(topic) -&gt; Result&lt;String&gt; {
+    let report = get_project_context_report(topic)?;
+    Ok(render_context_markdown(&amp;report))   // projection
+}
+
+fn get_project_context_json(topic) -&gt; Result&lt;String&gt; {
+    let report = get_project_context_report(topic)?;
+    serialize_json(&amp;report)                // another projection
+}</code></pre>
+        </div>
+      </div>
+      <p class="small">
+        This is the move to teach. It isn't Composite or Strategy or any of the
+        twenty-three. It's "make the data a real value, push the formatting to
+        the edge." Good Rust is full of decisions like this that GoF has no words
+        for.
+      </p>
+    </section>
+
+    <section class="spine challenge">
+      <h2>Where the types are too loose</h2>
+      <p>
+        Look again at the last field of <code>ContextReport</code>:
+      </p>
+      <pre><code>pub diagnostics: Vec&lt;String&gt;,</code></pre>
+      <p>
+        This is the clearest sign that the code is correct but not yet finished.
+        A <code>Vec&lt;String&gt;</code> can't tell a fatal condition ("there's no
+        project here, stop") apart from an advisory one ("semantic search was
+        down, but the rest of the report is fine"). The type threw that
+        difference away.
+      </p>
+      <p>
+        Watch what that forces the renderer to do:
+      </p>
+      <pre><code>// src/commands/context.rs — render_context_markdown
+if let Some(first) = report.diagnostics.first() {
+    return first.clone();   // treat "the first diagnostic" as fatal
+}</code></pre>
+      <p>
+        Because the type can't mark one diagnostic as fatal, the code guesses by
+        position. It assumes the first diagnostic is the show-stopper and returns
+        it as the whole output. That works today only because the one fatal case,
+        "no knowledge layer found," happens to be pushed first and returns early.
+        Add a non-fatal diagnostic ahead of it and the renderer quietly shows the
+        wrong thing. The logic is fine. The type is the problem.
+      </p>
+      <div class="callout warning">
+        The fix is a type, not a pattern. Give the distinction the domain
+        actually has a name, and the guess-by-position code goes away. The
+        compiler then makes every renderer handle each case.
+      </div>
+      <pre><code>enum Diagnostic {
+    /// Collection cannot continue; nothing else is meaningful.
+    Fatal(FatalReason),
+    /// A subsystem was skipped; the rest of the report is still valid.
+    Advisory(AdvisoryNote),
+}
+
+pub struct ContextReport {
+    // ...
+    pub diagnostics: Vec&lt;Diagnostic&gt;,
+}
+
+// Rendering can no longer guess by position:
+match report.diagnostics.iter().find_map(Diagnostic::as_fatal) {
+    Some(reason) =&gt; render_fatal(reason),
+    None =&gt; render_full(&amp;report), // advisories shown inline, not as the whole output
+}</code></pre>
+      <p class="small">
+        "Make illegal states unrepresentable" is the Rust principle that quietly
+        does the work a dozen GoF patterns were invented to approximate. If a
+        combination of values should never happen, the strongest design makes it
+        impossible to build, so the compiler enforces it instead of a reviewer.
+      </p>
+    </section>
+
+    <section>
+      <h2>GoF, read through Rust</h2>
+      <p>
+        Here is the catalogue through Rust eyes. The useful column isn't "used or
+        not." It's what takes the pattern's place when the language is doing its
+        job.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>GoF Pattern</th>
+            <th>In <code>patina context</code></th>
+            <th>What the language does instead</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Facade</td>
+            <td><span class="pill used">Present</span></td>
+            <td>Genuinely used: one call over six subsystems. The one GoF pattern that fits here.</td>
+          </tr>
+          <tr>
+            <td>Visitor</td>
+            <td><span class="pill dissolve">Turns into</span></td>
+            <td><code>enum</code> plus exhaustive <code>match</code>. Rust adds operations over a fixed set of variants directly, with no double-dispatch. (See the challenge below.)</td>
+          </tr>
+          <tr>
+            <td>Strategy</td>
+            <td><span class="pill dissolve">Turns into</span></td>
+            <td>A closure, an <code>fn</code> pointer, or a small trait. Factual and semantic search are hardcoded today; the day they need to vary, you pass a function.</td>
+          </tr>
+          <tr>
+            <td>Command</td>
+            <td><span class="pill dissolve">Turns into</span></td>
+            <td>The CLI <code>enum</code> captures intent; a closure captures deferred work. No <code>execute()</code> interface, no command objects.</td>
+          </tr>
+          <tr>
+            <td>State</td>
+            <td><span class="pill dissolve">Turns into</span></td>
+            <td>Type-state, or an <code>enum</code>. The compiler tracks the state machine for you.</td>
+          </tr>
+          <tr>
+            <td>Template Method</td>
+            <td><span class="pill partial">Pressure</span></td>
+            <td>The fixed collect order (health, patterns, topic search, beliefs) is template-like, but it's a plain function sequence, not inheritance. A list of step functions, not a base class.</td>
+          </tr>
+          <tr>
+            <td>Composite</td>
+            <td><span class="pill partial">Pressure</span></td>
+            <td><code>ContextReport</code> is an aggregate, not a Composite. Real uniformity would come from a <code>ContextSection</code> sum type, which is closer to Visitor's stand-in than to Composite.</td>
+          </tr>
+          <tr>
+            <td>Adapter</td>
+            <td><span class="pill partial">Pressure</span></td>
+            <td><code>search_beliefs</code> is an adapter-like public boundary over assay's belief FTS. One implementation, so a trait would be needless overhead.</td>
+          </tr>
+          <tr>
+            <td>Iterator</td>
+            <td><span class="pill dissolve">Built in</span></td>
+            <td>Rust iterators are used everywhere mechanically; "Iterator" as a design choice is invisible because the language ships it.</td>
+          </tr>
+          <tr>
+            <td>Singleton, Abstract Factory, Builder, Factory Method, Prototype</td>
+            <td><span class="pill not-used">Absent</span></td>
+            <td>No global manager, no families of products, no staged construction worth the overhead. Functions and struct literals are enough. (Singleton is mostly an anti-pattern; reach for <code>OnceLock</code> only if you truly must.)</td>
+          </tr>
+          <tr>
+            <td>Bridge, Decorator, Proxy, Flyweight, Chain of Responsibility, Interpreter, Mediator, Memento, Observer</td>
+            <td><span class="pill not-used">Absent</span></td>
+            <td>None of their forces are present. The topic string is searched, not parsed; logging records usage but notifies no subscribers; nothing wraps, proxies, or shares by reference. Adding any of these would name a problem the feature doesn't have.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        Look at the distribution. One row is "present," three are "pressure,"
+        several turn into a language feature, and the long tail is simply absent.
+        That spread is the point. In healthy Rust, the GoF catalogue is mostly a
+        list of things you got to skip.
+      </div>
+    </section>
+
+    <section>
+      <h2>On restraint</h2>
+      <div class="callout warning">
+        A pattern should answer a pressure that is actually there. The thing
+        worth grading isn't how many patterns you can name. It's how few you
+        needed, and whether you can defend each one you kept.
+      </div>
+      <p>
+        Junior code tends to add structure to look senior: a trait here, a
+        factory there, an interface "for flexibility." Senior code tends to take
+        structure away until only the parts that matter remain. The author of
+        <code>patina context</code> mostly did the second thing: one Facade, a
+        typed report, and a deliberate decision not to abstract the two search
+        paths before there is a third.
+      </p>
+      <div class="grid">
+        <article class="tile pattern-card">
+          <strong>What restraint bought</strong>
+          <p class="small">
+            No trait soup. The two search paths read as a plain sequence, and you
+            can hold the whole collect function in your head.
+          </p>
+        </article>
+        <article class="tile pattern-card partial-card">
+          <strong>Where it stopped short</strong>
+          <p class="small">
+            The <code>Vec&lt;String&gt;</code> diagnostics and the flat aggregate
+            are where restraint shaded into unfinished. Restraint means skipping
+            needless machinery, not skipping types that describe the domain.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="challenge">
+      <h2>Challenge: make the report a sum type</h2>
+      <p>
+        An earlier draft of this note called this a "Composite" refactor. Wrong
+        pattern. What strengthens the design is a sum type: an <code>enum</code>
+        of section variants with exhaustive rendering. In Rust that's the normal
+        stand-in for GoF's Visitor. A fixed set of variants, with operations
+        defined over them by <code>match</code>.
+      </p>
+      <pre><code>enum ContextSection {
+    Health(ContextHealth),
+    Pattern { layer: PatternLayer, item: ContextPattern },
+    Match { source: MatchSource, item: ContextMatch },
+    Beliefs(ContextBeliefs),
+    Recall(RecallDirective),
+    Diagnostic(Diagnostic),   // the typed diagnostic from earlier
+}
+
+// Adding a renderer is one new match arm per variant. The compiler
+// won't let you forget a section. This is what people wanted from
+// Visitor, without the double-dispatch.
+fn render(section: &amp;ContextSection, format: OutputFormat) -&gt; String {
+    match (section, format) {
+        (ContextSection::Health(h), OutputFormat::Markdown) =&gt; md_health(h),
+        // ... exhaustive, compiler-checked
+    }
+}</code></pre>
+      <p>
+        The point of the exercise is to feel the two different "extend" axes.
+        Adding a new section type is easy with the flat aggregate and costly with
+        the enum, since every renderer has to change. Adding a new renderer is the
+        reverse: the enum forces you to handle every section. Which axis you
+        optimise for is the real design decision, not the pattern's name.
+      </p>
+      <div class="callout">
+        <strong>Exercise:</strong> list every side effect in the current feature
+        (file reads, DB reads, semantic index access, event-log writes, stdout).
+        Then redesign so collection takes its dependencies as parameters and does
+        no I/O of its own. Prove it by testing <code>collect</code> with fake
+        search functions and asserting on the returned <code>ContextReport</code>,
+        no database in sight.
+      </div>
+      <pre><code>// Dependencies passed in, so collection becomes testable.
+struct ContextEnv {
+    layer_root: PathBuf,
+    measure: MeasureReader,
+    factual_search: Box&lt;dyn Fn(&amp;str) -&gt; Vec&lt;ContextMatch&gt;&gt;,
+    semantic_search: Box&lt;dyn Fn(&amp;str) -&gt; Vec&lt;ContextMatch&gt;&gt;,
+    belief_search: Box&lt;dyn Fn(&amp;str) -&gt; Vec&lt;ContextMatch&gt;&gt;,
+}
+
+fn collect(env: &amp;ContextEnv, request: &amp;ContextRequest) -&gt; ContextReport {
+    // pure assembly over env-provided functions; I/O lives at the edge
+}</code></pre>
+      <p class="small">
+        This is dependency inversion, and plain functions satisfy it. No class
+        hierarchy needed. Promote <code>factual_search</code> and friends to a
+        named trait only when a second real implementation needs the same
+        boundary.
+      </p>
+    </section>
+
+    <section>
+      <h2>What to improve next</h2>
+      <p>
+        Almost none of these are "add a GoF pattern." They are "put the domain in
+        the types" and "keep I/O at the edges."
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Improvement</th>
+            <th>The real force</th>
+            <th>Why it helps</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Replace <code>diagnostics: Vec&lt;String&gt;</code> with a typed <code>Diagnostic</code> enum (fatal vs. advisory).</td>
+            <td>Make illegal states unrepresentable.</td>
+            <td>The renderer stops guessing by position; the compiler enforces handling of the fatal case.</td>
+          </tr>
+          <tr>
+            <td>Pass search and measure dependencies into <code>collect</code> as functions.</td>
+            <td>Dependency inversion.</td>
+            <td>Collection becomes testable with deterministic fakes, no real DB or index.</td>
+          </tr>
+          <tr>
+            <td>Keep <code>rusqlite</code>, paths, and file formats at the edges.</td>
+            <td>I/O at the boundary.</td>
+            <td>Domain logic stops depending on storage details and gets easy to unit test.</td>
+          </tr>
+          <tr>
+            <td>Move the fixed collect order into an explicit list of step functions.</td>
+            <td>Template Method as data plus functions.</td>
+            <td>Each step is independently testable and reorderable; the order becomes visible.</td>
+          </tr>
+          <tr>
+            <td>Add a <code>ContextSection</code> sum type only when sections must be uniform or extensible.</td>
+            <td>Sum type / Visitor stand-in.</td>
+            <td>Renderers gain exhaustive, compiler-checked coverage, paid for only when extensibility is real.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Takeaways</h2>
+      <ol>
+        <li>
+          Patterns are workarounds for features a language is missing. In Rust,
+          ask which feature solves the problem before reaching for a GoF name.
+          Often it's an <code>enum</code>, a closure, a trait object, or
+          ownership.
+        </li>
+        <li>
+          Facade is the one real pattern here, and it fits. Use a pattern when
+          its pressure is genuinely there.
+        </li>
+        <li>
+          The decisions that mattered most had no GoF name: "collect into a typed
+          value, then render," and "rule out impossible states with types."
+        </li>
+        <li>
+          A <code>Vec&lt;String&gt;</code> is a warning sign. When a type can hold
+          states the domain forbids, the type isn't doing enough work. Sharpen it
+          and the guessing code disappears.
+        </li>
+        <li>
+          Restraint is the skill. Most of the catalogue is correctly missing.
+          Knowing which patterns to leave out, and why, is a lot of what "senior"
+          means.
+        </li>
+      </ol>
+    </section>
+  </main>
+
+  <!-- DRAFT-TOOLS:START (scaffolding — strip before finalizing) -->
+  <div id="draft-tools" style="position:fixed;right:14px;bottom:14px;z-index:9999;display:flex;gap:8px;font:600 0.85rem/1 ui-sans-serif,system-ui,sans-serif;">
+    <button data-act="edit" style="padding:8px 12px;border-radius:0;border:1px solid #A6361B;background:#FFFFFF;color:#211607;cursor:pointer;box-shadow:0 4px 12px rgba(33,22,7,.15);">&#9998; Edit: off</button>
+    <button data-act="save" style="padding:8px 12px;border-radius:0;border:1px solid #FFFFFF;background:#106345;color:#FFFFFF;cursor:pointer;box-shadow:0 4px 12px rgba(33,22,7,.15);">Save to file</button>
+    <button data-act="copy" style="padding:8px 12px;border-radius:0;border:1px solid #A6361B;background:#FFFFFF;color:#211607;cursor:pointer;box-shadow:0 4px 12px rgba(33,22,7,.15);">Copy edits</button>
+    <button data-act="reset" style="padding:8px 12px;border-radius:0;border:1px solid #870B0B;background:#FFFFFF;color:#211607;cursor:pointer;box-shadow:0 4px 12px rgba(33,22,7,.15);">Reset</button>
+  </div>
+  <script>
+  (function () {
+    var main = document.querySelector('main');
+    var tools = document.getElementById('draft-tools');
+    var KEY = 'patina-gof-draft';
+    var fileHandle = null;
+    function btn(a) { return tools.querySelector('[data-act="' + a + '"]'); }
+
+    // Restore an unsaved draft if one exists (Save and Reset both clear it).
+    try { var saved = localStorage.getItem(KEY); if (saved) main.innerHTML = saved; } catch (e) {}
+    function autosave() { try { localStorage.setItem(KEY, main.innerHTML); } catch (e) {} }
+    main.addEventListener('input', autosave);
+
+    var editing = false;
+    function setEditing(on) {
+      editing = on;
+      main.contentEditable = on ? 'true' : 'false';
+      main.spellcheck = on;
+      main.style.outline = on ? '2px dashed #A6361B' : 'none';
+      btn('edit').innerHTML = '✎ Edit: ' + (on ? 'on' : 'off');
+    }
+    btn('edit').addEventListener('click', function () { setEditing(!editing); if (editing) main.focus(); });
+
+    // Serialize the whole page back to a clean, self-contained HTML document.
+    function serialize() {
+      var wasEditing = editing;
+      if (wasEditing) setEditing(false);
+      var html = '<!doctype html>\n' + document.documentElement.outerHTML + '\n';
+      if (wasEditing) setEditing(true);
+      return html;
+    }
+
+    // Save to disk with the File System Access API (Chrome/Edge). No server needed.
+    btn('save').addEventListener('click', async function () {
+      var self = this;
+      if (!window.showSaveFilePicker) {
+        self.textContent = 'Use Copy edits';
+        setTimeout(function () { self.textContent = 'Save to file'; }, 1600);
+        return;
+      }
+      try {
+        if (!fileHandle) {
+          fileHandle = await window.showSaveFilePicker({
+            suggestedName: 'reference-patina-context-gof-patterns.html',
+            types: [{ description: 'HTML', accept: { 'text/html': ['.html'] } }]
+          });
+        }
+        var writable = await fileHandle.createWritable();
+        await writable.write(serialize());
+        await writable.close();
+        try { localStorage.removeItem(KEY); } catch (e) {}
+        self.textContent = 'Saved!';
+      } catch (err) {
+        self.textContent = (err && err.name === 'AbortError') ? 'Save to file' : 'Error';
+        if (!err || err.name !== 'AbortError') console.error('Save failed:', err);
+      }
+      setTimeout(function () { self.textContent = 'Save to file'; }, 1400);
+    });
+
+    btn('copy').addEventListener('click', function () {
+      var html = main.innerHTML;
+      var self = this;
+      function done() { self.textContent = 'Copied!'; setTimeout(function () { self.textContent = 'Copy edits'; }, 1200); }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(html).then(done, fallback);
+      } else { fallback(); }
+      function fallback() {
+        var t = document.createElement('textarea');
+        t.value = html; document.body.appendChild(t); t.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        t.remove(); done();
+      }
+    });
+
+    btn('reset').addEventListener('click', function () {
+      if (!confirm('Discard your unsaved draft edits and reload?')) return;
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      location.reload();
+    });
+  })();
+  </script>
+  <!-- DRAFT-TOOLS:END -->
+</body>
+</html>

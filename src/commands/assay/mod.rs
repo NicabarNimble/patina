@@ -26,6 +26,17 @@ fn local_db_path() -> Result<String> {
         .to_string())
 }
 
+/// Search beliefs with assay's factual FTS implementation.
+///
+/// This is the curated public boundary for consumers such as `patina context`;
+/// callers do not need to know where assay keeps its internal belief module.
+pub fn search_beliefs(query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+    let db_path = local_db_path()?;
+    let conn = Connection::open(&db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path))?;
+    internal::belief::search_beliefs_fts(&conn, query, limit)
+}
+
 /// Query type for assay command
 #[derive(Debug, Clone, Default)]
 pub enum QueryType {

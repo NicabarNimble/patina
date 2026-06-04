@@ -1,0 +1,39 @@
+id = "typed-context-report"
+title = "Type the context report boundary"
+kind = "refactor"
+status = "complete"
+human_request = "Refactor patina context so it collects typed context data first, renders markdown second, and exposes structured output for API/child callers while preserving current CLI behavior."
+allium_anchors = []
+user_alignment = "User asked to make the proposed Jon/Gjengset-style architecture changes for the patina context feature. This is a no behavior change refactor for the CLI: keep `patina context` markdown stable while adding typed collection/rendering and structured child/API output so future Mother/child composition has a stronger boundary."
+belief_refs = [
+    "dependable-rust",
+    "adapter-pattern",
+]
+proof_plan = [
+    "[x] `patina context` still prints markdown with project health, core/surface patterns, and recall directive.",
+    "[x] Child/API context query returns structured JSON data instead of only pre-rendered markdown.",
+    "[x] Context command no longer imports from `commands::assay::internal`.",
+    "[x] Focused context tests pass.",
+    "[x] `cargo fmt --all --check` and relevant cargo tests pass.",
+]
+closure_evidence = [
+    "Introduced typed context structs (`ContextReport`, `ContextPattern`, `ContextMatch`, belief/health/recall types) and split collection from markdown rendering in `src/commands/context.rs`.",
+    "Added `get_project_context_json` and switched child context dispatch to return structured JSON while keeping CLI `patina context` on markdown rendering.",
+    "Added public `commands::assay::search_beliefs` helper so context no longer imports from `commands::assay::internal`.",
+    "Focused tests passed with local linker runtime path: `LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/clang/21/lib/darwin cargo test -q commands::context` and `LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/clang/21/lib/darwin cargo test -q main_dispatch::child::tests::context_query_returns_structured_json`.",
+    "Formatting and compile proof passed: `cargo fmt --all -- --check` and `cargo check -q`.",
+    "CLI smoke passed with linker runtime path: `cargo run -q -- context` output includes Project Health, Core Patterns, Surface Patterns, and Recall Directive.",
+]
+blocked_by = []
+blocks = []
+implementation_plan = [
+    "[x] Introduce typed context domain types and a collect/render split while preserving existing CLI markdown output.",
+    "[x] Add a structured JSON/query path for child/API callers instead of making markdown the only contract.",
+    "[x] Stop reaching through assay internals for belief search by exposing a curated assay belief-search helper.",
+    "[x] Add focused tests for markdown summary extraction and structured context JSON shape.",
+    "[x] Run formatting and relevant cargo tests.",
+]
+belief_harvest_decision = "No new belief captured; this refactor applies existing `dependable-rust` and `adapter-pattern` doctrine to the context feature boundary."
+created_at = "1780495087"
+updated_at = "1780496372"
+closed_at = "1780496372"
