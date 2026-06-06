@@ -265,42 +265,42 @@ pub fn skill_content(interface: &str, skill: &str) -> Option<SkillContent> {
         }),
         ("pi", "session-new") => Some(SkillContent {
             files: &[SkillFile {
-                projection_file: "commands/session-new.md",
+                projection_file: "prompts/session-new.md",
                 bytes: OPENCODE_SESSION_START,
                 mode: SkillContentMode::Markdown,
             }],
         }),
         ("pi", "session-update") => Some(SkillContent {
             files: &[SkillFile {
-                projection_file: "commands/session-update.md",
+                projection_file: "prompts/session-update.md",
                 bytes: OPENCODE_SESSION_UPDATE,
                 mode: SkillContentMode::Markdown,
             }],
         }),
         ("pi", "session-note") => Some(SkillContent {
             files: &[SkillFile {
-                projection_file: "commands/session-note.md",
+                projection_file: "prompts/session-note.md",
                 bytes: OPENCODE_SESSION_NOTE,
                 mode: SkillContentMode::Markdown,
             }],
         }),
         ("pi", "session-end") => Some(SkillContent {
             files: &[SkillFile {
-                projection_file: "commands/session-end.md",
+                projection_file: "prompts/session-end.md",
                 bytes: OPENCODE_SESSION_END,
                 mode: SkillContentMode::Markdown,
             }],
         }),
         ("pi", "patina-review") => Some(SkillContent {
             files: &[SkillFile {
-                projection_file: "commands/patina-review.md",
+                projection_file: "prompts/patina-review.md",
                 bytes: OPENCODE_PATINA_REVIEW,
                 mode: SkillContentMode::Markdown,
             }],
         }),
         ("pi", "spec") => Some(SkillContent {
             files: &[SkillFile {
-                projection_file: "commands/spec.md",
+                projection_file: "prompts/spec.md",
                 bytes: OPENCODE_SPEC,
                 mode: SkillContentMode::Markdown,
             }],
@@ -308,7 +308,7 @@ pub fn skill_content(interface: &str, skill: &str) -> Option<SkillContent> {
         ("pi", "epistemic-beliefs") => Some(SkillContent {
             files: &[
                 SkillFile {
-                    projection_file: "commands/epistemic-beliefs.md",
+                    projection_file: "prompts/epistemic-beliefs.md",
                     bytes: OPENCODE_EPISTEMIC_BELIEFS,
                     mode: SkillContentMode::Markdown,
                 },
@@ -342,5 +342,32 @@ mod tests {
             skill_ownership("patina-review"),
             SkillOwnership::GlobalInterface
         );
+    }
+
+    #[test]
+    fn pi_prompt_templates_project_to_prompts_not_commands() {
+        for skill in [
+            "session-new",
+            "session-update",
+            "session-note",
+            "session-end",
+            "patina-review",
+            "spec",
+            "epistemic-beliefs",
+        ] {
+            let content = skill_content("pi", skill).expect("pi skill content");
+            for file in content
+                .files
+                .iter()
+                .filter(|file| file.mode == SkillContentMode::Markdown)
+            {
+                assert!(
+                    file.projection_file.starts_with("prompts/"),
+                    "pi markdown skill '{}' projected to legacy path '{}'",
+                    skill,
+                    file.projection_file
+                );
+            }
+        }
     }
 }

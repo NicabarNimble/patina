@@ -1,0 +1,36 @@
+id = "pi-prompts-projection"
+title = "Pi prompts projection"
+kind = "fix"
+status = "complete"
+human_request = "Fix Patina AI launcher so the Pi interface scaffolds prompt templates under .pi/prompts instead of old .pi/commands, then commit the change."
+allium_anchors = []
+user_alignment = "User observed Pi auto-migrating Patina-scaffolded .pi/commands to .pi/prompts and asked to fix the launcher source in this repo with a clear commit."
+belief_refs = []
+proof_plan = [
+    "[x] Pi skill projection files use `prompts/*.md` instead of legacy `commands/*.md`.",
+    "[x] Pi template/project sync migrates legacy `.pi/commands` and `.patina/skills/pi/*/commands` directories to `prompts` when no prompts directory exists.",
+    "[x] Patina marks the Pi builtin bundle stale for existing `version = \"builtin\"` projections so normal refresh/launch can rewrite with prompts.",
+    "[x] Tests cover Pi prompt projection paths, legacy migration, setup projection, and formatter status.",
+]
+closure_evidence = [
+    "Changed `src/mother/skills/mod.rs` so all Pi markdown prompt templates project to `prompts/*.md`; Claude/OpenCode/Gemini keep their native `commands/` layouts.",
+    "Added Pi-specific legacy migration in `src/interface/runtime/templates.rs` for `.pi/commands -> .pi/prompts` and `.patina/skills/pi/*/commands -> prompts` before writing managed templates.",
+    "Bumped the Pi builtin bundle version string to `builtin-pi-prompts` so existing managed `.pi` directories with `version = \"builtin\"` are considered stale and get refreshed.",
+    "Updated setup/surface/template tests to assert `.pi/prompts` and added a direct skill-path regression test.",
+    "Validation passed with linker runtime path: `LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/clang/21/lib/darwin cargo test -q interface::runtime::templates::tests`, `cargo test -q interface::internal::surface::tests`, `cargo test -q commands::interface::internal::tests`, and `cargo test -q mother::skills::tests`.",
+    "Formatting passed: `cargo fmt --all -- --check`.",
+    "Smoke proof passed: `LIBRARY_PATH=/Library/Developer/CommandLineTools/usr/lib/clang/21/lib/darwin cargo run -q -- --interface pi ai setup --path <temp>` produced `.pi/prompts/*.md` with no `.pi/commands` directory.",
+]
+blocked_by = []
+blocks = []
+implementation_plan = [
+    "[x] Inspect Pi/PATINA projection source and confirm Patina still emits Pi markdown prompt templates to `commands/`.",
+    "[x] Change only the Pi projection paths to `prompts/`, preserving other interface-native command layouts.",
+    "[x] Add compatibility migration for existing Pi command-template directories during managed template sync.",
+    "[x] Update bundle version/status and tests so existing managed Pi projections are refreshed.",
+    "[x] Run focused tests, formatter check, and a setup smoke test.",
+]
+belief_harvest_decision = "No new belief captured; this change applies the existing interface-runtime decoupling rule and tracks an upstream Pi path rename."
+created_at = "1780755295"
+updated_at = "1780755680"
+closed_at = "1780755680"

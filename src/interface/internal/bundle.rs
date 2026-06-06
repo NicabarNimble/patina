@@ -133,7 +133,7 @@ classification = "hitl"
 command = "pi"
 detect_commands = ["pi --version"]
 tmux_policy = "auto"
-version = "builtin"
+version = "builtin-pi-prompts"
 skills = { include = ["session-new", "session-update", "session-note", "session-end", "spec", "epistemic-beliefs"] }
 managed_paths = [
   { relative_path = "AGENTS.md", kind = "file" },

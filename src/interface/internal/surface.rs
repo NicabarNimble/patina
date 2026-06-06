@@ -296,7 +296,7 @@ mod tests {
             .path()
             .join(".gemini/commands/epistemic-beliefs.toml")
             .exists());
-        assert!(temp.path().join(".pi/commands/session-new.md").exists());
+        assert!(temp.path().join(".pi/prompts/session-new.md").exists());
     }
 
     #[test]

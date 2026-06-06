@@ -69,6 +69,7 @@ pub fn copy_to_project(interface_name: &str, project_path: &Path) -> Result<()> 
     let iface_dir = paths::project::managed_interface_dir(project_path, interface_name);
     fs::create_dir_all(&iface_dir)?;
     fs::create_dir_all(iface_dir.join("bin"))?;
+    migrate_pi_commands_dir_to_prompts(interface_name, &iface_dir)?;
 
     write_executable(
         &iface_dir.join("bin/session-new.sh"),
@@ -189,6 +190,7 @@ fn install_interface_templates(
         .join(format!(".{}", interface_name));
     fs::create_dir_all(&interface_dir)?;
     fs::create_dir_all(interface_dir.join("bin"))?;
+    migrate_pi_commands_dir_to_prompts(interface_name, &interface_dir)?;
 
     write_executable(
         &interface_dir.join("bin/session-new.sh"),
@@ -250,16 +252,31 @@ fn render_skill_body<'a>(interface_name: &str, source: &'a str) -> Cow<'a, str> 
     }
 }
 
+fn migrate_pi_commands_dir_to_prompts(interface_name: &str, base_dir: &Path) -> Result<()> {
+    if interface_name != "pi" {
+        return Ok(());
+    }
+
+    let commands_dir = base_dir.join("commands");
+    let prompts_dir = base_dir.join("prompts");
+    if commands_dir.exists() && !prompts_dir.exists() {
+        fs::rename(&commands_dir, &prompts_dir)?;
+    }
+
+    Ok(())
+}
+
 fn sync_project_skill_source(
     project_root: &Path,
     interface_name: &str,
     skill_name: &str,
     content: &SkillContent,
 ) -> Result<()> {
+    let skill_dir = paths::project::interface_skill_dir(project_root, interface_name, skill_name);
+    migrate_pi_commands_dir_to_prompts(interface_name, &skill_dir)?;
+
     for file in content.files {
-        let source_path =
-            paths::project::interface_skill_dir(project_root, interface_name, skill_name)
-                .join(file.projection_file);
+        let source_path = skill_dir.join(file.projection_file);
         if let Some(parent) = source_path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -613,11 +630,12 @@ mod tests {
 
         let source = temp
             .path()
-            .join(".patina/skills/pi/epistemic-beliefs/commands/epistemic-beliefs.md");
-        let projected = temp.path().join(".pi/commands/epistemic-beliefs.md");
+            .join(".patina/skills/pi/epistemic-beliefs/prompts/epistemic-beliefs.md");
+        let projected = temp.path().join(".pi/prompts/epistemic-beliefs.md");
 
         assert!(source.exists());
         assert!(projected.exists());
+        assert!(!temp.path().join(".pi/commands").exists());
 
         let source_text = fs::read_to_string(&source).unwrap();
         assert!(source_text.contains("PATINA:START"));
@@ -629,17 +647,47 @@ mod tests {
     }
 
     #[test]
+    fn copy_to_project_migrates_legacy_pi_commands_to_prompts() {
+        let temp = TempDir::new().unwrap();
+        let legacy_command = temp.path().join(".pi/commands/custom.md");
+        fs::create_dir_all(legacy_command.parent().unwrap()).unwrap();
+        fs::write(&legacy_command, "legacy custom prompt\n").unwrap();
+
+        let legacy_source = temp
+            .path()
+            .join(".patina/skills/pi/session-new/commands/session-new.md");
+        fs::create_dir_all(legacy_source.parent().unwrap()).unwrap();
+        fs::write(&legacy_source, "legacy source prompt\n").unwrap();
+
+        copy_to_project("pi", temp.path()).unwrap();
+
+        assert!(!temp.path().join(".pi/commands").exists());
+        assert_eq!(
+            fs::read_to_string(temp.path().join(".pi/prompts/custom.md")).unwrap(),
+            "legacy custom prompt\n"
+        );
+        assert!(!temp
+            .path()
+            .join(".patina/skills/pi/session-new/commands")
+            .exists());
+        assert!(temp
+            .path()
+            .join(".patina/skills/pi/session-new/prompts/session-new.md")
+            .exists());
+    }
+
+    #[test]
     fn project_overrides_win_last_for_interface_projection() {
         let temp = TempDir::new().unwrap();
         let override_path = temp
             .path()
-            .join(".patina/interfaces/pi/overrides/commands/epistemic-beliefs.md");
+            .join(".patina/interfaces/pi/overrides/prompts/epistemic-beliefs.md");
         fs::create_dir_all(override_path.parent().unwrap()).unwrap();
         fs::write(&override_path, "override: true\n").unwrap();
 
         copy_to_project("pi", temp.path()).unwrap();
 
-        let projected = temp.path().join(".pi/commands/epistemic-beliefs.md");
+        let projected = temp.path().join(".pi/prompts/epistemic-beliefs.md");
         assert_eq!(fs::read_to_string(projected).unwrap(), "override: true\n");
     }
 }

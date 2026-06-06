@@ -85,6 +85,6 @@ mod tests {
             .path()
             .join(".gemini/commands/session-new.toml")
             .exists());
-        assert!(temp.path().join(".pi/commands/session-new.md").exists());
+        assert!(temp.path().join(".pi/prompts/session-new.md").exists());
     }
 }
