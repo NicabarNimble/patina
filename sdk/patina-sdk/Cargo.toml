@@ -9,5 +9,14 @@ keywords = ["patina", "wasm", "child", "component-model"]
 categories = ["development-tools", "wasm"]
 include = ["src/**", "wit/**", "Cargo.toml", "README.md", "TOY_GOVERNANCE.md", "LICENSE*"]
 
+[features]
+default = []
+manifest = ["dep:serde", "dep:toml"]
+
 [dependencies]
+serde = { version = "1.0", features = ["derive"], optional = true }
+toml = { version = "0.8", optional = true }
 wit-bindgen = "0.41"
+
+[dev-dependencies]
+tempfile = "3.14"

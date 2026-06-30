@@ -4,6 +4,8 @@
 //! (Rivet, future alternates) are integrated at Mother adapter boundaries, not
 //! inside child business code.
 
+#[cfg(feature = "manifest")]
+pub mod manifest;
 pub mod toys;
 pub mod types;
 
