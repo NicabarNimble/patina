@@ -12,6 +12,7 @@ pub struct ManifestInfo {
     pub path: PathBuf,
     pub name: Option<String>,
     pub version: Option<String>,
+    pub artifact_wasm: Option<PathBuf>,
     pub declared_toys: BTreeSet<String>,
 }
 
@@ -114,6 +115,9 @@ pub fn check_manifest(root: &Path) -> Result<(Option<ManifestInfo>, Vec<Diagnost
             version: sdk_manifest
                 .as_ref()
                 .map(|manifest| manifest.version.clone()),
+            artifact_wasm: sdk_manifest
+                .as_ref()
+                .and_then(|manifest| manifest.artifact.wasm.clone()),
             declared_toys,
         }),
         findings,
@@ -161,6 +165,13 @@ fn push_sdk_manifest_error(
             "PTN-MANIFEST-011",
             "child.toml has an unsupported child.ingress.mode".to_string(),
             "set [child.ingress].mode to handle, hybrid, or wit-only".to_string(),
+        ),
+        ChildManifestError::MissingArtifactDeclaration(_)
+        | ChildManifestError::InvalidArtifactPath { .. }
+        | ChildManifestError::MissingWasmArtifact(_) => (
+            "PTN-MANIFEST-013",
+            "child.toml has an invalid child.artifact.wasm declaration".to_string(),
+            "declare [child.artifact].wasm as a relative .wasm package path".to_string(),
         ),
         other => (
             "PTN-MANIFEST-012",

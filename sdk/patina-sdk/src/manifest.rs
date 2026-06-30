@@ -5,7 +5,7 @@
 //! than re-defining local manifest structs.
 
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 pub const CHILD_MANIFEST_FILE: &str = "child.toml";
 
@@ -17,9 +17,15 @@ pub struct ChildManifest {
     pub kind: String,
     pub role: Option<String>,
     pub ingress_mode: ChildIngressMode,
+    pub artifact: ChildArtifact,
     pub contract: ChildContract,
     pub needs: ChildNeeds,
     pub relationships: ChildRelationships,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChildArtifact {
+    pub wasm: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,16 +88,22 @@ pub struct ChildPackage {
 }
 
 impl ChildPackage {
-    /// Load a release/package directory containing `child.toml` and exactly one
-    /// `.wasm` artifact.
+    /// Load a release/package directory containing `child.toml` and its
+    /// manifest-declared `.wasm` artifact.
     ///
-    /// This is intentionally strict. A package with multiple artifacts must be
-    /// made explicit by future SDK schema before backends may pick one.
+    /// This is intentionally strict. Backends must not infer artifact identity
+    /// from directory contents.
     pub fn from_package_dir(package_dir: impl AsRef<Path>) -> Result<Self, ChildManifestError> {
         let package_dir = package_dir.as_ref();
         let manifest_path = package_dir.join(CHILD_MANIFEST_FILE);
         let manifest = ChildManifest::from_path(&manifest_path)?;
-        let artifact_path = single_wasm_artifact_path(package_dir)?;
+        let artifact_relative_path = manifest.artifact.wasm.as_ref().ok_or(
+            ChildManifestError::MissingArtifactDeclaration("child.artifact.wasm"),
+        )?;
+        let artifact_path = package_dir.join(artifact_relative_path);
+        if !artifact_path.is_file() {
+            return Err(ChildManifestError::MissingWasmArtifact(artifact_path));
+        }
         Ok(Self {
             manifest_path,
             artifact_path,
@@ -136,6 +148,7 @@ impl ChildManifest {
             })
             .transpose()?
             .unwrap_or_default();
+        let artifact = child.artifact.unwrap_or_default();
         let contract = child.contract.unwrap_or_default();
         let needs = raw.needs.unwrap_or_default();
         let relationships = raw.relationships.unwrap_or_default();
@@ -147,6 +160,9 @@ impl ChildManifest {
             kind,
             role,
             ingress_mode,
+            artifact: ChildArtifact {
+                wasm: optional_artifact_path(artifact.wasm, "child.artifact.wasm")?,
+            },
             contract: ChildContract {
                 default_operation: optional_string(contract.default),
                 allow_operations: normalized_string_vec(contract.allow, "child.contract.allow")?,
@@ -164,16 +180,30 @@ impl ChildManifest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChildManifestError {
     MissingManifest(PathBuf),
-    ReadManifest { path: PathBuf, message: String },
-    ReadPackageDir { path: PathBuf, message: String },
+    ReadManifest {
+        path: PathBuf,
+        message: String,
+    },
+    ReadPackageDir {
+        path: PathBuf,
+        message: String,
+    },
     ParseToml(String),
     MissingSection(&'static str),
     MissingRequiredField(&'static str),
     EmptyStringField(&'static str),
-    EmptyStringArrayItem { field: &'static str, index: usize },
+    EmptyStringArrayItem {
+        field: &'static str,
+        index: usize,
+    },
     InvalidIngressMode(String),
+    MissingArtifactDeclaration(&'static str),
+    InvalidArtifactPath {
+        field: &'static str,
+        path: String,
+        reason: &'static str,
+    },
     MissingWasmArtifact(PathBuf),
-    AmbiguousWasmArtifacts { package_dir: PathBuf, count: usize },
 }
 
 impl fmt::Display for ChildManifestError {
@@ -202,18 +232,24 @@ impl fmt::Display for ChildManifestError {
                 write!(f, "child manifest field {field}[{index}] must not be empty")
             }
             Self::InvalidIngressMode(mode) => write!(f, "unknown child ingress mode '{mode}'"),
+            Self::MissingArtifactDeclaration(field) => {
+                write!(f, "child package missing artifact declaration {field}")
+            }
+            Self::InvalidArtifactPath {
+                field,
+                path,
+                reason,
+            } => write!(
+                f,
+                "child manifest field {field} has invalid artifact path '{path}': {reason}"
+            ),
             Self::MissingWasmArtifact(path) => {
                 write!(
                     f,
-                    "child package {} contains no .wasm artifact",
+                    "child package is missing wasm artifact {}",
                     path.display()
                 )
             }
-            Self::AmbiguousWasmArtifacts { package_dir, count } => write!(
-                f,
-                "child package {} contains {count} .wasm artifacts; artifact identity is ambiguous",
-                package_dir.display()
-            ),
         }
     }
 }
@@ -241,12 +277,19 @@ struct RawChildSection {
     #[serde(default)]
     ingress: Option<RawIngressSection>,
     #[serde(default)]
+    artifact: Option<RawArtifactSection>,
+    #[serde(default)]
     contract: Option<RawContractSection>,
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct RawIngressSection {
     mode: Option<String>,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct RawArtifactSection {
+    wasm: Option<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -305,31 +348,40 @@ fn normalized_string_vec(
         .collect()
 }
 
-fn single_wasm_artifact_path(package_dir: &Path) -> Result<PathBuf, ChildManifestError> {
-    let mut wasm_paths = std::fs::read_dir(package_dir)
-        .map_err(|source| ChildManifestError::ReadPackageDir {
-            path: package_dir.to_path_buf(),
-            message: source.to_string(),
-        })?
-        .map(|entry| entry.map(|entry| entry.path()))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|source| ChildManifestError::ReadPackageDir {
-            path: package_dir.to_path_buf(),
-            message: source.to_string(),
-        })?;
-    wasm_paths.retain(|path| path.extension().and_then(|ext| ext.to_str()) == Some("wasm"));
-    wasm_paths.sort();
+fn optional_artifact_path(
+    value: Option<String>,
+    field: &'static str,
+) -> Result<Option<PathBuf>, ChildManifestError> {
+    optional_string(value)
+        .map(|value| normalized_artifact_path(value, field))
+        .transpose()
+}
 
-    match wasm_paths.len() {
-        0 => Err(ChildManifestError::MissingWasmArtifact(
-            package_dir.to_path_buf(),
-        )),
-        1 => Ok(wasm_paths.remove(0)),
-        count => Err(ChildManifestError::AmbiguousWasmArtifacts {
-            package_dir: package_dir.to_path_buf(),
-            count,
-        }),
+fn normalized_artifact_path(
+    value: String,
+    field: &'static str,
+) -> Result<PathBuf, ChildManifestError> {
+    let path = PathBuf::from(&value);
+    if path.extension().and_then(|ext| ext.to_str()) != Some("wasm") {
+        return Err(ChildManifestError::InvalidArtifactPath {
+            field,
+            path: value,
+            reason: "artifact path must end in .wasm",
+        });
     }
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir | Component::CurDir
+        )
+    }) {
+        return Err(ChildManifestError::InvalidArtifactPath {
+            field,
+            path: value,
+            reason: "artifact path must be a relative package path without . or .. components",
+        });
+    }
+    Ok(path)
 }
 
 #[cfg(test)]
@@ -346,6 +398,9 @@ role = "app"
 
 [child.ingress]
 mode = "wit-only"
+
+[child.artifact]
+wasm = "artifacts/slate.wasm"
 
 [child.contract]
 default = "patina:slate/control@0.1.0.list-work"
@@ -371,6 +426,10 @@ listens = ["events.changed"]
         assert_eq!(parsed.kind, "child");
         assert_eq!(parsed.role.as_deref(), Some("app"));
         assert_eq!(parsed.ingress_mode, ChildIngressMode::WitOnly);
+        assert_eq!(
+            parsed.artifact.wasm,
+            Some(PathBuf::from("artifacts/slate.wasm"))
+        );
         assert_eq!(
             parsed.contract.default_operation.as_deref(),
             Some("patina:slate/control@0.1.0.list-work")
@@ -411,31 +470,53 @@ listens = ["events.changed"]
     }
 
     #[test]
-    fn package_dir_requires_exactly_one_wasm_artifact() {
+    fn package_dir_loads_manifest_declared_wasm_artifact() {
         let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("artifacts")).unwrap();
         std::fs::write(dir.path().join(CHILD_MANIFEST_FILE), manifest()).unwrap();
-        std::fs::write(dir.path().join("slate.wasm"), "wasm").unwrap();
+        std::fs::write(dir.path().join("artifacts/slate.wasm"), "wasm").unwrap();
+        std::fs::write(dir.path().join("ignored.wasm"), "other wasm").unwrap();
 
         let package = ChildPackage::from_package_dir(dir.path()).unwrap();
 
         assert_eq!(package.manifest.name, "slate-manager");
-        assert_eq!(package.artifact_path, dir.path().join("slate.wasm"));
+        assert_eq!(
+            package.artifact_path,
+            dir.path().join("artifacts/slate.wasm")
+        );
     }
 
     #[test]
-    fn package_dir_rejects_multiple_wasm_artifacts() {
+    fn package_dir_rejects_missing_wasm_artifact_declaration() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(CHILD_MANIFEST_FILE), manifest()).unwrap();
-        std::fs::write(dir.path().join("a.wasm"), "wasm").unwrap();
-        std::fs::write(dir.path().join("b.wasm"), "wasm").unwrap();
+        std::fs::write(
+            dir.path().join(CHILD_MANIFEST_FILE),
+            "[child]\nname='x'\nversion='0.1.0'\nkind='child'\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("x.wasm"), "wasm").unwrap();
 
         let error = ChildPackage::from_package_dir(dir.path()).unwrap_err();
 
         assert_eq!(
             error,
-            ChildManifestError::AmbiguousWasmArtifacts {
-                package_dir: dir.path().to_path_buf(),
-                count: 2
+            ChildManifestError::MissingArtifactDeclaration("child.artifact.wasm")
+        );
+    }
+
+    #[test]
+    fn rejects_artifact_paths_that_escape_package() {
+        let error = ChildManifest::from_toml_str(
+            "[child]\nname='x'\nversion='0.1.0'\nkind='child'\n[child.artifact]\nwasm='../x.wasm'\n",
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            ChildManifestError::InvalidArtifactPath {
+                field: "child.artifact.wasm",
+                path: "../x.wasm".into(),
+                reason: "artifact path must be a relative package path without . or .. components"
             }
         );
     }
