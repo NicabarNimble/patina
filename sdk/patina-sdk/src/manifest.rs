@@ -19,6 +19,7 @@ pub struct ChildManifest {
     pub ingress_mode: ChildIngressMode,
     pub contract: ChildContract,
     pub needs: ChildNeeds,
+    pub relationships: ChildRelationships,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +31,11 @@ pub struct ChildContract {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChildNeeds {
     pub toys: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChildRelationships {
+    pub listens: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,6 +138,7 @@ impl ChildManifest {
             .unwrap_or_default();
         let contract = child.contract.unwrap_or_default();
         let needs = raw.needs.unwrap_or_default();
+        let relationships = raw.relationships.unwrap_or_default();
 
         Ok(Self {
             name,
@@ -146,6 +153,9 @@ impl ChildManifest {
             },
             needs: ChildNeeds {
                 toys: normalized_string_vec(needs.toys, "needs.toys")?,
+            },
+            relationships: ChildRelationships {
+                listens: normalized_string_vec(relationships.listens, "relationships.listens")?,
             },
         })
     }
@@ -215,6 +225,8 @@ struct RawChildManifest {
     child: Option<RawChildSection>,
     #[serde(default)]
     needs: Option<RawNeedsSection>,
+    #[serde(default)]
+    relationships: Option<RawRelationshipsSection>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -249,6 +261,12 @@ struct RawContractSection {
 struct RawNeedsSection {
     #[serde(default)]
     toys: Vec<String>,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct RawRelationshipsSection {
+    #[serde(default)]
+    listens: Vec<String>,
 }
 
 fn required_string(
@@ -338,6 +356,9 @@ allow = [
 
 [needs]
 toys = ["logging", "measure", "git", "filesystem"]
+
+[relationships]
+listens = ["events.changed"]
 "#
     }
 
@@ -359,6 +380,7 @@ toys = ["logging", "measure", "git", "filesystem"]
             parsed.needs.toys,
             vec!["logging", "measure", "git", "filesystem"]
         );
+        assert_eq!(parsed.relationships.listens, vec!["events.changed"]);
     }
 
     #[test]
