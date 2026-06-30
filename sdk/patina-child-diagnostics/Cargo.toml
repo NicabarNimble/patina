@@ -10,7 +10,7 @@ categories = ["development-tools", "wasm"]
 
 [dependencies]
 anyhow = "1.0"
-patina-sdk = { path = "../patina-sdk", features = ["manifest"] }
+patina-sdk = { path = "../patina-sdk", default-features = false, features = ["manifest"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
