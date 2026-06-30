@@ -3351,6 +3351,7 @@ name = "patina-child-diagnostics"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "patina-sdk",
  "serde",
  "serde_json",
  "sha2",
@@ -3376,6 +3377,9 @@ dependencies = [
 name = "patina-sdk"
 version = "0.22.0"
 dependencies = [
+ "serde",
+ "tempfile",
+ "toml 0.8.23",
  "wit-bindgen 0.41.0",
 ]
 

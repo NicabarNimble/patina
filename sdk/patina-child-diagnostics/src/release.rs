@@ -27,17 +27,21 @@ pub(crate) fn check_release(
     }
 
     let release_dir = release_path.to_path_buf();
-    let wasm_asset = select_wasm_asset(&release_dir, component_path)?;
+    let wasm_asset = select_wasm_asset(
+        &release_dir,
+        manifest.and_then(|manifest| manifest.artifact_wasm.as_deref()),
+        component_path,
+    )?;
     let manifest_asset = release_dir.join("child.toml");
     let checksums_asset = release_dir.join("checksums.txt");
 
-    if wasm_asset.is_none() {
+    if !wasm_asset.as_ref().is_some_and(|path| path.exists()) {
         findings.push(DiagnosticFinding::error(
             DiagnosticPhase::Release,
             "PTN-RELEASE-002",
-            Some(release_dir.clone()),
+            wasm_asset.clone().or_else(|| Some(release_dir.clone())),
             "release bundle is missing the WASM component asset",
-            Some("copy the built .wasm component into the release bundle".to_string()),
+            Some("copy the manifest-declared .wasm component into the release bundle".to_string()),
         ));
     }
 
@@ -54,11 +58,12 @@ pub(crate) fn check_release(
         ));
     }
 
-    check_release_wasm_matches_component(wasm_asset.as_deref(), component_path, &mut findings)?;
+    let existing_wasm_asset = wasm_asset.as_deref().filter(|path| path.exists());
+    check_release_wasm_matches_component(existing_wasm_asset, component_path, &mut findings)?;
     check_manifest_sidecar(&manifest_asset, &mut findings)?;
     check_checksums(
         &checksums_asset,
-        wasm_asset.as_deref(),
+        existing_wasm_asset,
         &manifest_asset,
         &mut findings,
     )?;
@@ -80,7 +85,15 @@ fn missing_release_bundle(location: PathBuf) -> DiagnosticFinding {
     )
 }
 
-fn select_wasm_asset(release_dir: &Path, component_path: Option<&Path>) -> Result<Option<PathBuf>> {
+fn select_wasm_asset(
+    release_dir: &Path,
+    manifest_artifact: Option<&Path>,
+    component_path: Option<&Path>,
+) -> Result<Option<PathBuf>> {
+    if let Some(manifest_artifact) = manifest_artifact {
+        return Ok(Some(release_dir.join(manifest_artifact)));
+    }
+
     let mut wasm_assets = Vec::new();
     for entry in std::fs::read_dir(release_dir)
         .with_context(|| format!("reading release bundle {}", release_dir.display()))?

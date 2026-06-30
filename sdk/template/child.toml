@@ -4,5 +4,8 @@ version = "0.1.0"
 description = "{{ description }}"
 kind = "{{ child_kind }}"
 
+[child.artifact]
+wasm = ".patina/dev/components/{{ child_name }}.wasm"
+
 [needs]
 toys = ["logging"]

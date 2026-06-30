@@ -6,6 +6,9 @@ kind = "child"
 role = "app"
 patina_min = "0.21.0"
 
+[child.artifact]
+wasm = ".patina/dev/components/__NAME__.wasm"
+
 [needs]
 toys = ["logging"]
 
