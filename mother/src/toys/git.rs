@@ -46,8 +46,7 @@ impl GitHost {
     }
 
     fn run_git<const N: usize>(&self, args: [&str; N]) -> Result<()> {
-        let output = Command::new("git")
-            .current_dir(&self.repo_root)
+        let output = git_command(&self.repo_root)
             .args(args)
             .output()
             .with_context(|| "running git command")?;
@@ -62,8 +61,7 @@ impl GitHost {
     }
 
     fn run_git_capture<const N: usize>(&self, args: [&str; N]) -> Result<String> {
-        let output = Command::new("git")
-            .current_dir(&self.repo_root)
+        let output = git_command(&self.repo_root)
             .args(args)
             .output()
             .with_context(|| "running git command")?;
@@ -78,6 +76,17 @@ impl GitHost {
     }
 }
 
+fn git_command(repo_root: &std::path::Path) -> Command {
+    let mut command = Command::new("git");
+    command
+        .current_dir(repo_root)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .env_remove("GIT_PREFIX");
+    command
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,29 +94,21 @@ mod tests {
     fn init_repo() -> tempfile::TempDir {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        Command::new("git")
-            .current_dir(root)
-            .args(["init"])
-            .status()
-            .unwrap();
-        Command::new("git")
-            .current_dir(root)
+        git_command(root).args(["init"]).status().unwrap();
+        git_command(root)
             .args(["config", "user.name", "Test User"])
             .status()
             .unwrap();
-        Command::new("git")
-            .current_dir(root)
+        git_command(root)
             .args(["config", "user.email", "test@example.com"])
             .status()
             .unwrap();
         std::fs::write(root.join("README.md"), "init\n").unwrap();
-        Command::new("git")
-            .current_dir(root)
+        git_command(root)
             .args(["add", "README.md"])
             .status()
             .unwrap();
-        Command::new("git")
-            .current_dir(root)
+        git_command(root)
             .args(["commit", "-m", "init"])
             .status()
             .unwrap();

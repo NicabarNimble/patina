@@ -135,6 +135,14 @@ impl std::fmt::Display for ChildIngressMode {
     }
 }
 
+fn child_ingress_mode_from_sdk(mode: patina_sdk::manifest::ChildIngressMode) -> ChildIngressMode {
+    match mode {
+        patina_sdk::manifest::ChildIngressMode::Handle => ChildIngressMode::Handle,
+        patina_sdk::manifest::ChildIngressMode::Hybrid => ChildIngressMode::Hybrid,
+        patina_sdk::manifest::ChildIngressMode::WitOnly => ChildIngressMode::WitOnly,
+    }
+}
+
 // =========================================================================
 // Child role enum — parsed from manifest, describes purpose (F4)
 // =========================================================================
@@ -559,6 +567,8 @@ impl ChildManifest {
     /// Parse a child manifest from a TOML file.
     pub fn from_path(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
+        let sdk_manifest = patina_sdk::manifest::ChildManifest::from_toml_str(&content)
+            .map_err(|error| anyhow::anyhow!("invalid SDK child manifest: {error}"))?;
         let table: toml::Table = content.parse()?;
 
         let child = table
@@ -566,34 +576,14 @@ impl ChildManifest {
             .and_then(|v| v.as_table())
             .ok_or_else(|| anyhow::anyhow!("missing [child] section"))?;
 
-        let name = child
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("missing child.name"))?
-            .to_string();
-
-        let version = child
-            .get("version")
-            .and_then(|v| v.as_str())
-            .unwrap_or("0.0.0")
-            .to_string();
-
-        let description = child
-            .get("description")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        let world_str = child
-            .get("kind")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("missing child.kind"))?;
-        let world = world_str.parse::<ChildKind>()?;
-
-        let role = child
-            .get("role")
-            .and_then(|v| v.as_str())
-            .map(|s| s.parse::<ChildRole>())
+        let name = sdk_manifest.name;
+        let version = sdk_manifest.version;
+        let description = sdk_manifest.description.unwrap_or_default();
+        let world = sdk_manifest.kind.parse::<ChildKind>()?;
+        let role = sdk_manifest
+            .role
+            .as_deref()
+            .map(str::parse::<ChildRole>)
             .transpose()?;
 
         let patina_min = child
@@ -602,50 +592,12 @@ impl ChildManifest {
             .unwrap_or("0.0.0")
             .to_string();
 
-        let ingress_mode = if let Some(mode_value) = child
-            .get("ingress")
-            .and_then(|v| v.as_table())
-            .and_then(|ingress| ingress.get("mode"))
-        {
-            let mode_str = mode_value
-                .as_str()
-                .ok_or_else(|| anyhow::anyhow!("child.ingress.mode must be a string"))?;
-            mode_str.parse::<ChildIngressMode>()?
-        } else {
-            ChildIngressMode::default()
-        };
-
-        let contract_default_operation = child
-            .get("contract")
-            .and_then(|v| v.as_table())
-            .and_then(|contract| contract.get("default"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
-
-        let contract_allow_operations = child
-            .get("contract")
-            .and_then(|v| v.as_table())
-            .and_then(|contract| contract.get("allow"))
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
-                    .filter(|s| !s.is_empty())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let ingress_mode = child_ingress_mode_from_sdk(sdk_manifest.ingress_mode);
+        let contract_default_operation = sdk_manifest.contract.default_operation;
+        let contract_allow_operations = sdk_manifest.contract.allow_operations;
 
         let needs_table = table.get("needs").and_then(|v| v.as_table());
-        let needs_toys = needs_table
-            .and_then(|needs| needs.get("toys"))
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(ToString::to_string))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let needs_toys = sdk_manifest.needs.toys;
         let needs_scopes = needs_table
             .and_then(|needs| needs.get("scopes"))
             .and_then(|v| v.as_table());

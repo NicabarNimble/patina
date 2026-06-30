@@ -259,6 +259,7 @@ kind = "knowledge-child"
                 r#"
 [child]
 name = "bad-child"
+version = "0.1.0"
 kind = "child"
 
 [capabilities]
@@ -304,6 +305,7 @@ host_unknown = true
                 r#"
 [child]
 name = "grant-child"
+version = "0.1.0"
 kind = "child"
 
 [capabilities]

@@ -1,5 +1,6 @@
 [child]
 name = "file-system-monitor"
+version = "0.1.0"
 kind = "child"
 role = "app"
 

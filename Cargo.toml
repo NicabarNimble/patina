@@ -114,6 +114,7 @@ wac-graph = "0.9.0"
 
 mother-crate = { package = "mother", path = "mother" }
 patina-core = { path = "crates/patina-core" }
+patina-sdk = { path = "sdk/patina-sdk", default-features = false, features = ["manifest"] }
 patina-protocol = { path = "crates/patina-protocol" }
 
 # Secrets CLI client/runtime
