@@ -211,7 +211,7 @@ fn install_child_package(
 
     let manifest = patina::child::engine::ChildManifest::from_path(&child_toml)
         .with_context(|| format!("load child manifest {}", child_toml.display()))?;
-    let wasm_path = resolve_child_wasm(&package_path, &manifest.name, wasm_arg)?;
+    let wasm_path = resolve_child_wasm(&package_path, wasm_arg)?;
 
     let install_dir = patina::paths::child::command_children_dir();
     std::fs::create_dir_all(&install_dir)?;
@@ -258,11 +258,7 @@ fn install_child_package(
     Ok(())
 }
 
-fn resolve_child_wasm(
-    package_path: &Path,
-    child_name: &str,
-    wasm_arg: Option<&str>,
-) -> Result<PathBuf> {
+fn resolve_child_wasm(package_path: &Path, wasm_arg: Option<&str>) -> Result<PathBuf> {
     if let Some(path) = wasm_arg {
         let path = PathBuf::from(path);
         if path.exists() {
@@ -271,30 +267,9 @@ fn resolve_child_wasm(
         anyhow::bail!("component wasm not found at {}", path.display());
     }
 
-    let artifact_name = format!("{}.wasm", child_name.replace('-', "_"));
-    let candidates = [
-        package_path
-            .join("target/wasm32-wasip1/release")
-            .join(&artifact_name),
-        package_path
-            .join("target/wasm32-wasip2/release")
-            .join(&artifact_name),
-        std::env::current_dir()?
-            .join("target/wasm32-wasip1/release")
-            .join(&artifact_name),
-        std::env::current_dir()?
-            .join("target/wasm32-wasip2/release")
-            .join(&artifact_name),
-    ];
-    for candidate in candidates {
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-    anyhow::bail!(
-        "could not find built component for '{}'; pass --wasm <path>",
-        child_name
-    );
+    let package = patina_sdk::manifest::ChildPackage::from_package_dir(package_path)
+        .map_err(|error| anyhow::anyhow!("invalid child package artifact contract: {error}"))?;
+    Ok(package.artifact_path)
 }
 
 fn copy_optional_child_dir(package_path: &Path, child_dir: &Path, name: &str) -> Result<()> {
@@ -677,10 +652,48 @@ mod child_install_tests {
     }
 
     #[test]
-    fn resolve_child_wasm_requires_artifact_when_missing() {
+    fn resolve_child_wasm_uses_manifest_declared_artifact() {
         let temp = tempfile::tempdir().unwrap();
-        let error = resolve_child_wasm(temp.path(), "demo-child", None)
-            .expect_err("missing component should fail closed");
-        assert!(error.to_string().contains("could not find built component"));
+        let artifact = temp
+            .path()
+            .join("target/wasm32-wasip1/release/demo_child.wasm");
+        std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        std::fs::write(&artifact, "wasm").unwrap();
+        std::fs::write(temp.path().join("other.wasm"), "other").unwrap();
+        std::fs::write(
+            temp.path().join("child.toml"),
+            r#"[child]
+name = "demo-child"
+version = "0.1.0"
+kind = "child"
+
+[child.artifact]
+wasm = "target/wasm32-wasip1/release/demo_child.wasm"
+"#,
+        )
+        .unwrap();
+
+        let resolved = resolve_child_wasm(temp.path(), None).unwrap();
+
+        assert_eq!(resolved, artifact);
+    }
+
+    #[test]
+    fn resolve_child_wasm_requires_artifact_declaration_when_missing() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("demo_child.wasm"), "wasm").unwrap();
+        std::fs::write(
+            temp.path().join("child.toml"),
+            r#"[child]
+name = "demo-child"
+version = "0.1.0"
+kind = "child"
+"#,
+        )
+        .unwrap();
+
+        let error = resolve_child_wasm(temp.path(), None)
+            .expect_err("missing artifact declaration should fail closed");
+        assert!(error.to_string().contains("child.artifact.wasm"), "{error}");
     }
 }
