@@ -1,0 +1,24 @@
+id = "mother-sdk-manifest-runtime"
+title = "Route Mother child manifests through SDK contract"
+kind = "refactor"
+status = "active"
+human_request = "Complete the original SDK/MCT manifest-source-of-truth task by updating old Mother/Patina runtime to consume the SDK child manifest contract while preserving strong invariants and avoiding local parser drift."
+allium_anchors = []
+user_alignment = "User asked to continue from the completed SDK and MCT work, favoring explicit contracts, shared logic, strong invariants, and small focused git updates."
+belief_refs = []
+proof_plan = ["""
+[ ] Mother child manifest loading parses canonical identity, ingress, contract, and needs.toys through `patina_sdk::manifest` instead of duplicating those rules locally.
+[ ] Child package install resolves default WASM artifacts through the SDK package artifact contract instead of local directory inference.
+[ ] Existing in-repo child manifests satisfy the SDK-required identity fields.
+[ ] Targeted Mother/child validation passes.
+"""]
+closure_evidence = []
+blocked_by = []
+implementation_plan = ["""
+[ ] Refactor `src/child/internal/mod.rs` to project SDK manifest fields into Mother runtime `ChildManifest` while retaining Mother-only extension parsing from raw TOML.
+[ ] Update in-repo child manifests that violate SDK-required identity fields.
+[ ] Refactor `src/main_dispatch/child.rs` package install default artifact resolution to use `patina_sdk::manifest::ChildPackage`.
+[ ] Run targeted child/Mother validation and record proof.
+"""]
+created_at = "1782816000"
+updated_at = "1782816000"
