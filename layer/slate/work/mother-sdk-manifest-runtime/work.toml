@@ -1,24 +1,29 @@
 id = "mother-sdk-manifest-runtime"
 title = "Route Mother child manifests through SDK contract"
 kind = "refactor"
-status = "active"
+status = "complete"
 human_request = "Complete the original SDK/MCT manifest-source-of-truth task by updating old Mother/Patina runtime to consume the SDK child manifest contract while preserving strong invariants and avoiding local parser drift."
 allium_anchors = []
 user_alignment = "User asked to continue from the completed SDK and MCT work, favoring explicit contracts, shared logic, strong invariants, and small focused git updates."
 belief_refs = []
 proof_plan = ["""
-[ ] Mother child manifest loading parses canonical identity, ingress, contract, and needs.toys through `patina_sdk::manifest` instead of duplicating those rules locally.
-[ ] Child package install resolves default WASM artifacts through the SDK package artifact contract instead of local directory inference.
-[ ] Existing in-repo child manifests satisfy the SDK-required identity fields.
-[ ] Targeted Mother/child validation passes.
+[x] Mother child manifest loading parses canonical identity, ingress, contract, and needs.toys through `patina_sdk::manifest` instead of duplicating those rules locally.
+[x] Child package install resolves default WASM artifacts through the SDK package artifact contract instead of local directory inference.
+[x] Existing in-repo child manifests satisfy the SDK-required identity fields.
+[x] Targeted Mother/child validation passes.
 """]
-closure_evidence = []
+closure_evidence = [
+    "`src/child/internal/mod.rs` now parses canonical SDK fields with `patina_sdk::manifest::ChildManifest` and only reads raw TOML for Mother-specific extensions such as capabilities, scopes, provides, schemas, and metrics.",
+    "`src/main_dispatch/child.rs` now resolves package WASM artifacts with `patina_sdk::manifest::ChildPackage` unless the user explicitly passes `--wasm`; the old local target-directory inference was removed.",
+    "In-repo child manifests under `children/*/child.toml` now include SDK-required `child.version` where it was missing.",
+    "Validation passed: `cargo test child::internal::tests --lib`, `cargo test commands::mother::loader::tests --lib`, `cargo test registry::tests -p mother`, `cargo test child_install_tests`, `cargo test --test mother_typed_fixture_conformance`, `cargo test --test child_init_typed_default`, and `cargo check -q`.",
+]
 blocked_by = []
 implementation_plan = ["""
-[ ] Refactor `src/child/internal/mod.rs` to project SDK manifest fields into Mother runtime `ChildManifest` while retaining Mother-only extension parsing from raw TOML.
-[ ] Update in-repo child manifests that violate SDK-required identity fields.
-[ ] Refactor `src/main_dispatch/child.rs` package install default artifact resolution to use `patina_sdk::manifest::ChildPackage`.
-[ ] Run targeted child/Mother validation and record proof.
+[x] Refactor `src/child/internal/mod.rs` to project SDK manifest fields into Mother runtime `ChildManifest` while retaining Mother-only extension parsing from raw TOML.
+[x] Update in-repo child manifests that violate SDK-required identity fields.
+[x] Refactor `src/main_dispatch/child.rs` package install default artifact resolution to use `patina_sdk::manifest::ChildPackage`.
+[x] Run targeted child/Mother validation and record proof.
 """]
 created_at = "1782816000"
-updated_at = "1782816000"
+updated_at = "1782819600"
