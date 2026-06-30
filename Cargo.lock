@@ -3351,6 +3351,7 @@ name = "patina-child-diagnostics"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "patina-sdk",
  "serde",
  "serde_json",
  "sha2",

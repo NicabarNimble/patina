@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use patina_sdk::manifest::{ChildManifest, ChildManifestError, CHILD_MANIFEST_FILE};
 use toml::Table;
 
 use crate::report::{DiagnosticFinding, DiagnosticPhase};
@@ -15,7 +16,7 @@ pub struct ManifestInfo {
 }
 
 pub fn check_manifest(root: &Path) -> Result<(Option<ManifestInfo>, Vec<DiagnosticFinding>)> {
-    let manifest_path = root.join("child.toml");
+    let manifest_path = root.join(CHILD_MANIFEST_FILE);
     let mut findings = Vec::new();
 
     if !manifest_path.exists() {
@@ -48,70 +49,13 @@ pub fn check_manifest(root: &Path) -> Result<(Option<ManifestInfo>, Vec<Diagnost
         }
     };
 
-    let child = table.get("child").and_then(|value| value.as_table());
-    if child.is_none() {
-        findings.push(DiagnosticFinding::error(
-            DiagnosticPhase::Manifest,
-            "PTN-MANIFEST-008",
-            Some(manifest_path.clone()),
-            "child.toml is missing [child] identity section",
-            Some("add [child] with name, version, and kind fields".to_string()),
-        ));
-    }
-
-    let child_name = child
-        .and_then(|child| child.get("name"))
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    if child_name.is_none() {
-        findings.push(DiagnosticFinding::error(
-            DiagnosticPhase::Manifest,
-            "PTN-MANIFEST-002",
-            Some(manifest_path.clone()),
-            "child.toml is missing child.name",
-            Some(
-                "set [child].name to the stable package identity used by releases and Mother discovery"
-                    .to_string(),
-            ),
-        ));
-    }
-
-    let child_version = child
-        .and_then(|child| child.get("version"))
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    if child_version.is_none() {
-        findings.push(DiagnosticFinding::error(
-            DiagnosticPhase::Manifest,
-            "PTN-MANIFEST-003",
-            Some(manifest_path.clone()),
-            "child.toml is missing child.version",
-            Some(
-                "set [child].version and keep it aligned with release tags and published assets"
-                    .to_string(),
-            ),
-        ));
-    }
-
-    let child_kind = child
-        .and_then(|child| child.get("kind"))
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    if child_kind.is_none() {
-        findings.push(DiagnosticFinding::error(
-            DiagnosticPhase::Manifest,
-            "PTN-MANIFEST-004",
-            Some(manifest_path.clone()),
-            "child.toml is missing child.kind",
-            Some(
-                "set [child].kind using child terminology; reserve world terminology for WIT composition"
-                    .to_string(),
-            ),
-        ));
-    }
+    let sdk_manifest = match ChildManifest::from_toml_str(&content) {
+        Ok(manifest) => Some(manifest),
+        Err(error) => {
+            push_sdk_manifest_error(&manifest_path, &error, &mut findings);
+            None
+        }
+    };
 
     if table.contains_key("capabilities") {
         findings.push(DiagnosticFinding::error(
@@ -135,17 +79,9 @@ pub fn check_manifest(root: &Path) -> Result<(Option<ManifestInfo>, Vec<Diagnost
 
     let needs = table.get("needs").and_then(|value| value.as_table());
     let needs_toys = needs.and_then(|needs| needs.get("toys"));
-    let declared_toys = needs_toys
-        .and_then(|value| value.as_array())
-        .map(|array| {
-            array
-                .iter()
-                .filter_map(|value| value.as_str())
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToOwned::to_owned)
-                .collect::<BTreeSet<_>>()
-        })
+    let declared_toys = sdk_manifest
+        .as_ref()
+        .map(|manifest| manifest.needs.toys.iter().cloned().collect::<BTreeSet<_>>())
         .unwrap_or_default();
 
     if needs_toys.is_none() {
@@ -174,12 +110,72 @@ pub fn check_manifest(root: &Path) -> Result<(Option<ManifestInfo>, Vec<Diagnost
     Ok((
         Some(ManifestInfo {
             path: manifest_path,
-            name: child_name.map(ToOwned::to_owned),
-            version: child_version.map(ToOwned::to_owned),
+            name: sdk_manifest.as_ref().map(|manifest| manifest.name.clone()),
+            version: sdk_manifest
+                .as_ref()
+                .map(|manifest| manifest.version.clone()),
             declared_toys,
         }),
         findings,
     ))
+}
+
+fn push_sdk_manifest_error(
+    manifest_path: &Path,
+    error: &ChildManifestError,
+    findings: &mut Vec<DiagnosticFinding>,
+) {
+    let (code, message, remediation) = match error {
+        ChildManifestError::ParseToml(error) => (
+            "PTN-MANIFEST-000",
+            "child.toml could not be parsed".to_string(),
+            format!("fix TOML syntax: {error}"),
+        ),
+        ChildManifestError::MissingSection("child") => (
+            "PTN-MANIFEST-008",
+            "child.toml is missing [child] identity section".to_string(),
+            "add [child] with name, version, and kind fields".to_string(),
+        ),
+        ChildManifestError::MissingRequiredField("child.name")
+        | ChildManifestError::EmptyStringField("child.name") => (
+            "PTN-MANIFEST-002",
+            "child.toml is missing child.name".to_string(),
+            "set [child].name to the stable package identity used by releases and Mother discovery"
+                .to_string(),
+        ),
+        ChildManifestError::MissingRequiredField("child.version")
+        | ChildManifestError::EmptyStringField("child.version") => (
+            "PTN-MANIFEST-003",
+            "child.toml is missing child.version".to_string(),
+            "set [child].version and keep it aligned with release tags and published assets"
+                .to_string(),
+        ),
+        ChildManifestError::MissingRequiredField("child.kind")
+        | ChildManifestError::EmptyStringField("child.kind") => (
+            "PTN-MANIFEST-004",
+            "child.toml is missing child.kind".to_string(),
+            "set [child].kind using child terminology; reserve world terminology for WIT composition"
+                .to_string(),
+        ),
+        ChildManifestError::InvalidIngressMode(_) => (
+            "PTN-MANIFEST-011",
+            "child.toml has an unsupported child.ingress.mode".to_string(),
+            "set [child.ingress].mode to handle, hybrid, or wit-only".to_string(),
+        ),
+        other => (
+            "PTN-MANIFEST-012",
+            "child.toml violates the SDK child manifest contract".to_string(),
+            format!("fix the manifest contract error: {other}"),
+        ),
+    };
+
+    findings.push(DiagnosticFinding::error(
+        DiagnosticPhase::Manifest,
+        code,
+        Some(manifest_path.to_path_buf()),
+        message,
+        Some(remediation),
+    ));
 }
 
 fn check_filesystem_scope_policy(
