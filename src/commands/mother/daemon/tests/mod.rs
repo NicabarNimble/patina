@@ -1317,6 +1317,7 @@ fn installed_children_use_manifest_name_not_wasm_stem() {
         r#"
 [child]
 name = "parquet-writer"
+version = "0.1.0"
 kind = "child"
 "#,
     )

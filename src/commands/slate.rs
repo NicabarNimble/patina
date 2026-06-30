@@ -415,6 +415,7 @@ mod tests {
             &manifest_path,
             r#"[child]
 name = "slate-manager"
+version = "0.1.0"
 kind = "child"
 
 [needs]
@@ -441,6 +442,7 @@ toys = ["filesystem"]
             &manifest_path,
             r#"[child]
 name = "slate-manager"
+version = "0.1.0"
 kind = "child"
 
 [needs]
