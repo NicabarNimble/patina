@@ -266,11 +266,8 @@ fn check_checksum_entry(
     missing_help: &'static str,
     findings: &mut Vec<DiagnosticFinding>,
 ) -> Result<()> {
-    let name = asset
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default();
-    let Some(expected_hash) = checksums.get(name) else {
+    let name = checksum_asset_name(checksums_asset, asset);
+    let Some(expected_hash) = checksums.get(&name) else {
         findings.push(DiagnosticFinding::error(
             DiagnosticPhase::Release,
             code,
@@ -337,6 +334,17 @@ fn check_manifest_version(
     }
 
     Ok(())
+}
+
+fn checksum_asset_name(checksums_asset: &Path, asset: &Path) -> String {
+    let bundle_dir = checksums_asset.parent().unwrap_or_else(|| Path::new(""));
+    asset
+        .strip_prefix(bundle_dir)
+        .unwrap_or(asset)
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn child_manifest_version(path: &Path) -> Result<Option<String>> {
@@ -446,7 +454,9 @@ fn hash_eq(a: &str, b: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_checksums, release_tag_matches_manifest_version};
+    use std::path::Path;
+
+    use super::{checksum_asset_name, parse_checksums, release_tag_matches_manifest_version};
 
     #[test]
     fn parse_checksums_supports_common_formats() {
@@ -462,6 +472,17 @@ SHA256 (child.toml) = c26bcdf6529d8adf4ceac76714566491582f59d0bc889ef9e4d8ce96aa
         assert_eq!(
             map.get("child.toml").map(String::as_str),
             Some("c26bcdf6529d8adf4ceac76714566491582f59d0bc889ef9e4d8ce96aa95f4c4")
+        );
+    }
+
+    #[test]
+    fn checksum_asset_names_preserve_bundle_relative_paths() {
+        let checksums = Path::new("release/checksums.txt");
+        let asset = Path::new("release/target/wasm32-wasip1/release/slate.wasm");
+
+        assert_eq!(
+            checksum_asset_name(checksums, asset),
+            "target/wasm32-wasip1/release/slate.wasm"
         );
     }
 
