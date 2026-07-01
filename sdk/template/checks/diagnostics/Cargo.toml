@@ -1,5 +1,5 @@
 [package]
-name = "{{ package_name }}-diagnostics"
+name = "patina-ai-child-my-child-diagnostics"
 version = "0.1.0"
 edition = "2021"
 publish = false
