@@ -1,7 +1,7 @@
 # SDK MCT child-authoring track
 
-- [ ] S0 — Housekeeping and oracle setup
-- [ ] S1 — Canonical MCT WIT directory and `mct-child` world
+- [x] S0 — Housekeeping and oracle setup
+- [x] S1 — Canonical MCT WIT directory and `mct-child` world
 - [ ] S2 — Scaffold: MCT default, integrated template explicit and preserved
 - [ ] S3 — Build command
 - [ ] S4 — Package command
@@ -183,4 +183,17 @@ smoke_command: /Users/nicabar/Projects/Patina/patina-mct/target/debug/mct-daemon
 smoke_output: mct-daemon 0.1.0
 oracle_binary: /Users/nicabar/Projects/Patina/patina-mct/target/debug/mct-daemon
 mct_checkout_status_before_after_build: only pre-existing ?? brew-noncore-report.html
+```
+
+## S1 closure
+
+Added SDK-owned canonical MCT WIT under `sdk/patina-sdk/wit/mct/`:
+
+- `child.wit` defines `patina:mct/child@0.1.0` through package `patina:mct@0.1.0`, interface `child`, and world `mct-child`.
+- `deps/logging.wit`, `deps/patina-measure.wit`, and `deps/patina-git.wit` are copies of existing repo WIT contracts with source paths recorded in `PROVENANCE.md`.
+- Legacy WIT directories, `sdk/template`, `sdk/template-legacy`, `sdk/patina-sdk-legacy`, and `children/` are untouched.
+- `wasm-tools component wit sdk/patina-sdk/wit/mct` resolves successfully.
+- Existing release bundle production is documented in S0 from the external Slate and watcher child release docs.
+```
+wasm-tools component wit sdk/patina-sdk/wit/mct
 ```

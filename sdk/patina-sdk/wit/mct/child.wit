@@ -1,0 +1,15 @@
+package patina:mct@0.1.0;
+
+/// Default MCT child control interface for SDK-scaffolded conformance children.
+interface child {
+    /// Minimal executable operation used by SDK/MCT acceptance tests.
+    echo: func(input: string) -> result<string, string>;
+}
+
+world mct-child {
+    import wasi:logging/logging@0.1.0;
+    import patina:measure/measure@0.1.0;
+    import patina:git/git@0.1.0;
+
+    export child;
+}
