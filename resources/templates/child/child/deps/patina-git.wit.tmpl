@@ -1,0 +1,17 @@
+package patina:git@0.1.0;
+
+interface git {
+    create-tag: func(name: string) -> result<_, string>;
+    create-tag-at: func(name: string, git-ref: string) -> result<_, string>;
+    delete-tag: func(name: string) -> result<_, string>;
+    tag-exists: func(name: string) -> result<bool, string>;
+    commit: func(message: string) -> result<string, string>;
+    log-oneline: func(limit: u32) -> result<list<string>, string>;
+    diff-stat: func() -> result<string, string>;
+    status-porcelain: func() -> result<string, string>;
+    add-paths: func(paths: list<string>) -> result<_, string>;
+    remove-paths: func(paths: list<string>) -> result<_, string>;
+    is-clean-tracked: func() -> result<bool, string>;
+    commits-behind-upstream: func() -> result<u32, string>;
+    is-diverged: func() -> result<bool, string>;
+}

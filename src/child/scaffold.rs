@@ -35,8 +35,27 @@ mod templates {
             include_str!("../../resources/templates/child/child/deps/logging.wit.tmpl");
         pub const DEPS_PATINA_MEASURE_WIT: &str =
             include_str!("../../resources/templates/child/child/deps/patina-measure.wit.tmpl");
-        pub const DEPS_PATINA_RECORD_WIT: &str =
-            include_str!("../../resources/templates/child/child/deps/patina-record.wit.tmpl");
+        pub const DEPS_PATINA_GIT_WIT: &str =
+            include_str!("../../resources/templates/child/child/deps/patina-git.wit.tmpl");
+    }
+
+    pub mod integrated_child {
+        pub const CARGO_TOML: &str =
+            include_str!("../../resources/templates/child/integrated-child/Cargo.toml.tmpl");
+        pub const MANIFEST_TOML: &str =
+            include_str!("../../resources/templates/child/integrated-child/child.toml.tmpl");
+        pub const LIB_RS: &str =
+            include_str!("../../resources/templates/child/integrated-child/lib.rs.tmpl");
+        pub const WORLD_WIT: &str =
+            include_str!("../../resources/templates/child/integrated-child/world.wit.tmpl");
+        pub const DEPS_LOGGING_WIT: &str =
+            include_str!("../../resources/templates/child/integrated-child/deps/logging.wit.tmpl");
+        pub const DEPS_PATINA_MEASURE_WIT: &str = include_str!(
+            "../../resources/templates/child/integrated-child/deps/patina-measure.wit.tmpl"
+        );
+        pub const DEPS_PATINA_RECORD_WIT: &str = include_str!(
+            "../../resources/templates/child/integrated-child/deps/patina-record.wit.tmpl"
+        );
     }
 
     pub mod legacy_child {
@@ -131,6 +150,8 @@ pub enum ScaffoldLane {
     Typed,
     /// Legacy handle(action,payload) lane (explicit opt-in)
     Legacy,
+    /// Integrated-Mother records transform lane (explicit opt-in)
+    Integrated,
 }
 
 struct TemplateSet {
@@ -163,8 +184,8 @@ fn typed_templates(world: &ChildKind) -> Result<TemplateSet> {
                     templates::typed_child::DEPS_PATINA_MEASURE_WIT,
                 ),
                 (
-                    "patina-record.wit",
-                    templates::typed_child::DEPS_PATINA_RECORD_WIT,
+                    "patina-git.wit",
+                    templates::typed_child::DEPS_PATINA_GIT_WIT,
                 ),
             ],
         }),
@@ -173,6 +194,35 @@ fn typed_templates(world: &ChildKind) -> Result<TemplateSet> {
                 "typed scaffolding is currently available for --world child only; use --legacy --world pipeline for grammar lane"
             )
         }
+    }
+}
+
+fn integrated_templates(world: &ChildKind) -> Result<TemplateSet> {
+    match world {
+        ChildKind::Child => Ok(TemplateSet {
+            cargo_toml: templates::integrated_child::CARGO_TOML,
+            manifest_toml: templates::integrated_child::MANIFEST_TOML,
+            lib_rs: templates::integrated_child::LIB_RS,
+            readme_md: None,
+            diagnostics_cargo_toml: None,
+            diagnostics_test_rs: None,
+            children_dev_toml: None,
+            world_wit: Some(templates::integrated_child::WORLD_WIT),
+            wit_deps: &[
+                ("logging.wit", templates::integrated_child::DEPS_LOGGING_WIT),
+                (
+                    "patina-measure.wit",
+                    templates::integrated_child::DEPS_PATINA_MEASURE_WIT,
+                ),
+                (
+                    "patina-record.wit",
+                    templates::integrated_child::DEPS_PATINA_RECORD_WIT,
+                ),
+            ],
+        }),
+        ChildKind::Pipeline => bail!(
+            "integrated scaffolding is currently available for --world child only; use --legacy --world pipeline for grammar lane"
+        ),
     }
 }
 
@@ -231,6 +281,7 @@ pub fn scaffold(
     let templates = match lane {
         ScaffoldLane::Typed => typed_templates(world)?,
         ScaffoldLane::Legacy => legacy_templates(world),
+        ScaffoldLane::Integrated => integrated_templates(world)?,
     };
 
     std::fs::write(
@@ -357,16 +408,20 @@ mod tests {
         assert!(project.join("wit/world.wit").exists());
         assert!(project.join("wit/deps/logging.wit").exists());
         assert!(project.join("wit/deps/patina-measure.wit").exists());
-        assert!(project.join("wit/deps/patina-record.wit").exists());
+        assert!(project.join("wit/deps/patina-git.wit").exists());
+        assert!(!project.join("wit/deps/patina-record.wit").exists());
 
         let lib = std::fs::read_to_string(project.join("src/lib.rs")).unwrap();
         assert!(lib.contains("wit_bindgen::generate!"));
+        assert!(lib.contains("exports::patina::mct::child::Guest"));
         assert!(lib.contains("export!(TestPlugin);"));
         assert!(!lib.contains("register_child!"));
 
         let manifest = std::fs::read_to_string(project.join("child.toml")).unwrap();
         assert!(manifest.contains("kind = \"child\""));
-        assert!(manifest.contains("toys = [\"logging\", \"measure\"]"));
+        assert!(manifest.contains("mode = \"wit-only\""));
+        assert!(manifest.contains("patina:mct/child@0.1.0.echo"));
+        assert!(manifest.contains("toys = [\"logging\", \"measure\", \"git\"]"));
 
         let diagnostics =
             std::fs::read_to_string(project.join("checks/diagnostics/tests/diagnostics.rs"))
@@ -377,6 +432,28 @@ mod tests {
             std::fs::read_to_string(project.join(".patina/children-dev.toml")).unwrap();
         assert!(children_dev.contains("[children.test-plugin]"));
         assert!(children_dev.contains(".patina/dev/components/test-plugin.wasm"));
+    }
+
+    #[test]
+    fn test_scaffold_integrated_child_explicit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = scaffold(
+            tmp.path(),
+            "integrated-child",
+            &ChildKind::Child,
+            ScaffoldLane::Integrated,
+        )
+        .unwrap();
+
+        assert!(project.join("Cargo.toml").exists());
+        assert!(project.join("child.toml").exists());
+        assert!(project.join("src/lib.rs").exists());
+        assert!(project.join("wit/world.wit").exists());
+        assert!(project.join("wit/deps/patina-record.wit").exists());
+
+        let lib = std::fs::read_to_string(project.join("src/lib.rs")).unwrap();
+        assert!(lib.contains("exports::patina::records::transform::Guest"));
+        assert!(lib.contains("export!(IntegratedChild);"));
     }
 
     #[test]
@@ -407,6 +484,21 @@ mod tests {
             "typed-pipeline",
             &ChildKind::Pipeline,
             ScaffoldLane::Typed,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("--legacy --world pipeline"), "got: {err}");
+    }
+
+    #[test]
+    fn test_scaffold_integrated_pipeline_requires_legacy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = scaffold(
+            tmp.path(),
+            "integrated-pipeline",
+            &ChildKind::Pipeline,
+            ScaffoldLane::Integrated,
         )
         .unwrap_err()
         .to_string();

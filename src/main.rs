@@ -996,12 +996,47 @@ enum ChildCommands {
         /// Use legacy scaffold lane (maintenance only)
         #[arg(long)]
         legacy: bool,
+        /// Template lane: mct (default), integrated, or legacy
+        #[arg(long, default_value = "mct")]
+        template: String,
         /// Build the child after scaffolding
         #[arg(long)]
         build: bool,
         /// Build in release mode (requires --build)
         #[arg(long, requires = "build")]
         release: bool,
+    },
+    /// Build a child component with the wasm32-wasip2 target
+    Build {
+        /// Child package root containing Cargo.toml and child.toml
+        #[arg(default_value = ".")]
+        path: String,
+        /// Build in release mode
+        #[arg(long)]
+        release: bool,
+    },
+    /// Package a built child component for MCT strict-integrity loading
+    Package {
+        /// Child package root containing Cargo.toml and child.toml
+        #[arg(default_value = ".")]
+        path: String,
+        /// Output bundle directory; defaults to .patina/dev/releases/<child-name>
+        #[arg(long)]
+        out: Option<String>,
+        /// Explicit built component .wasm; if omitted, common target paths are probed
+        #[arg(long)]
+        wasm: Option<String>,
+        /// Use release artifact path when probing
+        #[arg(long)]
+        release: bool,
+    },
+    /// Verify an MCT release bundle with the mct-daemon oracle
+    Verify {
+        /// Release bundle directory to verify
+        bundle: String,
+        /// mct-daemon oracle binary path
+        #[arg(long)]
+        mct_daemon: Option<String>,
     },
     /// Install a packaged child into the local Patina plugin directory
     Install {

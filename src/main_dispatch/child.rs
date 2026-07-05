@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default, Deserialize)]
@@ -210,6 +211,238 @@ mod tests {
     }
 }
 
+fn build_child_package(package_path: &Path, release: bool) -> Result<()> {
+    let package_path = package_path
+        .canonicalize()
+        .with_context(|| format!("resolve child package path {}", package_path.display()))?;
+    let child_toml = package_path.join("child.toml");
+    if !child_toml.exists() {
+        anyhow::bail!(
+            "child package missing child.toml at {}",
+            child_toml.display()
+        );
+    }
+
+    let has_target = std::process::Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output()
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .any(|line| line.trim() == "wasm32-wasip2")
+        })
+        .unwrap_or(false);
+    if !has_target {
+        anyhow::bail!("missing wasm32-wasip2 target; run `rustup target add wasm32-wasip2`");
+    }
+
+    let mut args = vec!["build", "--target", "wasm32-wasip2"];
+    if release {
+        args.push("--release");
+    }
+    let status = std::process::Command::new("cargo")
+        .args(args)
+        .current_dir(&package_path)
+        .status()
+        .with_context(|| format!("run cargo build in {}", package_path.display()))?;
+    if !status.success() {
+        anyhow::bail!("child build failed with status {status}");
+    }
+
+    println!(
+        "built child package={} target=wasm32-wasip2 profile={}",
+        package_path.display(),
+        if release { "release" } else { "debug" }
+    );
+    Ok(())
+}
+
+fn package_child_for_mct(
+    package_path: &Path,
+    out_arg: Option<&str>,
+    wasm_arg: Option<&str>,
+    release: bool,
+) -> Result<()> {
+    let package_path = package_path
+        .canonicalize()
+        .with_context(|| format!("resolve child package path {}", package_path.display()))?;
+    let child_toml = package_path.join("child.toml");
+    if !child_toml.exists() {
+        anyhow::bail!(
+            "child package missing child.toml at {}",
+            child_toml.display()
+        );
+    }
+    let manifest = patina::child::engine::ChildManifest::from_path(&child_toml)
+        .with_context(|| format!("load child manifest {}", child_toml.display()))?;
+    let artifact_relative = manifest_artifact_wasm(&child_toml)?;
+    let wasm_path =
+        resolve_child_wasm_with_profile(&package_path, &manifest.name, wasm_arg, release)?;
+    let out_dir = out_arg.map(PathBuf::from).unwrap_or_else(|| {
+        package_path
+            .join(".patina/dev/releases")
+            .join(&manifest.name)
+    });
+    if out_dir.exists() {
+        std::fs::remove_dir_all(&out_dir)
+            .with_context(|| format!("remove existing release bundle {}", out_dir.display()))?;
+    }
+    let artifact_dest = out_dir.join(&artifact_relative);
+    let artifact_parent = artifact_dest.parent().ok_or_else(|| {
+        anyhow::anyhow!(
+            "artifact path {} has no parent directory",
+            artifact_relative.display()
+        )
+    })?;
+    std::fs::create_dir_all(artifact_parent)
+        .with_context(|| format!("create artifact directory {}", artifact_parent.display()))?;
+    std::fs::copy(&child_toml, out_dir.join("child.toml")).with_context(|| {
+        format!(
+            "copy manifest {} -> {}",
+            child_toml.display(),
+            out_dir.join("child.toml").display()
+        )
+    })?;
+    std::fs::copy(&wasm_path, &artifact_dest).with_context(|| {
+        format!(
+            "copy component {} -> {}",
+            wasm_path.display(),
+            artifact_dest.display()
+        )
+    })?;
+    write_sha256_sidecar(&out_dir.join("child.toml"))?;
+    write_sha256_sidecar(&artifact_dest)?;
+
+    println!("packaged child '{}':", manifest.name);
+    println!("  bundle:   {}", out_dir.display());
+    println!("  manifest: {}", out_dir.join("child.toml").display());
+    println!("  artifact: {}", artifact_dest.display());
+    Ok(())
+}
+
+fn verify_child_bundle_with_mct(bundle: &Path, mct_daemon_arg: Option<&str>) -> Result<()> {
+    let bundle = bundle
+        .canonicalize()
+        .with_context(|| format!("resolve child bundle path {}", bundle.display()))?;
+    let mct_daemon = mct_daemon_arg
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("MCT_DAEMON").map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("mct-daemon"));
+    let output = std::process::Command::new(&mct_daemon)
+        .args(["children", "load"])
+        .arg(&bundle)
+        .args(["--strict-integrity", "--json"])
+        .output()
+        .with_context(|| format!("run MCT oracle {}", mct_daemon.display()))?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "MCT oracle rejected bundle {}: {}",
+            bundle.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let stdout = String::from_utf8(output.stdout).context("MCT oracle emitted non-UTF-8 JSON")?;
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout).context("MCT oracle emitted invalid JSON")?;
+    let loaded = report
+        .get("loaded")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+    let failed = report
+        .get("failed")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+    if loaded == 0 || failed != 0 {
+        anyhow::bail!(
+            "MCT oracle did not verify bundle {}: {stdout}",
+            bundle.display()
+        );
+    }
+
+    println!("verified MCT child bundle: {}", bundle.display());
+    println!("{stdout}");
+    Ok(())
+}
+
+fn manifest_artifact_wasm(child_toml: &Path) -> Result<PathBuf> {
+    let value: toml::Value = std::fs::read_to_string(child_toml)
+        .with_context(|| format!("read child manifest {}", child_toml.display()))?
+        .parse()
+        .with_context(|| format!("parse child manifest {}", child_toml.display()))?;
+    let wasm = value
+        .get("child")
+        .and_then(|child| child.get("artifact"))
+        .and_then(|artifact| artifact.get("wasm"))
+        .and_then(|wasm| wasm.as_str())
+        .ok_or_else(|| anyhow::anyhow!("child manifest missing child.artifact.wasm"))?;
+    let path = PathBuf::from(wasm);
+    if path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::CurDir | std::path::Component::ParentDir
+            )
+        })
+        || path.extension().and_then(|extension| extension.to_str()) != Some("wasm")
+    {
+        anyhow::bail!(
+            "child.artifact.wasm must be a relative .wasm package path without . or .. components"
+        );
+    }
+    Ok(path)
+}
+
+fn write_sha256_sidecar(path: &Path) -> Result<()> {
+    let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    let digest = Sha256::digest(&bytes);
+    let sidecar = path.with_extension(format!(
+        "{}.sha256",
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .unwrap_or_default()
+    ));
+    std::fs::write(&sidecar, format!("{digest:x}\n"))
+        .with_context(|| format!("write sha256 sidecar {}", sidecar.display()))?;
+    Ok(())
+}
+
+fn resolve_child_wasm_with_profile(
+    package_path: &Path,
+    child_name: &str,
+    wasm_arg: Option<&str>,
+    release: bool,
+) -> Result<PathBuf> {
+    if let Some(path) = wasm_arg {
+        let path = PathBuf::from(path);
+        if path.exists() {
+            return Ok(path);
+        }
+        anyhow::bail!("component wasm not found at {}", path.display());
+    }
+
+    let artifact_name = format!("{}.wasm", child_name.replace('-', "_"));
+    let profile = if release { "release" } else { "debug" };
+    let candidates = [
+        package_path
+            .join("target/wasm32-wasip2")
+            .join(profile)
+            .join(&artifact_name),
+        std::env::current_dir()?
+            .join("target/wasm32-wasip2")
+            .join(profile)
+            .join(&artifact_name),
+    ];
+    for candidate in candidates {
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    anyhow::bail!(
+        "could not find built wasm32-wasip2 component for '{}'; pass --wasm <path>",
+        child_name
+    );
+}
+
 fn install_child_package(
     package_path: &Path,
     wasm_arg: Option<&str>,
@@ -401,14 +634,26 @@ pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
             name,
             world,
             legacy,
+            template,
             build,
             release,
         } => {
             let world: patina::child::engine::ChildKind = world.parse()?;
+            let template = template.trim();
             let lane = if legacy {
+                if template != "mct" && template != "legacy" {
+                    anyhow::bail!("--legacy cannot be combined with --template {template}");
+                }
                 patina::child::scaffold::ScaffoldLane::Legacy
             } else {
-                patina::child::scaffold::ScaffoldLane::Typed
+                match template {
+                    "mct" => patina::child::scaffold::ScaffoldLane::Typed,
+                    "integrated" => patina::child::scaffold::ScaffoldLane::Integrated,
+                    "legacy" => patina::child::scaffold::ScaffoldLane::Legacy,
+                    other => anyhow::bail!(
+                        "unknown child template '{other}'; expected mct, integrated, or legacy"
+                    ),
+                }
             };
             let cwd = std::env::current_dir()?;
             let project_dir = patina::child::scaffold::scaffold(&cwd, &name, &world, lane)?;
@@ -419,8 +664,12 @@ pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
                 .join(format!("{}.wasm", name.replace('-', "_")));
 
             println!(
-                "Created {} {} child: {}",
-                if legacy { "legacy" } else { "typed" },
+                "Created {} {}: {}",
+                match lane {
+                    patina::child::scaffold::ScaffoldLane::Typed => "mct",
+                    patina::child::scaffold::ScaffoldLane::Integrated => "integrated",
+                    patina::child::scaffold::ScaffoldLane::Legacy => "legacy",
+                },
                 world,
                 project_dir.display()
             );
@@ -431,10 +680,10 @@ pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
             } else {
                 println!("  cargo build --target wasm32-wasip2");
             }
-            if legacy {
+            if !matches!(lane, patina::child::scaffold::ScaffoldLane::Typed) {
                 println!();
                 println!(
-                    "Legacy scaffold lane is maintenance-only. Prefer default typed lane for new children."
+                    "This scaffold lane is maintenance-only. Prefer default MCT lane for new children."
                 );
             }
             println!();
@@ -484,6 +733,20 @@ pub(crate) fn dispatch(command: crate::ChildCommands) -> Result<()> {
                     }
                 }
             }
+        }
+        crate::ChildCommands::Build { path, release } => {
+            build_child_package(Path::new(&path), release)?;
+        }
+        crate::ChildCommands::Package {
+            path,
+            out,
+            wasm,
+            release,
+        } => {
+            package_child_for_mct(Path::new(&path), out.as_deref(), wasm.as_deref(), release)?;
+        }
+        crate::ChildCommands::Verify { bundle, mct_daemon } => {
+            verify_child_bundle_with_mct(Path::new(&bundle), mct_daemon.as_deref())?;
         }
         crate::ChildCommands::Install {
             path,

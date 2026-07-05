@@ -1,0 +1,25 @@
+use patina_sdk::toys;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "__NAME__",
+    generate_all,
+});
+
+struct __NAME_STRUCT__;
+
+impl exports::patina::records::transform::Guest for __NAME_STRUCT__ {
+    fn transform(
+        records: Vec<patina::records::types::RecordEnvelope>,
+    ) -> Result<patina::records::types::TransformResult, String> {
+        toys::log::info("__NAME__", "processing record batch");
+        toys::measure::counter("records_seen", records.len() as f64)?;
+
+        Ok(patina::records::types::TransformResult {
+            accepted: records,
+            rejected: Vec::new(),
+        })
+    }
+}
+
+export!(__NAME_STRUCT__);

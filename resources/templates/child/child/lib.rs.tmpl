@@ -1,24 +1,20 @@
-use patina_sdk::toys;
-
 wit_bindgen::generate!({
     path: "wit",
-    world: "__NAME__",
+    world: "mct-child",
     generate_all,
 });
 
 struct __NAME_STRUCT__;
 
-impl exports::patina::records::transform::Guest for __NAME_STRUCT__ {
-    fn transform(
-        records: Vec<patina::records::types::RecordEnvelope>,
-    ) -> Result<patina::records::types::TransformResult, String> {
-        toys::log::info("__NAME__", "processing record batch");
-        toys::measure::counter("records_seen", records.len() as f64)?;
-
-        Ok(patina::records::types::TransformResult {
-            accepted: records,
-            rejected: Vec::new(),
-        })
+impl exports::patina::mct::child::Guest for __NAME_STRUCT__ {
+    fn echo(input: String) -> Result<String, String> {
+        wasi::logging::logging::log(
+            wasi::logging::logging::Level::Info,
+            "__NAME__",
+            "echo invoked",
+        );
+        patina::measure::measure::counter("echo_calls", 1.0)?;
+        Ok(input)
     }
 }
 

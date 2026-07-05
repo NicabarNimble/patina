@@ -34,7 +34,7 @@ fn has_wasm32_wasip2_target() -> bool {
 }
 
 #[test]
-fn child_init_defaults_to_typed_lane() {
+fn child_init_defaults_to_mct_lane() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
     let out = Command::new(patina_bin())
@@ -63,19 +63,24 @@ fn child_init_defaults_to_typed_lane() {
     assert!(project.join("wit/world.wit").exists());
     assert!(project.join("wit/deps/logging.wit").exists());
     assert!(project.join("wit/deps/patina-measure.wit").exists());
-    assert!(project.join("wit/deps/patina-record.wit").exists());
+    assert!(project.join("wit/deps/patina-git.wit").exists());
+    assert!(!project.join("wit/deps/patina-record.wit").exists());
 
     let lib = std::fs::read_to_string(project.join("src/lib.rs")).expect("read lib.rs");
     assert!(lib.contains("wit_bindgen::generate!"));
     assert!(lib.contains("export!(TypedDefault);"));
-    assert!(lib.contains("exports::patina::records::transform::Guest"));
+    assert!(lib.contains("exports::patina::mct::child::Guest"));
     assert!(!lib.contains("register_child!"));
 
     let manifest = std::fs::read_to_string(project.join("child.toml")).expect("read child.toml");
     assert!(manifest.contains("kind = \"child\""));
     assert!(manifest.contains("role = \"app\""));
+    assert!(manifest.contains("[child.artifact]"));
+    assert!(manifest.contains("wasm = \"artifacts/typed-default.wasm\""));
+    assert!(manifest.contains("mode = \"wit-only\""));
+    assert!(manifest.contains("patina:mct/child@0.1.0.echo"));
     assert!(manifest.contains("[needs]"));
-    assert!(manifest.contains("toys = [\"logging\", \"measure\"]"));
+    assert!(manifest.contains("toys = [\"logging\", \"measure\", \"git\"]"));
 
     let diagnostics =
         std::fs::read_to_string(project.join("checks/diagnostics/tests/diagnostics.rs"))
@@ -86,6 +91,41 @@ fn child_init_defaults_to_typed_lane() {
         .expect("read children-dev config");
     assert!(children_dev.contains("[children.typed-default]"));
     assert!(children_dev.contains(".patina/dev/components/typed-default.wasm"));
+}
+
+#[test]
+fn child_init_integrated_template_uses_preserved_records_lane() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let out = Command::new(patina_bin())
+        .current_dir(tmp.path())
+        .args([
+            "child",
+            "init",
+            "integrated-child",
+            "--template",
+            "integrated",
+        ])
+        .output()
+        .expect("run patina child init --template integrated");
+
+    assert!(
+        out.status.success(),
+        "integrated child init failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let project = tmp.path().join("integrated-child");
+    assert!(project.join("wit/deps/patina-record.wit").exists());
+    assert!(!project.join("wit/deps/patina-git.wit").exists());
+
+    let lib = std::fs::read_to_string(project.join("src/lib.rs")).expect("read lib.rs");
+    assert!(lib.contains("exports::patina::records::transform::Guest"));
+    assert!(lib.contains("export!(IntegratedChild);"));
+
+    let world = std::fs::read_to_string(project.join("wit/world.wit")).expect("read world.wit");
+    assert!(world.contains("export patina:records/transform@0.1.0"));
 }
 
 #[test]
@@ -116,12 +156,15 @@ fn child_init_legacy_flag_uses_legacy_lane() {
 }
 
 #[test]
-fn typed_scaffold_contract_stays_aligned_with_sdk_template() {
+fn mct_scaffold_contract_and_integrated_template_stay_separate() {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
     let embedded_cargo =
         std::fs::read_to_string(repo.join("resources/templates/child/child/Cargo.toml.tmpl"))
             .expect("read embedded cargo template");
+    let embedded_manifest =
+        std::fs::read_to_string(repo.join("resources/templates/child/child/child.toml.tmpl"))
+            .expect("read embedded manifest template");
     let embedded_lib =
         std::fs::read_to_string(repo.join("resources/templates/child/child/lib.rs.tmpl"))
             .expect("read embedded lib template");
@@ -141,81 +184,65 @@ fn typed_scaffold_contract_stays_aligned_with_sdk_template() {
     )
     .expect("read embedded children-dev template");
 
-    let sdk_template_cargo = std::fs::read_to_string(repo.join("sdk/template/Cargo.toml"))
-        .expect("read sdk template cargo");
+    let integrated_lib = std::fs::read_to_string(
+        repo.join("resources/templates/child/integrated-child/lib.rs.tmpl"),
+    )
+    .expect("read integrated lib template");
+    let integrated_world = std::fs::read_to_string(
+        repo.join("resources/templates/child/integrated-child/world.wit.tmpl"),
+    )
+    .expect("read integrated world template");
     let sdk_template_lib = std::fs::read_to_string(repo.join("sdk/template/src/lib.rs"))
         .expect("read sdk template lib");
     let sdk_template_world = std::fs::read_to_string(repo.join("sdk/template/wit/world.wit"))
         .expect("read sdk template world");
-    let sdk_template_diagnostics_cargo =
-        std::fs::read_to_string(repo.join("sdk/template/checks/diagnostics/Cargo.toml"))
-            .expect("read sdk template diagnostics cargo");
-    let sdk_template_diagnostics_test =
-        std::fs::read_to_string(repo.join("sdk/template/checks/diagnostics/tests/diagnostics.rs"))
-            .expect("read sdk template diagnostics test");
-    let sdk_template_children_dev =
-        std::fs::read_to_string(repo.join("sdk/template/.patina/children-dev.toml"))
-            .expect("read sdk template children-dev");
 
     for marker in [
         "wit-bindgen",
         "[package.metadata.component.target]",
-        "world =",
+        "world = \"mct-child\"",
     ] {
         assert!(
             embedded_cargo.contains(marker),
-            "embedded cargo missing marker: {marker}"
-        );
-        assert!(
-            sdk_template_cargo.contains(marker),
-            "sdk template cargo missing marker: {marker}"
+            "MCT cargo template missing marker: {marker}"
         );
     }
-
     assert!(
         embedded_cargo.contains("patina-sdk = \"__SDK_VERSION__\""),
-        "embedded cargo should use scaffold-substituted published SDK version"
+        "MCT cargo template should use scaffold-substituted published SDK version"
     );
     assert!(
-        sdk_template_cargo.contains("patina-sdk = \"0.22.0\""),
-        "sdk template cargo should use published SDK version"
+        embedded_manifest.contains("[child.artifact]")
+            && embedded_manifest.contains("wasm = \"artifacts/__NAME__.wasm\"")
+            && embedded_manifest.contains("mode = \"wit-only\"")
+            && embedded_manifest.contains("patina:mct/child@0.1.0.echo"),
+        "MCT manifest template should declare package-relative artifact and WIT ingress"
     );
     assert!(
-        embedded_diagnostics_cargo.contains("git = \"https://github.com/NicabarNimble/patina\""),
-        "embedded diagnostics cargo should use external-safe git dependency"
-    );
-    assert!(
-        sdk_template_diagnostics_cargo
-            .contains("git = \"https://github.com/NicabarNimble/patina\""),
-        "sdk template diagnostics cargo should use external-safe git dependency"
+        embedded_manifest.contains("toys = [\"logging\", \"measure\", \"git\"]"),
+        "MCT manifest template should request the hosted MCT toy surface"
     );
 
     for marker in [
         "wit_bindgen::generate!",
-        "exports::patina::records::transform::Guest",
+        "exports::patina::mct::child::Guest",
         "export!(",
     ] {
         assert!(
             embedded_lib.contains(marker),
-            "embedded lib missing marker: {marker}"
-        );
-        assert!(
-            sdk_template_lib.contains(marker),
-            "sdk template lib missing marker: {marker}"
+            "MCT lib template missing marker: {marker}"
         );
     }
 
     for marker in [
-        "export patina:records/transform",
-        "import wasi:logging/logging",
+        "export child;",
+        "import wasi:logging/logging@0.1.0",
+        "import patina:measure/measure@0.1.0",
+        "import patina:git/git@0.1.0",
     ] {
         assert!(
             embedded_world.contains(marker),
-            "embedded world missing marker: {marker}"
-        );
-        assert!(
-            sdk_template_world.contains(marker),
-            "sdk template world missing marker: {marker}"
+            "MCT world template missing marker: {marker}"
         );
     }
 
@@ -224,30 +251,46 @@ fn typed_scaffold_contract_stays_aligned_with_sdk_template() {
             embedded_diagnostics_test.contains(marker),
             "embedded diagnostics test missing marker: {marker}"
         );
-        assert!(
-            sdk_template_diagnostics_test.contains(marker),
-            "sdk template diagnostics test missing marker: {marker}"
-        );
     }
-
+    assert!(
+        embedded_diagnostics_cargo.contains("git = \"https://github.com/NicabarNimble/patina\""),
+        "embedded diagnostics cargo should use external-safe git dependency"
+    );
     for marker in [".patina/dev/components", ".patina/dev/releases"] {
         assert!(
             embedded_children_dev.contains(marker),
             "embedded children-dev missing marker: {marker}"
         );
-        assert!(
-            sdk_template_children_dev.contains(marker),
-            "sdk template children-dev missing marker: {marker}"
-        );
     }
 
     assert!(
         !embedded_lib.contains("register_child!"),
-        "typed template drift: legacy register_child! appeared"
+        "MCT template drift: legacy register_child! appeared"
+    );
+    assert!(
+        !embedded_lib.contains("exports::patina::records::transform::Guest"),
+        "MCT template drift: integrated records export appeared"
     );
     assert!(
         !embedded_cargo.contains("patina-sdk-legacy"),
-        "typed template drift: legacy SDK appeared"
+        "MCT template drift: legacy SDK appeared"
+    );
+
+    assert!(
+        integrated_lib.contains("exports::patina::records::transform::Guest"),
+        "integrated template should preserve records export"
+    );
+    assert!(
+        integrated_world.contains("export patina:records/transform@0.1.0"),
+        "integrated template should preserve records world"
+    );
+    assert!(
+        sdk_template_lib.contains("exports::patina::records::transform::Guest"),
+        "sdk/template should remain the integrated-Mother template"
+    );
+    assert!(
+        sdk_template_world.contains("export patina:records/transform@0.1.0"),
+        "sdk/template world should remain integrated-Mother"
     );
 }
 

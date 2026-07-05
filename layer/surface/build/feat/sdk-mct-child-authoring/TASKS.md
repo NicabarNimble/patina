@@ -2,11 +2,11 @@
 
 - [x] S0 — Housekeeping and oracle setup
 - [x] S1 — Canonical MCT WIT directory and `mct-child` world
-- [ ] S2 — Scaffold: MCT default, integrated template explicit and preserved
-- [ ] S3 — Build command
-- [ ] S4 — Package command
-- [ ] S5 — Verify command wired to recorded MCT oracle
-- [ ] S6 — End-to-end echo acceptance child transcript
+- [x] S2 — Scaffold: MCT default, integrated template explicit and preserved
+- [x] S3 — Build command
+- [x] S4 — Package command
+- [x] S5 — Verify command wired to recorded MCT oracle
+- [x] S6 — End-to-end echo acceptance child transcript
 
 ---
 
@@ -197,3 +197,50 @@ Added SDK-owned canonical MCT WIT under `sdk/patina-sdk/wit/mct/`:
 ```
 wasm-tools component wit sdk/patina-sdk/wit/mct
 ```
+
+## S2-S6 closure
+
+Implemented the default SDK child-author journey on the existing `patina child` CLI:
+
+- `patina child init <name>` now defaults to the MCT child world; `--template mct` is equivalent.
+- The previous integrated-Mother records template is preserved under `--template integrated`; `cmp` verified each integrated template file is byte-identical to the previous default at `HEAD`.
+- `--legacy` / `--template legacy` still select the legacy lane.
+- `patina child build [--release]` wraps `cargo build --target wasm32-wasip2` and fails closed if the target is missing.
+- `patina child package [--release]` emits a strict-integrity MCT bundle using the manifest-declared package-relative artifact path and writes `child.toml.sha256` plus `<artifact>.sha256` sidecars.
+- `patina child verify <bundle> --mct-daemon <S0 oracle>` runs `mct-daemon children load <bundle> --strict-integrity --json` and requires loaded children with zero failures.
+
+Local S6 transcript, using the recorded S0 oracle `/Users/nicabar/Projects/Patina/patina-mct/target/debug/mct-daemon`:
+
+```text
+$ cargo run -q --manifest-path /Users/nicabar/Projects/Sandbox/AI/RUST/patina/Cargo.toml -- child init echo-child --template mct
+Created mct child: /private/.../echo-child
+
+$ cargo run -q --manifest-path /Users/nicabar/Projects/Sandbox/AI/RUST/patina/Cargo.toml -- child build --release
+built child package=/private/.../echo-child target=wasm32-wasip2 profile=release
+
+$ cargo run -q --manifest-path /Users/nicabar/Projects/Sandbox/AI/RUST/patina/Cargo.toml -- child package --release
+packaged child 'echo-child':
+  bundle:   /private/.../echo-child/.patina/dev/releases/echo-child
+  manifest: /private/.../echo-child/.patina/dev/releases/echo-child/child.toml
+  artifact: /private/.../echo-child/.patina/dev/releases/echo-child/artifacts/echo-child.wasm
+
+$ cargo run -q --manifest-path /Users/nicabar/Projects/Sandbox/AI/RUST/patina/Cargo.toml -- child verify /private/.../echo-child/.patina/dev/releases/echo-child --mct-daemon /Users/nicabar/Projects/Patina/patina-mct/target/debug/mct-daemon
+verified MCT child bundle: /private/.../echo-child/.patina/dev/releases/echo-child
+{
+  "discovered": 1,
+  "loaded": 1,
+  "failed": 0,
+  "children": [{ "child_id": "echo-child", "ingress_mode": "wit_only", "allowed_operations": ["patina:mct/child@0.1.0.echo"] }]
+}
+
+$ /Users/nicabar/Projects/Patina/patina-mct/target/debug/mct-daemon wasm call-wit echo-child patina:mct/child@0.1.0.echo '["hello-mct"]' --children-dir /private/.../echo-child/.patina/dev/releases/echo-child --config /tmp/.../config.toml --state /tmp/.../state.sqlite --ledger /tmp/.../obs.jsonl --project-root /Users/nicabar/Projects/Sandbox/AI/RUST/patina --git-repo /Users/nicabar/Projects/Sandbox/AI/RUST/patina
+{
+  "output_json": {
+    "results": [
+      { "ok": "hello-mct" }
+    ]
+  }
+}
+```
+
+MCT checkout status after S6: unchanged except the pre-existing untracked `brew-noncore-report.html`.

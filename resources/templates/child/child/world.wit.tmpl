@@ -1,7 +1,13 @@
-package patina:__NAME__@0.1.0;
+package patina:mct@0.1.0;
 
-world __NAME__ {
+interface child {
+    echo: func(input: string) -> result<string, string>;
+}
+
+world mct-child {
     import wasi:logging/logging@0.1.0;
     import patina:measure/measure@0.1.0;
-    export patina:records/transform@0.1.0;
+    import patina:git/git@0.1.0;
+
+    export child;
 }
