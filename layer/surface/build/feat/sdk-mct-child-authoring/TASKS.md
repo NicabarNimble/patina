@@ -187,16 +187,22 @@ mct_checkout_status_before_after_build: only pre-existing ?? brew-noncore-report
 
 ## S1 closure
 
-Added SDK-owned canonical MCT WIT under `sdk/patina-sdk/wit/mct/`:
+Added MCT WIT under `sdk/patina-sdk/wit/mct/` during the original S1 work; closeout discovered the repo convention enforced by `resources/git/pre-push-checks.sh`: top-level `wit/<world>/` is canonical and `sdk/patina-sdk/wit/<world>/` is a byte-identical SDK mirror.
 
-- `child.wit` defines `patina:mct/child@0.1.0` through package `patina:mct@0.1.0`, interface `child`, and world `mct-child`.
-- `deps/logging.wit`, `deps/patina-measure.wit`, and `deps/patina-git.wit` are copies of existing repo WIT contracts with source paths recorded in `PROVENANCE.md`.
+- `wit/mct/mct.wit` defines `patina:mct/child@0.1.0` through package `patina:mct@0.1.0`, interface `child`, and world `mct-child`; `sdk/patina-sdk/wit/mct/mct.wit` mirrors it byte-identically.
+- `wit/mct/deps/logging.wit`, `wit/mct/deps/patina-measure.wit`, and `wit/mct/deps/patina-git.wit` are canonical copies of existing repo WIT contracts; `sdk/patina-sdk/wit/mct/deps/` mirrors them byte-identically.
+- The world file was renamed from `child.wit` to `mct.wit` on both canonical and SDK sides to match the hook's `wit/$world/$world.wit` convention.
+- `mct` is enrolled in `SDK_WORLDS` so both the world file and deps are drift-protected by pre-push.
 - Legacy WIT directories, `sdk/template`, `sdk/template-legacy`, `sdk/patina-sdk-legacy`, and `children/` are untouched.
 - `wasm-tools component wit sdk/patina-sdk/wit/mct` resolves successfully.
 - Existing release bundle production is documented in S0 from the external Slate and watcher child release docs.
 ```
 wasm-tools component wit sdk/patina-sdk/wit/mct
 ```
+
+## Pre-push WIT canonicalization fix
+
+The first push attempt after the SDK track was rejected by Step 1 of `resources/git/pre-push-checks.sh`: SDK deps under `sdk/patina-sdk/wit/mct/deps/` had no canonical counterparts under `wit/mct/deps/`. The fix enrolled MCT in the existing canonical WIT scheme instead of bypassing the hook: added `wit/mct/`, mirrored `mct.wit` and deps byte-identically into `sdk/patina-sdk/wit/mct/`, and added `mct` to `SDK_WORLDS`.
 
 ## S2-S6 closure
 
