@@ -1,0 +1,81 @@
+-- allium: 3
+-- library.allium — running example for the Session 3 slide deck (final form, slide 24)
+
+entity Member {
+    name: String
+}
+
+entity Book {
+    status: on_shelf | borrowed
+    title: String
+    borrowed_by: String?
+    due_at: Timestamp?
+
+    is_available: status = on_shelf
+}
+
+config {
+    loan_period: Duration = 21.days
+}
+
+given {
+    book: Book
+    member: Member
+}
+
+rule BorrowBook {
+    when: MemberBorrowsBook(member)
+    requires: book.status = on_shelf
+    ensures: book.status = borrowed
+    ensures: book.borrowed_by = member.name
+    ensures: book.due_at = now + config.loan_period
+    ensures: BookBorrowed(book: book, member: member)
+}
+
+rule BorrowRefusedWhenTaken {
+    when: MemberBorrowsBook(member)
+    requires: not book.is_available
+    ensures: BorrowRefused(book: book, member: member, reason: "not-on-shelf")
+}
+
+rule ReturnBook {
+    when: MemberReturnsBook(member)
+    requires: book.status = borrowed
+    ensures: book.status = on_shelf
+    ensures: book.borrowed_by = none
+    ensures: book.due_at = none
+    ensures: BookReturned(book: book, member: member)
+}
+
+rule BookGoesOverdue {
+    when: _: Book.due_at <= now
+    requires: book.status = borrowed
+    ensures: BookOverdue(book: book, borrower: book.borrowed_by)
+}
+
+surface LibraryDesk {
+    facing member: Member
+    context book: Book
+
+    exposes:
+        member.name
+        book.status
+        book.title
+        book.due_at
+
+    provides:
+        MemberBorrowsBook(member)
+        MemberReturnsBook(member)
+            when book.status = borrowed
+}
+
+contract LendingHonesty {
+    @invariant OneBorrowerAtATime
+        -- A borrowed book is attributed to exactly one member until returned.
+
+    @invariant OverdueIsObservedNotRaced
+        -- Passing the due date is recorded as a fact; it does not fight the return path for the status field.
+
+    @invariant RefusalIsExplicit
+        -- Borrowing an unavailable book produces a refusal event, not silence.
+}
