@@ -47,7 +47,12 @@ anti-pattern in 5 minutes. A worked solution is in `solution/`.
   the others miss.
 - Flaw 9: the two candidate-decision outcomes belong to two *distinct
   triggers* (approve vs reject), each with its own rule — see the solution's
-  `CandidateDecisionsArePartitioned` invariant.
+  `CandidateDecisionsArePartitioned` invariant. Nuance worth teaching:
+  the analyser stays silent here because the rules share one trigger
+  (assumed case analysis), but the *cross-trigger* version of this defect
+  — two different triggers racing to set one field from the same state —
+  **is** caught as a `conflict` finding. Slide deck Act III demonstrates
+  both live.
 - Flaw 8: the fix is not deleting the comment — it's promoting the
   *behavioral* part (operator notification) into an `ensures` and dropping
   the UI part (badge color).

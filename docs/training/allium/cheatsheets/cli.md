@@ -84,10 +84,24 @@ Diagnostics you'll actually meet:
 | `allium.rule.unreachableTrigger` | rule listens for an event no surface provides / no rule emits |
 | `allium.entity.unused` | entity declared, never referenced |
 | `allium.field.unused` | field declared, never referenced |
+| `allium.status.noExit` | enum status has no rule transitioning out of it |
 
-## Know the net's holes (validated on 3.5.0)
+`analyse` findings you'll actually meet: `"type": "conflict"` — two rules
+with **different triggers** can both fire in the same state and set the
+same field to different values (a race, found mechanically). The idiomatic
+fix is in `mother-lifecycle.allium`'s `StopTimesOut`: let the temporal rule
+**observe a fact instead of racing the state field**.
 
-A **typo'd field name** in `requires`/`ensures` and **two rules with
-identical guards and contradictory `ensures`** currently pass both check
-and analyse silently. Green CLI ≠ correct spec — that's what `/weed` and
-review are for. (And a good first upstream contribution.)
+## Know the net's exact shape (validated on 3.5.0)
+
+Caught: structural closure (`unreachableTrigger`), unused declarations,
+missing status exits, cross-trigger conflicts on one state.
+
+Silent: a **typo'd field name** in `requires`/`ensures`; **same-trigger**
+rules with identical guards and contradictory `ensures` (treated as case
+analysis). Also note the transition tracker only credits a status exit
+when the guard names the state **directly** (`status = x`) — `in {a, b}`
+sets and derived-field guards don't register, so guard state-changing
+rules with direct equality. Green CLI ≠ correct spec — that's what `/weed`
+and review are for. (And each silence is a good first upstream
+contribution.)

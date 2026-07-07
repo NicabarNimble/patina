@@ -37,6 +37,9 @@ Supporting material:
   each.
 - [Exercises](exercises/) — starter specs and worked solutions, all validated
   with `allium check` / `allium analyse`.
+- [Slides](slides/session-03-slides.md) — Session 3 expanded into a full
+  36-slide deck with speaker notes: one running example grown from a
+  one-sentence behavior to production patterns and toolchain internals.
 
 ## Why this curriculum is Patina/MCT-flavored
 

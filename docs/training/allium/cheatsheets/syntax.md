@@ -73,6 +73,11 @@ rule StopRunningDaemon {
 - Every trigger a rule listens for must be **provided** by a surface or
   emitted by another rule's `ensures`, or check reports
   `allium.rule.unreachableTrigger`.
+- Guard **state-changing** rules with direct equality (`status = x`):
+  the transition tracker doesn't credit `in {}` or derived-field guards,
+  and an uncredited state exit triggers `allium.status.noExit`.
+- Temporal rules that could race a state field should **observe a fact
+  instead** (emit an event, don't set the field) — see `StopTimesOut`.
 
 ## Surfaces (who may see what, and where events come from)
 

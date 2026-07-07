@@ -3,6 +3,12 @@
 **Objective**: Read and write Allium v3 fluently and understand the design
 trade-offs.
 
+> **Full slide deck available**: this session is expanded into 36 slides
+> with speaker notes, live-demo scripts, and a validated running example in
+> [`../slides/session-03-slides.md`](../slides/session-03-slides.md)
+> (running example: [`../slides/library.allium`](../slides/library.allium)).
+> The outline below remains the facilitator's summary view.
+
 ## Agenda
 
 | Time | Segment |
@@ -178,14 +184,24 @@ Run these live on `mother-lifecycle.allium` and show the JSON:
 | `allium plan` | Test obligations (Session 5 material) |
 | `allium model` | Domain model extraction for downstream tools |
 
-**Honest calibration** (validated against CLI 3.5.0, live-demo it): the
-structural diagnostics are dependable, but plenty of *semantic* damage
-passes silently — a typo'd field name in a `requires`, or two rules with
-identical guards and contradictory `ensures`, currently produce no
-findings. Teach the CLI as a fast structural gate, not a proof engine:
-`/weed` and human review carry the semantic load (Session 2's break-it
-exercise makes this visceral). Making one of these silent cases into a
-diagnostic is a perfect first upstream contribution (Sessions 4/6).
+**Honest calibration** (validated against CLI 3.5.0, live-demo it —
+the slide deck's Act III walks each case):
+
+- *Caught*: unused entities/fields, unreachable triggers, enum statuses
+  with no exit (`allium.status.noExit`), and **cross-trigger conflicts** —
+  two rules with different triggers both firing in one state and setting
+  the same field to different values (`analyse` emits a `conflict` finding
+  naming both rules, the state, and the values).
+- *Silent*: a typo'd field name in a `requires`, and **same-trigger**
+  rules with identical guards and contradictory `ensures` (assumed to be
+  case analysis). The transition tracker also only credits status exits
+  guarded by direct equality — `in {}` sets and derived-field guards
+  don't register.
+
+Teach the CLI as a fast structural gate, not a proof engine: `/weed` and
+human review carry the semantic load (Session 2's break-it exercise makes
+this visceral). Making one of the silent cases into a diagnostic is a
+perfect first upstream contribution (Sessions 4/6).
 
 **Why deliberately *not* full formal methods:** no quantifiers over
 unbounded domains, no refinement proofs, no model checking of temporal
