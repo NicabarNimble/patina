@@ -15,5 +15,8 @@ mode = "wit-only"
 default = "patina:mct/child@0.1.0.echo"
 allow = ["patina:mct/child@0.1.0.echo"]
 
+[child.artifact]
+wasm = ".patina/dev/components/__NAME__.wasm"
+
 [needs]
 toys = ["logging", "measure", "git"]

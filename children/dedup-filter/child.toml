@@ -1,5 +1,6 @@
 [child]
 name = "dedup-filter"
+version = "0.1.0"
 kind = "child"
 role = "app"
 

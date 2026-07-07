@@ -20,6 +20,7 @@ fn manifest_valid_minimal() {
         r#"
 [child]
 name = "test-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -32,7 +33,7 @@ child = "test"
     let m = ChildManifest::from_path(f.path()).unwrap();
     assert_eq!(m.name, "test-plugin");
     assert_eq!(m.world, ChildKind::Child);
-    assert_eq!(m.version, "0.0.0"); // default
+    assert_eq!(m.version, "0.1.0");
     assert_eq!(m.capabilities, vec!["host_log"]);
     assert_eq!(m.provides.child.as_deref(), Some("test"));
     assert_eq!(m.ingress_mode, ChildIngressMode::Handle);
@@ -46,6 +47,7 @@ fn manifest_accepts_child_section() {
         r#"
 [child]
 name = "test-child"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -66,6 +68,7 @@ fn manifest_parses_inside_toy_accepts() {
         r#"
 [child]
 name = "dedup-filter"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -95,6 +98,7 @@ fn manifest_inside_toy_accepts_defaults_empty() {
         r#"
 [child]
 name = "schema-enforcer"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -115,6 +119,7 @@ fn manifest_parses_ingress_policy_and_contract_allowlist() {
         r#"
 [child]
 name = "fixture-control-child"
+version = "0.1.0"
 kind = "child"
 
 [child.ingress]
@@ -156,6 +161,7 @@ fn manifest_rejects_unknown_ingress_mode() {
         r#"
 [child]
 name = "bad-ingress"
+version = "0.1.0"
 kind = "child"
 
 [child.ingress]
@@ -231,7 +237,7 @@ fn manifest_missing_name() {
 
 #[test]
 fn manifest_missing_world() {
-    let f = write_temp_manifest("[child]\nname = \"test\"\n");
+    let f = write_temp_manifest("[child]\nname = \"test\"\nversion = \"0.1.0\"\n");
     let err = ChildManifest::from_path(f.path()).unwrap_err();
     assert!(
         err.to_string().contains("missing child.kind"),
@@ -246,6 +252,7 @@ fn manifest_accepts_kind_key() {
         r#"
 [child]
 name = "test-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -265,6 +272,7 @@ fn manifest_world_key_remains_read_compatible() {
         r#"
 [child]
 name = "test-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -323,6 +331,7 @@ fn manifest_parses_toy_commands() {
         r#"
 [child]
 name = "test-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -345,6 +354,7 @@ fn manifest_no_toy_commands_defaults_empty() {
         r#"
 [child]
 name = "test-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -370,6 +380,7 @@ fn manifest_parses_schemas_section() {
         r#"
 [child]
 name = "grammar-github"
+version = "0.1.0"
 kind = "pipeline"
 
 [provides]
@@ -394,6 +405,7 @@ fn manifest_no_schemas_is_empty() {
         r#"
 [child]
 name = "test"
+version = "0.1.0"
 kind = "pipeline"
 "#,
     );
@@ -407,6 +419,7 @@ fn manifest_parses_child_capabilities_and_toys() {
         r#"
 [child]
 name = "source-router"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -473,6 +486,7 @@ fn child_rejects_unknown_event_stream() {
         r#"
 [child]
 name = "bad-child"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -514,6 +528,7 @@ fn child_rejects_invalid_ingress_endpoint() {
         r#"
 [child]
 name = "bad-ingress"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -893,6 +908,7 @@ fn manifest_parses_http_domains() {
         r#"
 [child]
 name = "http-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -916,6 +932,7 @@ fn manifest_no_http_domains_defaults_empty() {
         r#"
 [child]
 name = "no-http"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -1216,6 +1233,7 @@ fn manifest_rejects_unknown_world() {
         r#"
 [child]
 name = "bad-world"
+version = "0.1.0"
 kind = "oracle"
 
 [capabilities]
@@ -1373,6 +1391,7 @@ fn manifest_parses_host_secrets() {
         r#"
 [child]
 name = "cred-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -1405,6 +1424,7 @@ schema_version = 0
 
 [identity]
 name = "github"
+version = "0.1.0"
 provider = "github"
 auth_method = "manual"
 created_at = "2026-03-26T00:00:00Z"
@@ -1425,6 +1445,7 @@ type = "bearer"
             r#"
 [child]
 name = "conn-http"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -1454,6 +1475,7 @@ fn manifest_needs_connections_missing_connection_still_parses() {
             r#"
 [child]
 name = "conn-missing"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -1479,6 +1501,7 @@ fn manifest_no_host_secrets_defaults_empty() {
         r#"
 [child]
 name = "no-cred"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -1499,6 +1522,7 @@ fn manifest_host_secrets_skips_unknown_location() {
         r#"
 [child]
 name = "bad-loc"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -2036,6 +2060,7 @@ fn emit_capability_gating_host_emit_in_manifest() {
         r#"
 [child]
 name = "forge-connector"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -2067,6 +2092,7 @@ fn emit_capability_gating_not_granted_without_declaration() {
         r#"
 [child]
 name = "simple-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -2088,6 +2114,7 @@ fn emit_host_emit_denied_for_pipeline() {
         r#"
 [child]
 name = "bad-pipeline"
+version = "0.1.0"
 kind = "pipeline"
 
 [capabilities]
@@ -2113,6 +2140,7 @@ fn emit_host_emit_retires_command_kind() {
         r#"
 [child]
 name = "bad-command"
+version = "0.1.0"
 kind = "command"
 
 [capabilities]
@@ -2140,6 +2168,7 @@ fn emit_host_emit_requires_schemas() {
         r#"
 [child]
 name = "no-schema-connector"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -2171,6 +2200,7 @@ fn emit_host_emit_allowed_for_mother_child() {
         r#"
 [child]
 name = "forge-connector"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -2199,6 +2229,7 @@ fn emit_host_emit_retires_task_kind() {
         r#"
 [child]
 name = "fetch-task"
+version = "0.1.0"
 kind = "task"
 
 [capabilities]
@@ -2223,6 +2254,7 @@ fn measure_manifest_parses_declared_metrics() {
         r#"
 [child]
 name = "metrics-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -2260,6 +2292,7 @@ fn manifest_parses_filesystem_scope_preopen_path() {
         r#"
 [child]
 name = "fs-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -2316,6 +2349,7 @@ fn manifest_rejects_filesystem_scope_without_filesystem_toy() {
         r#"
 [child]
 name = "fs-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
@@ -2389,6 +2423,7 @@ fn manifest_with_role_parses() {
         r#"
 [child]
 name = "test-connector"
+version = "0.1.0"
 kind = "knowledge-child"
 role = "connector"
 
@@ -2409,6 +2444,7 @@ fn manifest_without_role_is_none() {
         r#"
 [child]
 name = "legacy-plugin"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -2428,6 +2464,7 @@ fn manifest_unknown_role_errors() {
         r#"
 [child]
 name = "bad-role"
+version = "0.1.0"
 kind = "knowledge-child"
 role = "widget"
 
@@ -2586,6 +2623,7 @@ fn capability_checks_match_for_auto_granted_capability() {
         r#"
 [child]
 name = "cap-match"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -2609,6 +2647,7 @@ fn capability_checks_match_for_unknown_capability() {
         r#"
 [child]
 name = "cap-mismatch"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [capabilities]
@@ -2633,6 +2672,7 @@ fn capability_checks_match_for_host_layer_case() {
         r#"
 [child]
 name = "layer-check"
+version = "0.1.0"
 kind = "knowledge-child"
 
 [needs]
