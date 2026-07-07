@@ -1,9 +1,13 @@
 # Allium Training
 
-The team's Allium training curriculum now lives in the standalone learning repo:
+The team's Allium training curriculum lives in the standalone learning repo:
 
-> `/Users/nicabar/Projects/Patina/learn-allium`
+> https://github.com/nicabarnimble/learn-allium
 
 Use that repo for session guides, slides, exercises, cheat sheets, and facilitator material.
 
-This Patina repo remains course source material: `layer/allium/mother/*.allium` provides the real Mother behavior specs used throughout the curriculum, and Patina CI demonstrates the plan-drift gate for production Allium specs.
+This Patina repo remains course source material. The real Mother behavior specs used throughout the curriculum live at:
+
+> https://github.com/nicabarnimble/patina/tree/main/layer/allium/mother
+
+Patina CI demonstrates the plan-drift gate for production Allium specs.
